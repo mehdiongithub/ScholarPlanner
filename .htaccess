@@ -1,0 +1,24 @@
+# Disable directory listing
+Options -Indexes
+
+# Block direct access to sensitive folders
+RewriteEngine On
+
+# Reject access to system directories with 403 Forbidden
+RewriteRule ^(app|config|storage|tests|routes|database|\.git)($|/) - [F,L]
+
+# Protect .env and composer files
+<FilesMatch "^\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "^composer\.(json|lock)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Redirect all requests to index.php if they are not existing files/directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L,QSA]
