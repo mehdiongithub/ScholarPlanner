@@ -30,6 +30,8 @@ class Database {
 
             try {
                 self::$connection = new PDO($dsn, $user, $pass, $options);
+                $tz = date('P');
+                self::$connection->exec("SET time_zone = '$tz'");
             } catch (PDOException $e) {
                 // Self-healing: If MySQL database is missing, attempt to create it automatically
                 if (strpos($e->getMessage(), 'Unknown database') !== false || $e->getCode() === 1049) {
@@ -40,6 +42,8 @@ class Database {
                         
                         // Retry connection
                         self::$connection = new PDO($dsn, $user, $pass, $options);
+                        $tz = date('P');
+                        self::$connection->exec("SET time_zone = '$tz'");
                         return self::$connection;
                     } catch (PDOException $createException) {
                         Logger::error("Database self-healing creation failed: " . $createException->getMessage());

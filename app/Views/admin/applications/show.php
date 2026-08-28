@@ -411,6 +411,40 @@
                             <?php endforeach; ?>
                         </div>
                     </div>
+
+                    <!-- Communication Center / Notifications History -->
+                    <div class="card-panel">
+                        <h2 class="panel-title">
+                            <i data-lucide="mail"></i>
+                            <span>Communication Center (Notification Logs)</span>
+                        </h2>
+
+                        <?php if (empty($notifications)): ?>
+                            <p style="color: var(--text-500); font-size: 0.875rem;">No notification updates have been sent for this application yet.</p>
+                        <?php else: ?>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                <?php foreach ($notifications as $n): ?>
+                                    <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 16px; font-size: 0.875rem;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                                            <span style="font-weight: 600; color: var(--text-800); text-transform: uppercase; font-size: 0.75rem; background: #e2e8f0; padding: 2px 8px; border-radius: 4px;">
+                                                <?= e(str_replace('_', ' ', $n['notification_type'])) ?>
+                                            </span>
+                                            <span style="font-size: 0.75rem; color: var(--text-400);"><?= e($n['created_at']) ?></span>
+                                        </div>
+                                        <div style="font-weight: 500; color: var(--text-700); margin-bottom: 4px;"><?= e($n['subject']) ?></div>
+                                        <div style="font-size: 0.8125rem; color: var(--text-500);">
+                                            <strong>Channel:</strong> <?= ucfirst(e($n['channel'])) ?> &bull; 
+                                            <strong>Recipient:</strong> <?= e($n['recipient']) ?> &bull;
+                                            <strong>Status:</strong> 
+                                            <span style="font-weight: 600; color: <?= $n['status'] === 'sent' ? '#16a34a' : ($n['status'] === 'failed' ? '#dc2626' : '#d97706') ?>;">
+                                                <?= ucfirst(e($n['status'])) ?>
+                                            </span>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <!-- Right sidebar panel -->
@@ -452,8 +486,13 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="notes">Review Note / Decision Reason</label>
+                                <label class="form-label" for="notes">Review Note / Decision Reason (Student Visible)</label>
                                 <textarea id="notes" name="notes" class="form-textarea" placeholder="Add decision explanation (this is visible to the applicant)..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="internal_notes">Staff-Only Internal Notes (Private to Staff)</label>
+                                <textarea id="internal_notes" name="internal_notes" class="form-textarea" placeholder="Private internal staff-only notes..."><?= e($app['internal_notes'] ?? '') ?></textarea>
                             </div>
 
                             <button type="submit" class="btn-submit">

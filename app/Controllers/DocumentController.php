@@ -575,6 +575,7 @@ class DocumentController {
         ]);
 
         $this->logAudit('document.approve', $doc['user_id'], $id, ['document_type' => $doc['doc_name']]);
+        \App\Services\CacheService::clear();
 
         // Enqueue Notification
         $notifService = new NotificationQueueService();
@@ -647,6 +648,7 @@ class DocumentController {
         ]);
 
         $this->logAudit('document.reject', $doc['user_id'], $id, ['document_type' => $doc['doc_name'], 'reason' => $reason]);
+        \App\Services\CacheService::clear();
 
         // Enqueue Notification
         $notifService = new NotificationQueueService();

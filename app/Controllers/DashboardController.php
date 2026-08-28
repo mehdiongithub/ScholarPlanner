@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\Auth;
 use App\Services\Database;
+use PDO;
 
 class DashboardController {
     /**
@@ -52,7 +53,7 @@ class DashboardController {
 
         // Build query to select matches joined with scholarships
         $sql = "
-            SELECT m.*, s.title, s.provider_name, s.host_country, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name
+            SELECT m.*, s.title, s.provider_name, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name
             FROM scholarship_matches m
             JOIN scholarships s ON m.scholarship_id = s.id
             LEFT JOIN countries c ON s.country_id = c.id
@@ -94,8 +95,16 @@ class DashboardController {
             $m['missing_criteria'] = json_decode($m['missing_criteria'], true) ?: [];
         }
 
-        $readinessService = new \App\Services\DocumentReadinessService();
-        $docReadiness = $readinessService->calculateGlobal($user['id']);
+        // Apply Premium Matching feature gate limits
+        if (!\App\Services\SubscriptionService::can($user['id'], 'premium_matching')) {
+            $matches = array_slice($matches, 0, \App\Services\SubscriptionService::getLimit($user['id'], 'max_matches'));
+        }
+
+        $docReadiness = null;
+        if (\App\Services\SubscriptionService::can($user['id'], 'document_readiness')) {
+            $readinessService = new \App\Services\DocumentReadinessService();
+            $docReadiness = $readinessService->calculateGlobal($user['id']);
+        }
 
         view('auth.dashboard', [
             'user' => $user,
@@ -119,7 +128,7 @@ class DashboardController {
     public function matchesApi(): void {
         header('Content-Type: application/json');
         
-        if (!Auth::check()) {
+        if (!Auth::isAuthenticated()) {
             http_response_code(401);
             echo json_encode(['error' => 'Unauthorized']);
             exit();
@@ -154,7 +163,17 @@ class DashboardController {
             $m['missing_criteria'] = json_decode($m['missing_criteria'], true) ?: [];
         }
 
+        // Apply Premium Matching feature gate limits
+        if (!\App\Services\SubscriptionService::can($user['id'], 'premium_matching')) {
+            $matches = array_slice($matches, 0, \App\Services\SubscriptionService::getLimit($user['id'], 'max_matches'));
+        }
+
+
+
         echo json_encode(['matches' => $matches]);
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            return;
+        }
         exit();
     }
 

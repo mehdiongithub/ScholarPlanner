@@ -797,152 +797,97 @@
                         <i data-lucide="bookmark" style="width:14px;height:14px"></i>
                         Opportunities
                     </span>
-                    <h2>Latest Scholarship Opportunities</h2>
-                    <p>Explore current scholarship listings. Sign up to see your personalized matches.</p>
+                    <h2>Explore Scholarships</h2>
+                    <p>Search over active opportunities. Sign up to get matched directly with your profile requirements.</p>
                 </div>
 
-                <div class="scholarships-grid">
-                    <div class="scholarship-card reveal">
-                        <div class="scholarship-card-top">
-                            <span class="scholarship-card-country">
-                                <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-                                Germany
-                            </span>
-                            <span class="scholarship-card-match">94%</span>
-                        </div>
-                        <h3 class="scholarship-card-title">Germany Master's Scholarship</h3>
-                        <p class="scholarship-card-desc">Fully funded scholarship for international students pursuing master's degrees at German universities.</p>
-                        <div class="scholarship-card-tags">
-                            <span class="scholarship-tag">Master's</span>
-                            <span class="scholarship-tag">Fully Funded</span>
-                            <span class="scholarship-tag">Computer Science</span>
-                        </div>
-                        <div class="scholarship-card-footer">
-                            <span class="scholarship-deadline">
-                                <i data-lucide="calendar"></i>
-                                30 Sep 2026
-                            </span>
-                            <a href="#" class="btn btn-ghost btn-sm">View Scholarship</a>
+                <!-- Search form on landing page -->
+                <div style="max-width: 600px; margin: 0 auto 40px; display: flex; gap: 8px;">
+                    <form action="<?= url('/scholarships') ?>" method="GET" style="display: flex; gap: 8px; width: 100%;">
+                        <input type="text" name="search" placeholder="Search by title, provider, university..." style="flex-grow: 1; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); font-size: 0.95rem; outline: none;">
+                        <button type="submit" class="btn btn-primary" style="padding: 12px 24px; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="search" style="width: 16px; height: 16px;"></i> Search
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Popular Categories section -->
+                <div class="popular-categories" style="margin-bottom: 50px;">
+                    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; color: var(--text-900);">Browse by Host Country</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px;">
+                        <?php foreach ($countries as $c): ?>
+                            <a href="<?= url('/scholarships/country/' . strtolower(str_replace(' ', '-', $c['name']))) ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;" onmouseover="this.style.borderColor='var(--primary)'; this.style.color='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-700)'">
+                                <?= e($c['name']) ?> (<?= $c['scholarship_count'] ?? 0 ?>)
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; color: var(--text-900);">Browse by Field of Study</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px;">
+                        <?php foreach ($fields as $f): ?>
+                            <a href="<?= url('/scholarships/field/' . strtolower(str_replace(' ', '-', $f['name']))) ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;" onmouseover="this.style.borderColor='var(--primary)'; this.style.color='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-700)'">
+                                <?= e($f['name']) ?> (<?= $f['scholarship_count'] ?? 0 ?>)
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; color: var(--text-900);">Browse by Degree & Funding</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <a href="<?= url('/scholarships/degree/bachelor-s') ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;">Bachelor's</a>
+                        <a href="<?= url('/scholarships/degree/master-s') ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;">Master's</a>
+                        <a href="<?= url('/scholarships/degree/phd') ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;">PhD</a>
+                        <a href="<?= url('/scholarships/degree/diploma') ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;">Diploma</a>
+                        <a href="<?= url('/scholarships?funding_type=Fully+Funded') ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;">Fully Funded</a>
+                        <a href="<?= url('/scholarships?funding_type=Partially+Funded') ?>" style="padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.875rem; text-decoration: none; color: var(--text-700); background: var(--bg-white); font-weight: 500;">Partially Funded</a>
+                    </div>
+                </div>
+
+                <div class="listings-row" style="display: grid; grid-template-columns: 1fr; gap: 40px; margin-bottom: 40px;">
+                    <!-- Recently Added column -->
+                    <div>
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; color: var(--text-900); display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="clock" style="color: var(--primary); width: 20px; height: 20px;"></i> Recently Added Scholarships
+                        </h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                            <?php if (empty($recentScholarships)): ?>
+                                <div style="padding: 40px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-xl); color: var(--text-500); grid-column: 1 / -1;">No scholarships found.</div>
+                            <?php else: ?>
+                                <?php foreach ($recentScholarships as $s): ?>
+                                    <div class="scholarship-card" style="padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--bg-white); position: relative; display: flex; flex-direction: column; box-shadow: var(--shadow-sm);">
+                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-500); text-transform: uppercase; margin-bottom: 8px;"><?= e($s['provider_name']) ?></div>
+                                        <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-900); margin-bottom: 8px; line-height: 1.4;"><?= e($s['title']) ?></h4>
+                                        <p style="font-size: 0.875rem; color: var(--text-600); line-height: 1.5; margin-bottom: 16px; flex-grow: 1;"><?= e(substr(strip_tags($s['description']), 0, 100)) ?>...</p>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-500); border-top: 1px solid var(--border); padding-top: 12px; margin-top: auto;">
+                                            <span><i data-lucide="map-pin" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i> <?= e($s['country_name'] ?? 'International') ?></span>
+                                            <a href="<?= url('/scholarships/' . e($s['slug'])) ?>" class="btn btn-ghost btn-sm" style="padding: 4px 8px; font-size: 0.75rem;">View Opportunity</a>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </div>
                     </div>
 
-                    <div class="scholarship-card reveal reveal-delay-1">
-                        <div class="scholarship-card-top">
-                            <span class="scholarship-card-country">
-                                <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-                                Turkey
-                            </span>
-                            <span class="scholarship-card-match">91%</span>
-                        </div>
-                        <h3 class="scholarship-card-title">Turkey Graduate Scholarship</h3>
-                        <p class="scholarship-card-desc">Government-funded scholarship program for graduate-level studies at Turkish universities.</p>
-                        <div class="scholarship-card-tags">
-                            <span class="scholarship-tag">Master's</span>
-                            <span class="scholarship-tag">Fully Funded</span>
-                            <span class="scholarship-tag">Engineering</span>
-                        </div>
-                        <div class="scholarship-card-footer">
-                            <span class="scholarship-deadline">
-                                <i data-lucide="calendar"></i>
-                                15 Oct 2026
-                            </span>
-                            <a href="#" class="btn btn-ghost btn-sm">View Scholarship</a>
-                        </div>
-                    </div>
-
-                    <div class="scholarship-card reveal reveal-delay-2">
-                        <div class="scholarship-card-top">
-                            <span class="scholarship-card-country">
-                                <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-                                China
-                            </span>
-                            <span class="scholarship-card-match">87%</span>
-                        </div>
-                        <h3 class="scholarship-card-title">China Government Scholarship</h3>
-                        <p class="scholarship-card-desc">CSC scholarship covering tuition, accommodation, and living expenses for international students.</p>
-                        <div class="scholarship-card-tags">
-                            <span class="scholarship-tag">Master's</span>
-                            <span class="scholarship-tag">Fully Funded</span>
-                            <span class="scholarship-tag">All Fields</span>
-                        </div>
-                        <div class="scholarship-card-footer">
-                            <span class="scholarship-deadline">
-                                <i data-lucide="calendar"></i>
-                                20 Nov 2026
-                            </span>
-                            <a href="#" class="btn btn-ghost btn-sm">View Scholarship</a>
-                        </div>
-                    </div>
-
-                    <div class="scholarship-card reveal">
-                        <div class="scholarship-card-top">
-                            <span class="scholarship-card-country">
-                                <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-                                South Korea
-                            </span>
-                            <span class="scholarship-card-match">84%</span>
-                        </div>
-                        <h3 class="scholarship-card-title">South Korea KGSP</h3>
-                        <p class="scholarship-card-desc">Korean Government Scholarship Program for international graduate students at Korean universities.</p>
-                        <div class="scholarship-card-tags">
-                            <span class="scholarship-tag">Master's</span>
-                            <span class="scholarship-tag">Fully Funded</span>
-                            <span class="scholarship-tag">Science</span>
-                        </div>
-                        <div class="scholarship-card-footer">
-                            <span class="scholarship-deadline">
-                                <i data-lucide="calendar"></i>
-                                10 Mar 2027
-                            </span>
-                            <a href="#" class="btn btn-ghost btn-sm">View Scholarship</a>
-                        </div>
-                    </div>
-
-                    <div class="scholarship-card reveal reveal-delay-1">
-                        <div class="scholarship-card-top">
-                            <span class="scholarship-card-country">
-                                <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-                                Japan
-                            </span>
-                            <span class="scholarship-card-match">82%</span>
-                        </div>
-                        <h3 class="scholarship-card-title">MEXT Research Scholarship</h3>
-                        <p class="scholarship-card-desc">Japanese Government scholarship for research students at Japanese universities across all fields.</p>
-                        <div class="scholarship-card-tags">
-                            <span class="scholarship-tag">Research</span>
-                            <span class="scholarship-tag">Fully Funded</span>
-                            <span class="scholarship-tag">All Fields</span>
-                        </div>
-                        <div class="scholarship-card-footer">
-                            <span class="scholarship-deadline">
-                                <i data-lucide="calendar"></i>
-                                15 Apr 2027
-                            </span>
-                            <a href="#" class="btn btn-ghost btn-sm">View Scholarship</a>
-                        </div>
-                    </div>
-
-                    <div class="scholarship-card reveal reveal-delay-2">
-                        <div class="scholarship-card-top">
-                            <span class="scholarship-card-country">
-                                <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-                                Australia
-                            </span>
-                            <span class="scholarship-card-match">79%</span>
-                        </div>
-                        <h3 class="scholarship-card-title">Australia Awards Scholarship</h3>
-                        <p class="scholarship-card-desc">Australian Government funded scholarships for students from developing countries to study in Australia.</p>
-                        <div class="scholarship-card-tags">
-                            <span class="scholarship-tag">Master's</span>
-                            <span class="scholarship-tag">Fully Funded</span>
-                            <span class="scholarship-tag">Development</span>
-                        </div>
-                        <div class="scholarship-card-footer">
-                            <span class="scholarship-deadline">
-                                <i data-lucide="calendar"></i>
-                                30 Apr 2027
-                            </span>
-                            <a href="#" class="btn btn-ghost btn-sm">View Scholarship</a>
+                    <!-- Closing Soon column -->
+                    <div>
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 20px; color: var(--text-900); display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="alert-circle" style="color: #ef4444; width: 20px; height: 20px;"></i> Closing Soon (Next 7 Days)
+                        </h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                            <?php if (empty($closingScholarships)): ?>
+                                <div style="padding: 40px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-xl); color: var(--text-500); grid-column: 1 / -1;">No scholarships closing in the next 7 days.</div>
+                            <?php else: ?>
+                                <?php foreach ($closingScholarships as $s): ?>
+                                    <div class="scholarship-card" style="padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--bg-white); position: relative; display: flex; flex-direction: column; box-shadow: var(--shadow-sm);">
+                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-500); text-transform: uppercase; margin-bottom: 8px;"><?= e($s['provider_name']) ?></div>
+                                        <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-900); margin-bottom: 8px; line-height: 1.4;"><?= e($s['title']) ?></h4>
+                                        <p style="font-size: 0.875rem; color: var(--text-600); line-height: 1.5; margin-bottom: 16px; flex-grow: 1;"><?= e(substr(strip_tags($s['description']), 0, 100)) ?>...</p>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-500); border-top: 1px solid var(--border); padding-top: 12px; margin-top: auto;">
+                                            <span style="color: #ef4444; font-weight: 600;"><i data-lucide="calendar" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i> <?= date('d M Y', strtotime($s['application_deadline'])) ?></span>
+                                            <a href="<?= url('/scholarships/' . e($s['slug'])) ?>" class="btn btn-ghost btn-sm" style="padding: 4px 8px; font-size: 0.75rem;">View Opportunity</a>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

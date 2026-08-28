@@ -36,7 +36,7 @@ if (!function_exists('e')) {
     /**
      * Escape HTML entities in a string.
      */
-    function e(string $value): string {
+    function e(?string $value): string {
         return \App\Helpers\Security::escape($value);
     }
 }

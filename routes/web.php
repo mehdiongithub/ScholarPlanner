@@ -7,8 +7,15 @@ use App\Controllers\PlaceholderController;
 
 $router->get('/', [HomeController::class, 'index']);
 
+// Robots.txt & Sitemap XML Routes
+$router->get('/robots.txt', ['App\Controllers\SEOController', 'robots']);
+$router->get('/sitemap.xml', ['App\Controllers\SEOController', 'sitemap']);
+
 // Step 1 placeholders and redirect routes
 $router->get('/scholarships', ['App\Controllers\ScholarshipController', 'publicList']);
+$router->get('/scholarships/country/{slug}', ['App\Controllers\ScholarshipController', 'publicListByCountry']);
+$router->get('/scholarships/field/{slug}', ['App\Controllers\ScholarshipController', 'publicListByField']);
+$router->get('/scholarships/degree/{slug}', ['App\Controllers\ScholarshipController', 'publicListByDegree']);
 $router->get('/scholarships/{slug}', ['App\Controllers\ScholarshipController', 'publicDetail']);
 
 $router->get('/how-it-works', [PlaceholderController::class, 'howItWorks']);
@@ -91,3 +98,30 @@ $router->post('/applications/{id}/delete', ['App\Controllers\ApplicationControll
 $router->get('/admin/applications', ['App\Controllers\ApplicationController', 'adminIndex']);
 $router->get('/admin/applications/{id}', ['App\Controllers\ApplicationController', 'adminShow']);
 $router->post('/admin/applications/{id}/status', ['App\Controllers\ApplicationController', 'adminUpdateStatus']);
+
+// Saved Scholarships Routes
+$router->post('/scholarships/{id}/save', ['App\Controllers\ScholarshipController', 'save']);
+$router->post('/scholarships/{id}/unsave', ['App\Controllers\ScholarshipController', 'unsave']);
+$router->get('/saved-scholarships', ['App\Controllers\ScholarshipController', 'savedList']);
+
+// Scholarship Comparison Routes
+$router->post('/scholarships/{id}/compare/add', ['App\Controllers\ScholarshipController', 'addToCompare']);
+$router->post('/scholarships/{id}/compare/remove', ['App\Controllers\ScholarshipController', 'removeFromCompare']);
+$router->get('/scholarships/compare', ['App\Controllers\ScholarshipController', 'compare']);
+
+// Step 12 Admin Intelligence & Platform Operations Routes
+$router->get('/admin/intelligence', ['App\Controllers\IntelligenceController', 'index']);
+$router->post('/admin/intelligence/quality/bulk', ['App\Controllers\IntelligenceController', 'bulkAction']);
+
+// Step 14 Billing, Subscription & Monetization Routes
+$router->get('/pricing', ['App\Controllers\BillingController', 'pricing']);
+$router->get('/billing', ['App\Controllers\BillingController', 'billing']);
+$router->get('/checkout', ['App\Controllers\BillingController', 'checkout']);
+$router->post('/checkout', ['App\Controllers\BillingController', 'processCheckout']);
+$router->get('/checkout/callback', ['App\Controllers\BillingController', 'callback']);
+$router->post('/checkout/callback', ['App\Controllers\BillingController', 'callback']); // support POST callbacks from gateway redirects
+$router->post('/checkout/cancel', ['App\Controllers\BillingController', 'cancel']);
+$router->post('/admin/billing/refund', ['App\Controllers\BillingController', 'refund']);
+$router->get('/checkout/mock-screen', ['App\Controllers\BillingController', 'mockScreen']);
+$router->get('/checkout/redirect', ['App\Controllers\BillingController', 'redirectRedirect']);
+$router->post('/api/payments/webhook', ['App\Controllers\BillingController', 'webhook']);

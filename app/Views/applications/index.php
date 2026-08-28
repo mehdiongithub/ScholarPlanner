@@ -475,6 +475,13 @@
                                     <span><?= e($app['provider_name']) ?></span>
                                     <span>•</span>
                                     <span class="badge-status status-<?= e($app['status']) ?>"><?= str_replace('_', ' ', e($app['status'])) ?></span>
+                                    <?php if (isset($app['match_score'])): ?>
+                                        <span>•</span>
+                                        <span class="match-score" style="font-size: 0.8125rem; font-weight: 600; color: #0d9488; display: inline-flex; align-items: center; gap: 4px;">
+                                            <i data-lucide="award" style="width: 14px; height: 14px;"></i>
+                                            <span><?= e($app['match_score']) ?>% Match</span>
+                                        </span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
 

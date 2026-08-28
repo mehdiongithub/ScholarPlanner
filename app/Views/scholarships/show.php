@@ -6,6 +6,39 @@
     <title><?= e($scholarship['title']) ?> | ScholarMatch Opportunities</title>
     <meta name="description" content="<?= e($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 160)) ?>">
     <link rel="canonical" href="<?= e(url('/scholarships/' . $scholarship['slug'])) ?>">
+    <meta name="robots" content="index, follow">
+    
+    <!-- Open Graph Protocol -->
+    <meta property="og:title" content="<?= e($scholarship['title']) ?> | ScholarMatch">
+    <meta property="og:description" content="<?= e($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 160)) ?>">
+    <meta property="og:url" content="<?= e(url('/scholarships/' . $scholarship['slug'])) ?>">
+    <meta property="og:type" content="article">
+    
+    <!-- Schema.org JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Grant",
+      "name": <?= json_encode($scholarship['title'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+      "description": <?= json_encode($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 200), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+      "sponsor": {
+        "@type": "Organization",
+        "name": <?= json_encode($scholarship['provider_name'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+      },
+      "recipient": {
+        "@type": "EducationalAudience",
+        "educationalRole": <?= json_encode($scholarship['study_level'] ?? 'All levels', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+      },
+      "amount": {
+        "@type": "MonetaryAmount",
+        "currency": "USD",
+        "description": <?= json_encode($scholarship['funding_type'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+      }
+      <?php if (!empty($scholarship['application_deadline'])): ?>,
+      "endDate": "<?= date('Y-m-d', strtotime($scholarship['application_deadline'])) ?>"
+      <?php endif; ?>
+    }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">

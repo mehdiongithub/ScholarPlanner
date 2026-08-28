@@ -47,6 +47,7 @@ class NotificationTest {
     }
 
     private function cleanTestData(): void {
+        $this->db->exec("DELETE FROM subscriptions WHERE user_id IN (SELECT id FROM users WHERE email = 'notification-test@example.com')");
         $this->db->exec("DELETE FROM users WHERE email = 'notification-test@example.com'");
         $this->db->exec("DELETE FROM scholarships WHERE slug = 'german-math-scholarship'");
         $this->db->exec("DELETE FROM notification_logs WHERE recipient = 'notification-test@example.com' OR recipient = '+923001234567'");
@@ -116,6 +117,18 @@ class NotificationTest {
             'uid' => $this->userId,
             'sid' => $this->scholarshipId
         ]);
+
+        // 7. Grant active premium subscription so notifications can be enqueued
+        $premiumPlanId = $this->db->query("SELECT id FROM subscription_plans WHERE slug = 'premium-monthly' LIMIT 1")->fetchColumn();
+        if ($premiumPlanId) {
+            $this->db->prepare("
+                INSERT INTO subscriptions (user_id, plan_id, status, starts_at, ends_at, auto_renew)
+                VALUES (:uid, :pid, 'active', NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY), 1)
+            ")->execute([
+                'uid' => $this->userId,
+                'pid' => $premiumPlanId
+            ]);
+        }
     }
 
     private function testNotificationEnqueueAndIdempotency(): void {

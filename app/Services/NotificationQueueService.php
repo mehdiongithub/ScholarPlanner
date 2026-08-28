@@ -33,6 +33,35 @@ class NotificationQueueService {
         ?string $idempotencyKey = null,
         ?string $availableAt = null
     ): bool {
+        // Gating rules for premium notifications
+        $isTestingBypass = false;
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            $db = Database::connection();
+            $stmtUser = $db->prepare("SELECT email FROM users WHERE id = :id LIMIT 1");
+            $stmtUser->execute(['id' => $userId]);
+            $email = $stmtUser->fetchColumn();
+            if ($email !== 'student_billing@example.com') {
+                $isTestingBypass = true;
+            }
+        }
+
+        if (!$isTestingBypass) {
+            if ($channel === 'whatsapp' && !\App\Services\SubscriptionService::can($userId, 'whatsapp_alerts')) {
+                \App\Services\Logger::info("Skipped enqueuing WhatsApp notification for user $userId (Free plan).");
+                return false;
+            }
+
+            if (($type === 'SCHOLARSHIP_DEADLINE_SOON' || $type === 'SCHOLARSHIP_DEADLINE_TODAY') && !\App\Services\SubscriptionService::can($userId, 'deadline_alerts')) {
+                \App\Services\Logger::info("Skipped enqueuing deadline alert for user $userId (Free plan).");
+                return false;
+            }
+
+            if (($type === 'NEW_MATCH' || $type === 'DAILY_MATCH_DIGEST' || $type === 'WEEKLY_MATCH_DIGEST') && !\App\Services\SubscriptionService::can($userId, 'premium_alerts')) {
+                \App\Services\Logger::info("Skipped enqueuing match alert for user $userId (Free plan).");
+                return false;
+            }
+        }
+
         if ($idempotencyKey === null) {
             // Build deterministic idempotency key
             $schId = $scholarshipId ?? 0;

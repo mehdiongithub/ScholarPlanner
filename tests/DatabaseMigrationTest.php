@@ -27,7 +27,7 @@ class DatabaseMigrationTest {
         $seederOutput = shell_exec('php "' . ROOT_PATH . '/database/seeder_runner.php"');
         echo $seederOutput . "\n";
         
-        // 3. Assert all 33 database tables + migrations table exist
+        // 3. Assert all 34 database tables + migrations table exist
         $tables = [
             'migrations', 'countries', 'states', 'cities', 'roles', 'permissions', 
             'role_permissions', 'users', 'student_profiles', 'education_records', 
@@ -38,7 +38,7 @@ class DatabaseMigrationTest {
             'saved_scholarships', 'scholarship_applications', 'notification_logs', 
             'subscription_plans', 'subscriptions', 'payment_transactions', 
             'payment_webhook_logs', 'employee_assignments', 'audit_logs', 
-            'settings', 'contact_messages'
+            'settings', 'contact_messages', 'subscription_usage'
         ];
         
         $dbName = config('database.database');

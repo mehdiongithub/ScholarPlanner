@@ -32,8 +32,8 @@ class ApplicationTest {
 
         try {
             $this->testSecurityAndAccessControls();
-            $this->testFunctionalCRUDAndTransitions();
             $this->testDocumentAndMatchIntegrations();
+            $this->testFunctionalCRUDAndTransitions();
             $this->testDeadlineCronReminders();
             $this->testPerformanceScaleSimulation();
             
@@ -135,16 +135,60 @@ class ApplicationTest {
     }
 
     private function cleanTestData(): void {
-        $this->db->exec("DELETE FROM scholarship_application_history");
-        $this->db->exec("DELETE FROM scholarship_applications");
-        $this->db->exec("DELETE FROM user_documents");
-        $this->db->exec("DELETE FROM scholarship_documents");
+        $testEmails = "'app-user@example.com', 'app-other@example.com', 'app-admin@example.com'";
+        
+        $this->db->exec("
+            DELETE FROM scholarship_application_history 
+            WHERE application_id IN (
+                SELECT id FROM scholarship_applications 
+                WHERE user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+            )
+            OR changed_by IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+        
+        $this->db->exec("
+            DELETE FROM scholarship_applications 
+            WHERE user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+        
+        $this->db->exec("
+            DELETE FROM user_documents 
+            WHERE user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+        
+        $this->db->exec("
+            DELETE FROM scholarship_documents 
+            WHERE scholarship_id IN (
+                SELECT id FROM scholarships WHERE provider_name IN ('Alpha Provider', 'Beta Provider', 'Scale Provider')
+            )
+        ");
+        
         $this->db->exec("DELETE FROM documents WHERE name = 'App Passport'");
-        $this->db->exec("DELETE FROM scholarship_matches");
-        $this->db->exec("DELETE FROM notification_preferences");
+        
+        $this->db->exec("
+            DELETE FROM scholarship_matches 
+            WHERE user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+        
+        $this->db->exec("
+            DELETE FROM notification_preferences 
+            WHERE user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+
+        $this->db->exec("
+            DELETE FROM notification_logs 
+            WHERE user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+        
         $this->db->exec("DELETE FROM scholarships WHERE provider_name IN ('Alpha Provider', 'Beta Provider', 'Scale Provider')");
-        $this->db->exec("DELETE FROM audit_logs WHERE module = 'applications'");
-        $this->db->exec("DELETE FROM users WHERE email IN ('app-user@example.com', 'app-other@example.com', 'app-admin@example.com') OR email LIKE 'app-scale-%'");
+        
+        $this->db->exec("
+            DELETE FROM audit_logs 
+            WHERE module = 'applications' 
+              AND user_id IN (SELECT id FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%')
+        ");
+        
+        $this->db->exec("DELETE FROM users WHERE email IN ($testEmails) OR email LIKE 'app-scale-%'");
     }
 
     /**
@@ -266,6 +310,104 @@ class ApplicationTest {
         if ($exists) {
             throw new Exception("Security input validation failed: stored application with non-existent scholarship.");
         }
+
+        // 8. Parameter Tampering: Student tries to update status directly to an admin status (accepted)
+        $_POST['csrf_token'] = 'test_token';
+        $_POST['status'] = 'accepted';
+        try {
+            $controller->update($appId);
+        } catch (RuntimeException $e) {
+            // Expected redirect halt
+        }
+        $status = $this->db->query("SELECT status FROM scholarship_applications WHERE id = $appId")->fetchColumn();
+        if ($status === 'accepted') {
+            throw new Exception("Security parameter tampering failed: student allowed to set status to 'accepted'.");
+        }
+
+        // 9. Document Readiness Enforcement: Student tries to update status to applied, but required document is not approved (percentage is 0%)
+        $_POST['csrf_token'] = 'test_token';
+        $_POST['status'] = 'applied';
+        try {
+            $controller->update($appId);
+        } catch (RuntimeException $e) {
+            // Expected redirect halt
+        }
+        $status = $this->db->query("SELECT status FROM scholarship_applications WHERE id = $appId")->fetchColumn();
+        if ($status === 'applied') {
+            throw new Exception("Document readiness enforcement failed: student allowed to apply without 100% readiness.");
+        }
+
+        // 10. Deadline Enforcement: Student tries to update tracker status for closed/expired scholarship
+        // Create an expired scholarship
+        $this->db->exec("
+            INSERT INTO scholarships (title, provider_name, description, application_deadline, status, slug, funding_type)
+            VALUES ('Expired Scholarship', 'Expired Provider', 'Desc', '" . date('Y-m-d', strtotime('-1 day')) . "', 'published', 'expired-sch-test', 'Full')
+        ");
+        $expiredSchId = (int)$this->db->lastInsertId();
+        
+        // Add tracker for expired scholarship (status: interested)
+        $_POST['csrf_token'] = 'test_token';
+        $_POST['scholarship_id'] = $expiredSchId;
+        $_POST['status'] = 'interested';
+        try {
+            $controller->store();
+        } catch (RuntimeException $e) {
+            // Expected redirect halt
+        }
+        
+        $expiredAppId = (int)$this->db->query("SELECT id FROM scholarship_applications WHERE scholarship_id = $expiredSchId AND user_id = {$this->userId}")->fetchColumn();
+        if ($expiredAppId) {
+            throw new Exception("Deadline enforcement failed: student allowed to initialize tracker for expired scholarship.");
+        }
+        
+        // Cleanup expired scholarship
+        $this->db->exec("DELETE FROM scholarships WHERE id = $expiredSchId");
+
+        // 11. Try to update an existing tracker when scholarship deadline is in the past
+        // We set the deadline of second scholarship to past
+        $this->db->exec("UPDATE scholarships SET application_deadline = '" . date('Y-m-d', strtotime('-2 days')) . "' WHERE id = {$this->secondScholarshipId}");
+        
+        // Let's add a tracker for it first (with status = interested) by inserting directly to DB to simulate a historical tracker
+        $this->db->exec("
+            INSERT INTO scholarship_applications (user_id, scholarship_id, status)
+            VALUES ({$this->userId}, {$this->secondScholarshipId}, 'interested')
+        ");
+        $histAppId = (int)$this->db->lastInsertId();
+        
+        // Try to change status to planning
+        $_POST['csrf_token'] = 'test_token';
+        $_POST['status'] = 'planning';
+        try {
+            $controller->update($histAppId);
+        } catch (RuntimeException $e) {
+            // Expected halt
+        }
+        
+        $status = $this->db->query("SELECT status FROM scholarship_applications WHERE id = $histAppId")->fetchColumn();
+        if ($status !== 'interested') {
+            throw new Exception("Deadline update enforcement failed: student allowed to update status after deadline.");
+        }
+        
+        // Try to change status to withdrawn (which should be allowed!)
+        $_POST['csrf_token'] = 'test_token';
+        $_POST['status'] = 'withdrawn';
+        try {
+            $controller->update($histAppId);
+        } catch (RuntimeException $e) {
+            // Expected halt
+        }
+        
+        $status = $this->db->query("SELECT status FROM scholarship_applications WHERE id = $histAppId")->fetchColumn();
+        if ($status !== 'withdrawn') {
+            throw new Exception("Deadline update enforcement failed: student should be allowed to withdraw post-deadline.");
+        }
+        
+        // Cleanup direct inserts
+        $this->db->exec("DELETE FROM scholarship_application_history WHERE application_id = $histAppId");
+        $this->db->exec("DELETE FROM scholarship_applications WHERE id = $histAppId");
+        
+        // Restore second scholarship deadline for later cron tests
+        $this->db->exec("UPDATE scholarships SET application_deadline = '" . date('Y-m-d', strtotime('+3 days')) . "' WHERE id = {$this->secondScholarshipId}");
 
         echo "✔ Security access controls and IDOR boundaries verified.\n";
     }

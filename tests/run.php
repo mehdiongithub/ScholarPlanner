@@ -18,6 +18,11 @@ require_once __DIR__ . '/ScholarshipMatchingTest.php';
 require_once __DIR__ . '/NotificationTest.php';
 require_once __DIR__ . '/DocumentTest.php';
 require_once __DIR__ . '/ApplicationTest.php';
+require_once __DIR__ . '/CommunicationAndManagementTest.php';
+require_once __DIR__ . '/ScholarshipDiscoveryTest.php';
+require_once __DIR__ . '/PlatformOperationsTest.php';
+require_once __DIR__ . '/PublicDiscoverySeoTest.php';
+require_once __DIR__ . '/BillingSubscriptionTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -72,6 +77,26 @@ try {
     // 12. Application Tracker & Workflow Verification
     $appTest = new ApplicationTest();
     $appTest->run();
+
+    // 13. Communication & Administrative Notes Management Verification
+    $cmTest = new CommunicationAndManagementTest();
+    $cmTest->run();
+
+    // 14. Advanced Discovery, Saved Scholarships & Comparison Verification
+    $discTest = new ScholarshipDiscoveryTest();
+    $discTest->run();
+
+    // 15. Operational Intelligence & Platform Operations Verification
+    $opsTest = new PlatformOperationsTest();
+    $opsTest->run();
+    
+    // 16. Public Discovery, SEO & Sitemap Verification
+    $seoTest = new PublicDiscoverySeoTest();
+    $seoTest->run();
+    
+    // 17. Billing & Subscription Monetization Verification
+    $billingTest = new BillingSubscriptionTest();
+    $billingTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

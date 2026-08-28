@@ -75,7 +75,7 @@ class Logger {
     /**
      * Regex replacement for secret matches in direct message texts
      */
-    private static function redactSensitiveString(string $string): string {
+    public static function redactSensitiveString(string $string): string {
         $patterns = [
             '/(password|pass|secret|token|key|auth|easypaisa|jazzcash)=[^&\s\n]+/i' => '$1=[REDACTED]'
         ];

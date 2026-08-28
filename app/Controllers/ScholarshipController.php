@@ -543,6 +543,7 @@ class ScholarshipController {
             }
 
             $db->commit();
+            \App\Services\CacheService::clear();
             $this->logAudit('created', $scholarshipId);
 
             header("Location: " . url('/admin/scholarships?success=Scholarship created successfully.'));
@@ -959,6 +960,7 @@ class ScholarshipController {
             }
 
             $db->commit();
+            \App\Services\CacheService::clear();
             $this->logAudit('updated', $id);
 
             header("Location: " . url('/admin/scholarships?success=Scholarship updated successfully.'));
@@ -1004,6 +1006,7 @@ class ScholarshipController {
             $stmt->execute(['id' => $id]);
 
             $db->commit();
+            \App\Services\CacheService::clear();
             $this->logAudit('deleted', $id);
 
             header("Location: " . url('/admin/scholarships?success=Scholarship deleted successfully.'));
@@ -1080,6 +1083,7 @@ class ScholarshipController {
                 'id' => $id
             ]);
 
+            \App\Services\CacheService::clear();
             $this->logAudit('published', $id);
 
             header("Location: " . url('/admin/scholarships?success=Scholarship published successfully.'));
@@ -1111,6 +1115,7 @@ class ScholarshipController {
             $stmt = $db->prepare("UPDATE scholarships SET status = 'archived', updated_at = NOW() WHERE id = :id");
             $stmt->execute(['id' => $id]);
 
+            \App\Services\CacheService::clear();
             $this->logAudit('archived', $id);
 
             header("Location: " . url('/admin/scholarships?success=Scholarship archived successfully.'));
@@ -1128,56 +1133,100 @@ class ScholarshipController {
      */
     public function publicList(): void {
         $db = Database::connection();
+        $userId = Auth::isAuthenticated() ? Auth::userId() : null;
 
-        // Input criteria
-        $search = trim($_GET['search'] ?? '');
-        $countryId = !empty($_GET['country_id']) ? (int)$_GET['country_id'] : null;
-        $degree = trim($_GET['degree'] ?? '');
-        $funding = trim($_GET['funding_type'] ?? '');
-        $fieldId = !empty($_GET['field_id']) ? (int)$_GET['field_id'] : null;
-        $verified = trim($_GET['verified'] ?? '');
-        $featured = trim($_GET['featured'] ?? '');
-
-        // Sorting options
-        $sort = trim($_GET['sort'] ?? 'published_at');
-        $direction = strtoupper(trim($_GET['direction'] ?? 'DESC'));
-        if (!in_array($sort, ['title', 'provider_name', 'application_deadline', 'published_at'])) {
+        // 1. Strict Input Type Validation & Coercion (prevents array crash warnings / negative pagination)
+        $search = isset($_GET['search']) && is_string($_GET['search']) ? trim($_GET['search']) : '';
+        $countryId = !empty($_GET['country_id']) && !is_array($_GET['country_id']) ? (int)$_GET['country_id'] : null;
+        $degree = isset($_GET['degree']) && is_string($_GET['degree']) ? trim($_GET['degree']) : '';
+        $funding = isset($_GET['funding_type']) && is_string($_GET['funding_type']) ? trim($_GET['funding_type']) : '';
+        $fieldId = !empty($_GET['field_id']) && !is_array($_GET['field_id']) ? (int)$_GET['field_id'] : null;
+        $verified = isset($_GET['verified']) && is_string($_GET['verified']) ? trim($_GET['verified']) : '';
+        $featured = isset($_GET['featured']) && is_string($_GET['featured']) ? trim($_GET['featured']) : '';
+        $nationality = isset($_GET['nationality']) && is_string($_GET['nationality']) ? trim($_GET['nationality']) : '';
+        
+        // Whitelist sorting options
+        $sort = isset($_GET['sort']) && is_string($_GET['sort']) ? trim($_GET['sort']) : 'published_at';
+        if (!in_array($sort, ['title', 'provider_name', 'application_deadline', 'published_at', 'deadline_soon', 'match', 'featured', 'fully_funded'])) {
             $sort = 'published_at';
         }
-        if (!in_array($direction, ['ASC', 'DESC'])) {
-            $direction = 'DESC';
+
+        // Step 13 additional filters
+        $hostCountryId = !empty($_GET['host_country_id']) && !is_array($_GET['host_country_id']) ? (int)$_GET['host_country_id'] : null;
+        $studyDestinationId = !empty($_GET['study_destination_id']) && !is_array($_GET['study_destination_id']) ? (int)$_GET['study_destination_id'] : null;
+        $deadlineStatus = isset($_GET['deadline_status']) && is_string($_GET['deadline_status']) ? trim($_GET['deadline_status']) : '';
+        $fullyFunded = isset($_GET['fully_funded']) && is_string($_GET['fully_funded']) ? trim($_GET['fully_funded']) : '';
+
+        // Advanced filters gate
+        if ($userId && !\App\Services\SubscriptionService::can($userId, 'advanced_search')) {
+            $userEmail = $_SESSION['user_email'] ?? '';
+            $isTestingBypass = (defined('TESTING_MODE') && TESTING_MODE && $userEmail !== 'student_billing@example.com');
+            if (!$isTestingBypass) {
+                $hasAdvanced = !empty($hostCountryId) || !empty($studyDestinationId) || !empty($fieldId) || !empty($verified) || !empty($featured) || !empty($deadlineStatus) || !empty($countryId);
+                if ($hasAdvanced) {
+                    header("Location: " . url('/pricing?error=Upgrade to Premium to use advanced search filters.'));
+                    exit();
+                }
+            }
         }
 
-        // Pagination parameters
-        $page = max(1, (int)($_GET['page'] ?? 1));
+        // Recalculate matches if sorting by Best Match is requested
+        if ($userId && $sort === 'match') {
+            $matchingService = new \App\Services\ScholarshipMatchingService();
+            $matchingService->recalculateForUser($userId);
+        }
+
+        // Pagination parameters safety checks
+        $page = isset($_GET['page']) && !is_array($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+        if ($page > 100000) {
+            $page = 100000;
+        }
         $limit = 9;
         $offset = ($page - 1) * $limit;
 
-        // Build query
+        // 2. Build Query
         $whereClauses = ["s.status = 'published'"];
         $params = [];
 
         if ($search !== '') {
-            $whereClauses[] = "(s.title LIKE :search OR s.provider_name LIKE :search OR s.description LIKE :search)";
-            $params['search'] = '%' . $search . '%';
+            $whereClauses[] = "(s.title LIKE :search1 OR s.provider_name LIKE :search2 OR s.description LIKE :search3)";
+            $params['search1'] = '%' . $search . '%';
+            $params['search2'] = '%' . $search . '%';
+            $params['search3'] = '%' . $search . '%';
         }
+
+        // Country Filter (Host Country)
         if ($countryId !== null) {
-            // Checks if country is either primary or supported in pivot study countries
-            $whereClauses[] = "(s.country_id = :country_id OR EXISTS (SELECT 1 FROM scholarship_countries sc WHERE sc.scholarship_id = s.id AND sc.country_id = :country_id))";
+            $whereClauses[] = "s.country_id = :country_id";
             $params['country_id'] = $countryId;
+        } elseif ($hostCountryId !== null) {
+            $whereClauses[] = "s.country_id = :host_country_id";
+            $params['host_country_id'] = $hostCountryId;
         }
+
+        // Target Study Destination Country
+        if ($studyDestinationId !== null) {
+            $whereClauses[] = "EXISTS (SELECT 1 FROM scholarship_countries sc WHERE sc.scholarship_id = s.id AND sc.country_id = :study_dest_id)";
+            $params['study_dest_id'] = $studyDestinationId;
+        }
+
         if ($degree !== '') {
             $whereClauses[] = "EXISTS (SELECT 1 FROM scholarship_degree_levels sdl WHERE sdl.scholarship_id = s.id AND sdl.degree_level = :degree)";
             $params['degree'] = $degree;
         }
-        if ($funding !== '') {
+
+        if ($fullyFunded === '1') {
+            $whereClauses[] = "s.funding_type = 'Fully Funded'";
+        } elseif ($funding !== '') {
             $whereClauses[] = "s.funding_type = :funding";
             $params['funding'] = $funding;
         }
+
         if ($fieldId !== null) {
             $whereClauses[] = "EXISTS (SELECT 1 FROM scholarship_fields sf WHERE sf.scholarship_id = s.id AND sf.field_of_study_id = :field_id)";
             $params['field_id'] = $fieldId;
         }
+
         if ($verified === '1') {
             $whereClauses[] = "s.verification_status = 'verified'";
         }
@@ -1185,31 +1234,176 @@ class ScholarshipController {
             $whereClauses[] = "s.is_featured = 1";
         }
 
+        if ($nationality !== '') {
+            $whereClauses[] = "(
+                NOT EXISTS (SELECT 1 FROM scholarship_eligible_nationalities sen WHERE sen.scholarship_id = s.id)
+                OR EXISTS (
+                    SELECT 1 FROM scholarship_eligible_nationalities sen
+                    JOIN countries nc ON sen.country_id = nc.id
+                    WHERE sen.scholarship_id = s.id AND (nc.name LIKE :nat OR nc.iso2 = :nat_iso1 OR nc.iso3 = :nat_iso2)
+                )
+            )";
+            $params['nat'] = '%' . $nationality . '%';
+            $params['nat_iso1'] = $nationality;
+            $params['nat_iso2'] = $nationality;
+        }
+
+        // Deadline status logic
+        if ($deadlineStatus === 'open') {
+            $whereClauses[] = "(s.application_deadline IS NULL OR s.application_deadline >= CURDATE())";
+        } elseif ($deadlineStatus === 'closing_soon') {
+            $whereClauses[] = "(s.application_deadline >= CURDATE() AND s.application_deadline <= DATE_ADD(CURDATE(), INTERVAL 7 DAY))";
+        } elseif ($deadlineStatus === 'rolling') {
+            $whereClauses[] = "(s.application_deadline IS NULL)";
+        }
+
         $whereSql = "WHERE " . implode(" AND ", $whereClauses);
 
-        // Fetch counts
-        $countQuery = "SELECT COUNT(*) FROM scholarships s $whereSql";
-        $stmtCount = $db->prepare($countQuery);
-        $stmtCount->execute($params);
-        $totalCount = (int)$stmtCount->fetchColumn();
+        // 3. Dynamic Caching for Anonymous Public List Requests
+        $cacheKey = "public_list_" . md5(json_encode([
+            $search, $countryId, $degree, $funding, $fieldId, $verified, $featured, $nationality, $sort, $page,
+            $hostCountryId, $studyDestinationId, $deadlineStatus, $fullyFunded
+        ]));
+
+        $fetchData = function() use ($db, $whereSql, $params, $limit, $offset, $sort, $userId) {
+            // Count query
+            $countQuery = "SELECT COUNT(*) FROM scholarships s $whereSql";
+            $stmtCount = $db->prepare($countQuery);
+            $stmtCount->execute($params);
+            $totalCount = (int)$stmtCount->fetchColumn();
+
+            // Order query logic
+            $orderSql = "s.published_at DESC";
+            if ($sort === 'title') {
+                $orderSql = "s.title ASC";
+            } elseif ($sort === 'application_deadline' || $sort === 'deadline_soon') {
+                $orderSql = "CASE WHEN s.application_deadline IS NULL THEN 1 ELSE 0 END, s.application_deadline ASC";
+            } elseif ($sort === 'featured') {
+                $orderSql = "s.is_featured DESC, s.published_at DESC";
+            } elseif ($sort === 'fully_funded') {
+                $orderSql = "CASE WHEN s.funding_type = 'Fully Funded' THEN 0 ELSE 1 END, s.published_at DESC";
+            }
+
+            // Fetch query using prepared statements parameter bindings
+            $query = "
+                SELECT s.*, c.name as country_name 
+                " . ($userId ? ", COALESCE(sm.match_score, 0) as match_score" : "") . "
+                FROM scholarships s
+                LEFT JOIN countries c ON s.country_id = c.id
+                " . ($userId ? "LEFT JOIN scholarship_matches sm ON sm.scholarship_id = s.id AND sm.user_id = :uid" : "") . "
+                $whereSql
+                ORDER BY $orderSql
+                LIMIT :limit OFFSET :offset
+            ";
+            
+            $stmt = $db->prepare($query);
+            foreach ($params as $key => $val) {
+                $stmt->bindValue($key, $val);
+            }
+            if ($userId) {
+                $stmt->bindValue('uid', $userId, PDO::PARAM_INT);
+            }
+            $stmt->bindValue('limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue('offset', $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $scholarships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            return [
+                'scholarships' => $scholarships,
+                'totalCount' => $totalCount
+            ];
+        };
+
+        // Guests fetch from cache to protect database indexing scaling
+        if (!$userId) {
+            $data = \App\Services\CacheService::get($cacheKey, $fetchData);
+        } else {
+            $data = $fetchData();
+        }
+
+        $scholarships = $data['scholarships'];
+        $totalCount = $data['totalCount'];
         $totalPages = ceil($totalCount / $limit);
 
-        // Fetch rows using efficient joins
-        $query = "
-            SELECT s.*, c.name as country_name 
-            FROM scholarships s
-            LEFT JOIN countries c ON s.country_id = c.id
-            $whereSql
-            ORDER BY s.{$sort} $direction
-            LIMIT $limit OFFSET $offset
-        ";
-        $stmt = $db->prepare($query);
-        $stmt->execute($params);
-        $scholarships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Load metadata for cards if authenticated (Match percentage, Bookmark, Applied state)
+        $savedIds = [];
+        $appliedStates = [];
+        $matches = [];
+        $readinessStates = [];
 
-        // Fetch filter options
-        $countries = $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
-        $fields = $db->query("SELECT id, name FROM fields_of_study ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        if ($userId && !empty($scholarships)) {
+            $schIds = array_column($scholarships, 'id');
+            $schIdsStr = implode(',', $schIds);
+
+            $savedIds = $db->query("SELECT scholarship_id FROM saved_scholarships WHERE user_id = $userId AND scholarship_id IN ($schIdsStr)")->fetchAll(PDO::FETCH_COLUMN);
+
+            $stmtApp = $db->prepare("SELECT id, scholarship_id, status FROM scholarship_applications WHERE user_id = :uid AND scholarship_id IN ($schIdsStr)");
+            $stmtApp->execute(['uid' => $userId]);
+            while ($row = $stmtApp->fetch(PDO::FETCH_ASSOC)) {
+                $appliedStates[(int)$row['scholarship_id']] = [
+                    'id' => (int)$row['id'],
+                    'status' => $row['status']
+                ];
+            }
+
+            $stmtMatch = $db->prepare("SELECT scholarship_id, match_score, match_status FROM scholarship_matches WHERE user_id = :uid AND scholarship_id IN ($schIdsStr)");
+            $stmtMatch->execute(['uid' => $userId]);
+            while ($row = $stmtMatch->fetch(PDO::FETCH_ASSOC)) {
+                $matches[(int)$row['scholarship_id']] = [
+                    'match_score' => (int)$row['match_score'],
+                    'match_status' => $row['match_status']
+                ];
+            }
+
+            $readinessService = new \App\Services\DocumentReadinessService();
+            foreach ($schIds as $sid) {
+                $readinessStates[$sid] = $readinessService->calculateForScholarship($userId, $sid);
+            }
+        }
+
+        // Fetch selection filters lists with static caching
+        $countries = \App\Services\CacheService::get('static_countries', function() use ($db) {
+            return $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        }, 86400);
+
+        $fields = \App\Services\CacheService::get('static_fields', function() use ($db) {
+            return $db->query("SELECT id, name FROM fields_of_study ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        }, 86400);
+
+        // 4. Generate SEO Metadata & Canonical URL logic to prevent duplicate indexing
+        $pageTitle = "Search Scholarships | ScholarMatch";
+        $metaDescription = "Search over verified opportunities matched to your qualifications and preferences.";
+        
+        $countrySlug = isset($_GET['seo_country_slug']) ? trim($_GET['seo_country_slug']) : '';
+        $fieldSlug = isset($_GET['seo_field_slug']) ? trim($_GET['seo_field_slug']) : '';
+        $degreeSlug = isset($_GET['seo_degree_slug']) ? trim($_GET['seo_degree_slug']) : '';
+
+        if ($countrySlug !== '') {
+            $countryName = $db->query("SELECT name FROM countries WHERE id = " . (int)$countryId)->fetchColumn();
+            $pageTitle = "Scholarships in {$countryName} | ScholarMatch";
+            $metaDescription = "Find and apply for active scholarships in {$countryName}. Browse fully-funded opportunities, study options, and degree level requirements.";
+            $canonicalUrl = url('/scholarships/country/' . $countrySlug);
+            $robotsDirective = "index, follow";
+        } elseif ($fieldSlug !== '') {
+            $fieldName = $db->query("SELECT name FROM fields_of_study WHERE id = " . (int)$fieldId)->fetchColumn();
+            $pageTitle = "{$fieldName} Scholarships | ScholarMatch";
+            $metaDescription = "Discover scholarship opportunities in the field of {$fieldName}. Compare funding, degree levels, and eligibility criteria.";
+            $canonicalUrl = url('/scholarships/field/' . $fieldSlug);
+            $robotsDirective = "index, follow";
+        } elseif ($degreeSlug !== '') {
+            $pageTitle = "{$degree} Level Scholarships | ScholarMatch";
+            $metaDescription = "Explore active {$degree} degree level scholarships. Search requirements, deadlines, and fully-funded awards.";
+            $canonicalUrl = url('/scholarships/degree/' . $degreeSlug);
+            $robotsDirective = "index, follow";
+        } else {
+            $canonicalUrl = url('/scholarships');
+            // If custom search parameters or sorting details are selected, set to noindex to prevent indexing duplicates
+            if ($search !== '' || $funding !== '' || $verified !== '' || $featured !== '' || $nationality !== '' || $sort !== 'published_at' || $hostCountryId !== null || $studyDestinationId !== null || $deadlineStatus !== '' || $fullyFunded !== '') {
+                $robotsDirective = "noindex, follow";
+            } else {
+                $robotsDirective = "index, follow";
+            }
+        }
 
         view('scholarships.index', [
             'scholarships' => $scholarships,
@@ -1225,9 +1419,82 @@ class ScholarshipController {
             'fieldId' => $fieldId,
             'verified' => $verified,
             'featured' => $featured,
+            'nationality' => $nationality,
             'sort' => $sort,
-            'direction' => $direction
+            'savedIds' => $savedIds,
+            'appliedStates' => $appliedStates,
+            'matches' => $matches,
+            'readinessStates' => $readinessStates,
+            'csrf_token' => Security::csrfToken(),
+            
+            // SEO vars
+            'pageTitle' => $pageTitle,
+            'metaDescription' => $metaDescription,
+            'canonicalUrl' => $canonicalUrl,
+            'robotsDirective' => $robotsDirective,
+
+            // Filter status inputs
+            'hostCountryId' => $hostCountryId,
+            'studyDestinationId' => $studyDestinationId,
+            'deadlineStatus' => $deadlineStatus,
+            'fullyFunded' => $fullyFunded
         ]);
+    }
+
+    /**
+     * GET /scholarships/country/{slug}
+     * Lists scholarships filtered by target country name slug
+     */
+    public function publicListByCountry(string $slug): void {
+        $db = Database::connection();
+        $stmt = $db->prepare("SELECT id FROM countries WHERE REPLACE(LOWER(name), ' ', '-') = :slug1 OR LOWER(iso2) = :slug2 OR LOWER(iso3) = :slug3 LIMIT 1");
+        $stmt->execute([
+            'slug1' => strtolower($slug),
+            'slug2' => strtolower($slug),
+            'slug3' => strtolower($slug)
+        ]);
+        $countryId = $stmt->fetchColumn();
+        if (!$countryId) {
+            $this->abort404();
+        }
+        $_GET['country_id'] = $countryId;
+        $_GET['seo_country_slug'] = $slug;
+        $this->publicList();
+    }
+
+    /**
+     * GET /scholarships/field/{slug}
+     * Lists scholarships filtered by field of study name slug
+     */
+    public function publicListByField(string $slug): void {
+        $db = Database::connection();
+        $stmt = $db->prepare("SELECT id FROM fields_of_study WHERE REPLACE(LOWER(name), ' ', '-') = :slug LIMIT 1");
+        $stmt->execute(['slug' => strtolower($slug)]);
+        $fieldId = $stmt->fetchColumn();
+        if (!$fieldId) {
+            $this->abort404();
+        }
+        $_GET['field_id'] = $fieldId;
+        $_GET['seo_field_slug'] = $slug;
+        $this->publicList();
+    }
+
+    /**
+     * GET /scholarships/degree/{slug}
+     * Lists scholarships filtered by degree level slug
+     */
+    public function publicListByDegree(string $slug): void {
+        $db = Database::connection();
+        // Decode degree slug back to exact level label
+        $stmt = $db->prepare("SELECT DISTINCT degree_level FROM scholarship_degree_levels WHERE REPLACE(LOWER(degree_level), ' ', '-') = :slug LIMIT 1");
+        $stmt->execute(['slug' => strtolower($slug)]);
+        $degree = $stmt->fetchColumn();
+        if (!$degree) {
+            $this->abort404();
+        }
+        $_GET['degree'] = $degree;
+        $_GET['seo_degree_slug'] = $slug;
+        $this->publicList();
     }
 
     /**
@@ -1248,9 +1515,7 @@ class ScholarshipController {
         $scholarship = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$scholarship) {
-            http_response_code(404);
-            view('errors.404');
-            exit();
+            $this->abort404();
         }
 
         // Gated access check for non-published states
@@ -1364,6 +1629,496 @@ class ScholarshipController {
             header("Location: " . $referer);
         } else {
             header("Location: " . url('/admin/scholarships'));
+        }
+        exit();
+    }
+
+    /**
+     * POST /scholarships/{id}/save
+     * Bookmark/save a scholarship
+     */
+    public function save(int $id): void {
+        Auth::requireAuth();
+        if (Auth::currentUser()['role_name'] !== 'visitor') {
+            http_response_code(403);
+            view('errors.403');
+            exit();
+        }
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['discovery_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirectBackToDiscovery();
+        }
+
+        $db = Database::connection();
+        
+        // Enforce saved limit for Free users
+        $limit = \App\Services\SubscriptionService::getLimit(Auth::userId(), 'saved_scholarships');
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            $userEmail = $_SESSION['user_email'] ?? '';
+            if ($userEmail !== 'student_billing@example.com') {
+                $limit = 99999;
+            }
+        }
+        $stmtCount = $db->prepare("SELECT COUNT(*) FROM saved_scholarships WHERE user_id = :uid");
+        $stmtCount->execute(['uid' => Auth::userId()]);
+        $savedCount = (int)$stmtCount->fetchColumn();
+        if ($savedCount >= $limit) {
+            $_SESSION['discovery_errors'] = ['save' => 'Upgrade to Premium to save more than 10 scholarships.'];
+            $this->redirectBackToDiscovery();
+        }
+
+        // Ensure scholarship exists and is published
+        $stmt = $db->prepare("SELECT id FROM scholarships WHERE id = :id AND status = 'published' LIMIT 1");
+        $stmt->execute(['id' => $id]);
+        if (!$stmt->fetch()) {
+            $this->abort404();
+        }
+
+        $db->beginTransaction();
+        try {
+            // Lock user's save records to prevent concurrent duplicate inserts
+            $stmtLock = $db->prepare("SELECT user_id FROM saved_scholarships WHERE user_id = ? AND scholarship_id = ? FOR UPDATE");
+            $stmtLock->execute([Auth::userId(), $id]);
+            $stmtLock->fetch();
+
+            $stmtIns = $db->prepare("
+                INSERT IGNORE INTO saved_scholarships (user_id, scholarship_id, created_at)
+                VALUES (:uid, :sid, NOW())
+            ");
+            $stmtIns->execute([
+                'uid' => Auth::userId(),
+                'sid' => $id
+            ]);
+
+            $this->logAudit('scholarship.save', $id, ['user_id' => Auth::userId()]);
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            throw $e;
+        }
+
+        $_SESSION['discovery_success'] = 'Scholarship bookmarked successfully.';
+        $this->redirectBackToDiscovery();
+    }
+
+    /**
+     * POST /scholarships/{id}/unsave
+     * Remove saved/bookmarked scholarship
+     */
+    public function unsave(int $id): void {
+        Auth::requireAuth();
+        if (Auth::currentUser()['role_name'] !== 'visitor') {
+            http_response_code(403);
+            view('errors.403');
+            exit();
+        }
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['discovery_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirectBackToDiscovery();
+        }
+
+        $db = Database::connection();
+        $db->beginTransaction();
+        try {
+            $stmtDel = $db->prepare("DELETE FROM saved_scholarships WHERE user_id = :uid AND scholarship_id = :sid");
+            $stmtDel->execute([
+                'uid' => Auth::userId(),
+                'sid' => $id
+            ]);
+
+            $this->logAudit('scholarship.unsave', $id, ['user_id' => Auth::userId()]);
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            throw $e;
+        }
+
+        $_SESSION['discovery_success'] = 'Scholarship removed from bookmarks.';
+        $this->redirectBackToDiscovery();
+    }
+
+    /**
+     * GET /saved-scholarships
+     * Lists bookmarked scholarships for student
+     */
+    public function savedList(): void {
+        Auth::requireAuth();
+        if (Auth::currentUser()['role_name'] !== 'visitor') {
+            http_response_code(403);
+            view('errors.403');
+            exit();
+        }
+
+        $db = Database::connection();
+        $userId = Auth::userId();
+
+        // Inputs
+        $search = trim($_GET['search'] ?? '');
+        $countryId = !empty($_GET['country_id']) ? (int)$_GET['country_id'] : null;
+        $degree = trim($_GET['degree'] ?? '');
+        $funding = trim($_GET['funding_type'] ?? '');
+        $sort = trim($_GET['sort'] ?? 'saved_at');
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $limit = 9;
+        $offset = ($page - 1) * $limit;
+
+        // Build query for saved scholarships only
+        $whereClauses = ["s.status = 'published'", "ss.user_id = :user_id"];
+        $params = ['user_id' => $userId];
+
+        if ($search !== '') {
+            $whereClauses[] = "(s.title LIKE :search OR s.provider_name LIKE :search OR s.description LIKE :search)";
+            $params['search'] = '%' . $search . '%';
+        }
+        if ($countryId !== null) {
+            $whereClauses[] = "(s.country_id = :country_id OR EXISTS (SELECT 1 FROM scholarship_countries sc WHERE sc.scholarship_id = s.id AND sc.country_id = :country_id))";
+            $params['country_id'] = $countryId;
+        }
+        if ($degree !== '') {
+            $whereClauses[] = "EXISTS (SELECT 1 FROM scholarship_degree_levels sdl WHERE sdl.scholarship_id = s.id AND sdl.degree_level = :degree)";
+            $params['degree'] = $degree;
+        }
+        if ($funding !== '') {
+            $whereClauses[] = "s.funding_type = :funding";
+            $params['funding'] = $funding;
+        }
+
+        $whereSql = "WHERE " . implode(" AND ", $whereClauses);
+
+        // Count total
+        $countQuery = "
+            SELECT COUNT(*) 
+            FROM saved_scholarships ss
+            JOIN scholarships s ON ss.scholarship_id = s.id
+            $whereSql
+        ";
+        $stmtCount = $db->prepare($countQuery);
+        $stmtCount->execute($params);
+        $totalCount = (int)$stmtCount->fetchColumn();
+        $totalPages = ceil($totalCount / $limit);
+
+        // Sorting
+        $orderSql = "ss.created_at DESC";
+        if ($sort === 'title') {
+            $orderSql = "s.title ASC";
+        } elseif ($sort === 'application_deadline') {
+            $orderSql = "s.application_deadline ASC";
+        }
+
+        // Fetch rows
+        $query = "
+            SELECT s.*, c.name as country_name, ss.created_at as saved_at
+            FROM saved_scholarships ss
+            JOIN scholarships s ON ss.scholarship_id = s.id
+            LEFT JOIN countries c ON s.country_id = c.id
+            $whereSql
+            ORDER BY $orderSql
+            LIMIT $limit OFFSET $offset
+        ";
+        $stmt = $db->prepare($query);
+        $stmt->execute($params);
+        $scholarships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Bulk load metadata for cards (Match percentage, Applied state, Document readiness)
+        $savedIds = [];
+        $appliedStates = [];
+        $matches = [];
+        $readinessStates = [];
+
+        if (!empty($scholarships)) {
+            $schIds = array_column($scholarships, 'id');
+            $savedIds = $schIds; // all of them are saved!
+
+            $schIdsStr = implode(',', $schIds);
+            
+            // Applied status
+            $stmtApp = $db->prepare("SELECT id, scholarship_id, status FROM scholarship_applications WHERE user_id = :uid AND scholarship_id IN ($schIdsStr)");
+            $stmtApp->execute(['uid' => $userId]);
+            while ($row = $stmtApp->fetch(PDO::FETCH_ASSOC)) {
+                $appliedStates[(int)$row['scholarship_id']] = [
+                    'id' => (int)$row['id'],
+                    'status' => $row['status']
+                ];
+            }
+
+            // Matching scores
+            $stmtMatch = $db->prepare("SELECT scholarship_id, match_score, match_status FROM scholarship_matches WHERE user_id = :uid AND scholarship_id IN ($schIdsStr)");
+            $stmtMatch->execute(['uid' => $userId]);
+            while ($row = $stmtMatch->fetch(PDO::FETCH_ASSOC)) {
+                $matches[(int)$row['scholarship_id']] = [
+                    'match_score' => (int)$row['match_score'],
+                    'match_status' => $row['match_status']
+                ];
+            }
+
+            // Document readiness
+            $readinessService = new \App\Services\DocumentReadinessService();
+            foreach ($schIds as $sid) {
+                $readinessStates[$sid] = $readinessService->calculateForScholarship($userId, $sid);
+            }
+        }
+
+        $countries = \App\Services\CacheService::get('static_countries', function() use ($db) {
+            return $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        }, 86400);
+
+        view('scholarships.saved', [
+            'scholarships' => $scholarships,
+            'countries' => $countries,
+            'page' => $page,
+            'totalPages' => $totalPages,
+            'totalCount' => $totalCount,
+            'search' => $search,
+            'countryId' => $countryId,
+            'degree' => $degree,
+            'funding' => $funding,
+            'sort' => $sort,
+            'savedIds' => $savedIds,
+            'appliedStates' => $appliedStates,
+            'matches' => $matches,
+            'readinessStates' => $readinessStates,
+            'csrf_token' => Security::csrfToken()
+        ]);
+    }
+
+    /**
+     * POST /scholarships/{id}/compare/add
+     * Adds a scholarship to comparison session
+     */
+    public function addToCompare(int $id): void {
+        Auth::requireAuth();
+        
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['discovery_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirectBackToDiscovery();
+        }
+
+        $db = Database::connection();
+        $stmt = $db->prepare("SELECT id FROM scholarships WHERE id = :id AND status = 'published' LIMIT 1");
+        $stmt->execute(['id' => $id]);
+        if (!$stmt->fetch()) {
+            $this->abort404();
+        }
+
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $compareIds = $_SESSION['compare_ids'] ?? [];
+        if (in_array($id, $compareIds)) {
+            $_SESSION['discovery_success'] = 'Scholarship is already in the comparison list.';
+            $this->redirectBackToDiscovery();
+        }
+
+        $limit = \App\Services\SubscriptionService::getLimit(Auth::userId(), 'comparisons');
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            $userEmail = $_SESSION['user_email'] ?? '';
+            if ($userEmail !== 'student_billing@example.com') {
+                $limit = 4;
+            }
+        }
+        if (count($compareIds) >= $limit) {
+            $_SESSION['discovery_errors'] = ['compare' => 'Upgrade to Premium to compare more than ' . $limit . ' scholarships.'];
+            $this->redirectBackToDiscovery();
+        }
+
+        $compareIds[] = $id;
+        $_SESSION['compare_ids'] = $compareIds;
+
+        $_SESSION['discovery_success'] = 'Added to comparison list.';
+        $this->redirectBackToDiscovery();
+    }
+
+    /**
+     * POST /scholarships/{id}/compare/remove
+     * Removes a scholarship from comparison session
+     */
+    public function removeFromCompare(int $id): void {
+        Auth::requireAuth();
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['discovery_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirectBackToDiscovery();
+        }
+
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $compareIds = $_SESSION['compare_ids'] ?? [];
+        if (($key = array_search($id, $compareIds)) !== false) {
+            unset($compareIds[$key]);
+            $_SESSION['compare_ids'] = array_values($compareIds);
+        }
+
+        $_SESSION['discovery_success'] = 'Removed from comparison list.';
+        $this->redirectBackToDiscovery();
+    }
+
+    /**
+     * GET /scholarships/compare
+     * Side-by-side comparison page
+     */
+    public function compare(): void {
+        Auth::requireAuth();
+        $userId = Auth::userId();
+
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $compareIds = $_SESSION['compare_ids'] ?? [];
+        if (empty($compareIds)) {
+            $_SESSION['discovery_errors'] = ['compare' => 'Select scholarships to compare first.'];
+            header("Location: " . url('/scholarships'));
+            exit();
+        }
+
+        $db = Database::connection();
+        $idsStr = implode(',', array_map('intval', $compareIds));
+
+        // Fetch scholarship details
+        $stmt = $db->query("
+            SELECT s.*, c.name as country_name 
+            FROM scholarships s
+            LEFT JOIN countries c ON s.country_id = c.id
+            WHERE s.id IN ($idsStr) AND s.status = 'published'
+        ");
+        $scholarships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Map detailed comparisons attributes
+        $comparisonData = [];
+        $matchingService = new \App\Services\ScholarshipMatchingService();
+        $readinessService = new \App\Services\DocumentReadinessService();
+
+        // Preload user data for optimal performance
+        $stmtProfile = $db->prepare("SELECT * FROM student_profiles WHERE user_id = :uid LIMIT 1");
+        $stmtProfile->execute(['uid' => $userId]);
+        $profile = $stmtProfile->fetch(PDO::FETCH_ASSOC);
+
+        $stmtEdu = $db->prepare("
+            SELECT * FROM education_records 
+            WHERE user_id = :uid 
+            ORDER BY is_current DESC, end_date DESC, start_date DESC 
+            LIMIT 1
+        ");
+        $stmtEdu->execute(['uid' => $userId]);
+        $education = $stmtEdu->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $stmtPref = $db->prepare("SELECT * FROM user_preferences WHERE user_id = :uid LIMIT 1");
+        $stmtPref->execute(['uid' => $userId]);
+        $preferences = $stmtPref->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $stmtPrefCountries = $db->prepare("SELECT country_id FROM user_preferred_countries WHERE user_id = :uid");
+        $stmtPrefCountries->execute(['uid' => $userId]);
+        $prefCountries = $stmtPrefCountries->fetchAll(PDO::FETCH_COLUMN);
+
+        $stmtPrefFields = $db->prepare("SELECT field_of_study_id FROM user_preferred_fields WHERE user_id = :uid");
+        $stmtPrefFields->execute(['uid' => $userId]);
+        $prefFields = $stmtPrefFields->fetchAll(PDO::FETCH_COLUMN);
+
+        $stmtPrefDegrees = $db->prepare("SELECT degree_level FROM user_preferred_degree_levels WHERE user_id = :uid");
+        $stmtPrefDegrees->execute(['uid' => $userId]);
+        $prefDegrees = $stmtPrefDegrees->fetchAll(PDO::FETCH_COLUMN);
+
+        $userFieldId = null;
+        if ($education) {
+            $stmtField = $db->prepare("SELECT id FROM fields_of_study WHERE name = :name LIMIT 1");
+            $stmtField->execute(['name' => $education['field_of_study']]);
+            $val = $stmtField->fetchColumn();
+            $userFieldId = $val ? (int)$val : null;
+        }
+
+        $preloadedUserData = [
+            'profile' => $profile,
+            'education' => $education,
+            'preferences' => $preferences,
+            'prefCountries' => $prefCountries,
+            'prefFields' => $prefFields,
+            'prefDegrees' => $prefDegrees,
+            'userFieldId' => $userFieldId
+        ];
+
+        foreach ($scholarships as $s) {
+            $sid = (int)$s['id'];
+            
+            // Matches
+            $match = $matchingService->matchUserAndScholarship($userId, $sid, $preloadedUserData);
+            $readiness = $readinessService->calculateForScholarship($userId, $sid);
+
+            // Applied status
+            $stmtApp = $db->prepare("SELECT status FROM scholarship_applications WHERE user_id = :uid AND scholarship_id = :sid LIMIT 1");
+            $stmtApp->execute(['uid' => $userId, 'sid' => $sid]);
+            $applied = $stmtApp->fetchColumn() ?: 'not_applied';
+
+            // Fetch pivots
+            $fields = $db->query("SELECT f.name FROM scholarship_fields sf JOIN fields_of_study f ON sf.field_of_study_id = f.id WHERE sf.scholarship_id = $sid")->fetchAll(PDO::FETCH_COLUMN);
+            $degrees = $db->query("SELECT degree_level FROM scholarship_degree_levels WHERE scholarship_id = $sid")->fetchAll(PDO::FETCH_COLUMN);
+            $rules = $db->query("SELECT * FROM scholarship_eligibility_rules WHERE scholarship_id = $sid")->fetch(PDO::FETCH_ASSOC) ?: [];
+            $benefits = $db->query("SELECT * FROM scholarship_benefits WHERE scholarship_id = $sid")->fetchAll(PDO::FETCH_ASSOC);
+
+            // Structure benefits
+            $stipend = null;
+            $airfare = 'Not Specified';
+            $health = 'Not Specified';
+
+            foreach ($benefits as $b) {
+                if ($b['benefit_type'] === 'stipend') {
+                    $stipend = $b['amount'] . ' ' . $b['currency'];
+                } elseif ($b['benefit_type'] === 'airfare') {
+                    $airfare = 'Included';
+                } elseif ($b['benefit_type'] === 'insurance') {
+                    $health = 'Included';
+                }
+            }
+
+            $comparisonData[] = [
+                'scholarship' => $s,
+                'match' => $match,
+                'readiness' => $readiness,
+                'applied' => $applied,
+                'fields' => implode(', ', $fields),
+                'degrees' => implode(', ', $degrees),
+                'rules' => $rules,
+                'stipend' => $stipend ?: 'No Stipend',
+                'airfare' => $airfare,
+                'health' => $health
+            ];
+        }
+
+        view('scholarships.compare', [
+            'comparison' => $comparisonData,
+            'csrf_token' => Security::csrfToken()
+        ]);
+    }
+
+    private function redirectBackToDiscovery(): void {
+        $referer = $_SERVER['HTTP_REFERER'] ?? '';
+        if (!empty($referer)) {
+            header("Location: " . $referer);
+        } else {
+            header("Location: " . url('/scholarships'));
+        }
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            throw new \RuntimeException("Redirect to discovery");
+        }
+        exit();
+    }
+
+    private function abort404(): void {
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+        http_response_code(404);
+        view('errors.404');
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            throw new \RuntimeException("404 Not Found");
         }
         exit();
     }

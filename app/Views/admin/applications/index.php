@@ -302,11 +302,31 @@
                         </select>
                     </div>
 
+                    <div class="input-group">
+                        <label class="input-label" for="scholarship_id">Scholarship Opportunity</label>
+                        <select id="scholarship_id" name="scholarship_id" class="input-field">
+                            <option value="">All Scholarships</option>
+                            <?php foreach ($scholarships as $s): ?>
+                                <option value="<?= e($s['id']) ?>" <?= (int)$scholarship_id === (int)$s['id'] ? 'selected' : '' ?>><?= e($s['title']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label" for="sort">Sort By</label>
+                        <select id="sort" name="sort" class="input-field">
+                            <option value="newest" <?= $sort === 'newest' ? 'selected' : '' ?>>Date Added (Newest)</option>
+                            <option value="oldest" <?= $sort === 'oldest' ? 'selected' : '' ?>>Date Added (Oldest)</option>
+                            <option value="deadline" <?= $sort === 'deadline' ? 'selected' : '' ?>>Scholarship Deadline</option>
+                            <option value="status" <?= $sort === 'status' ? 'selected' : '' ?>>Tracking Status</option>
+                        </select>
+                    </div>
+
                     <button type="submit" class="btn-filter">
                         <i data-lucide="filter" style="width: 16px; height: 16px;"></i>
                         <span>Apply Filters</span>
                     </button>
-                    <?php if ($search !== '' || $status !== ''): ?>
+                    <?php if ($search !== '' || $status !== '' || $scholarship_id > 0 || $sort !== 'newest'): ?>
                         <a href="/admin/applications" class="btn-clear">
                             <i data-lucide="x" style="width: 16px; height: 16px;"></i>
                             <span>Clear</span>
@@ -368,7 +388,7 @@
             <?php if ($totalPages > 1): ?>
                 <nav class="pagination" role="navigation" aria-label="Pagination Navigation">
                     <?php for ($p = 1; $p <= $totalPages; $p++): ?>
-                        <a href="/admin/applications?search=<?= urlencode($search) ?>&status=<?= urlencode($status) ?>&page=<?= $p ?>" class="page-link <?= $page === $p ? 'active' : '' ?>">
+                        <a href="/admin/applications?search=<?= urlencode($search) ?>&status=<?= urlencode($status) ?>&scholarship_id=<?= $scholarship_id ?>&sort=<?= urlencode($sort) ?>&page=<?= $p ?>" class="page-link <?= $page === $p ? 'active' : '' ?>">
                             <?= $p ?>
                         </a>
                     <?php endfor; ?>

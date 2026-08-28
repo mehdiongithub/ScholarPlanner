@@ -3,11 +3,8 @@
 namespace App\Helpers;
 
 class Security {
-    /**
-     * Escape output for HTML
-     */
-    public static function escape(string $value): string {
-        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+    public static function escape(?string $value): string {
+        return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
     }
 
     /**

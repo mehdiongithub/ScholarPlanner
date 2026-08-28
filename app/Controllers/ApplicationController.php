@@ -188,15 +188,37 @@ class ApplicationController {
         $errors = [];
 
         // Verify scholarship
-        $stmtSch = $this->db->prepare("SELECT * FROM scholarships WHERE id = :id AND status = 'published' LIMIT 1");
+        $stmtSch = $this->db->prepare("SELECT * FROM scholarships WHERE id = :id LIMIT 1");
         $stmtSch->execute(['id' => $scholarshipId]);
         $sch = $stmtSch->fetch(PDO::FETCH_ASSOC);
-        if (!$sch) {
+        if (!$sch || $sch['status'] !== 'published') {
             $errors['scholarship_id'] = 'Invalid or unpublished scholarship.';
+        } else {
+            // Check deadline
+            if ($sch['application_deadline'] && strtotime($sch['application_deadline']) < strtotime(date('Y-m-d'))) {
+                $errors['scholarship_id'] = 'This scholarship deadline has already passed.';
+            }
         }
 
         if (!in_array($status, $this->allowedStatuses)) {
             $errors['status'] = 'Invalid application status selected.';
+        }
+
+        // Check if student tries to set status to admin/review statuses
+        $adminStatuses = ['interview', 'accepted', 'rejected'];
+        if (!Auth::hasRole(['admin', 'employee'])) {
+            if (in_array($status, $adminStatuses)) {
+                $errors['status'] = 'Unauthorized status selection.';
+            }
+        }
+
+        // Document readiness check for applied
+        if ($status === 'applied') {
+            $readinessService = new DocumentReadinessService();
+            $readiness = $readinessService->calculateForScholarship($userId, $scholarshipId);
+            if ($readiness['readiness_percentage'] < 100) {
+                $errors['status'] = 'All required documents must be uploaded and approved before applying.';
+            }
         }
 
         if (strlen($refNum) > 100) {
@@ -220,36 +242,49 @@ class ApplicationController {
             $this->halt();
         }
 
-        $appliedAt = ($status === 'applied') ? date('Y-m-d H:i:s') : null;
+        $this->db->beginTransaction();
+        try {
+            $appliedAt = ($status === 'applied') ? date('Y-m-d H:i:s') : null;
 
-        // Insert
-        $stmtIns = $this->db->prepare("
-            INSERT INTO scholarship_applications (user_id, scholarship_id, status, application_reference, personal_notes, applied_at)
-            VALUES (:uid, :sid, :status, :ref, :notes, :applied)
-        ");
-        $stmtIns->execute([
-            'uid' => $userId,
-            'sid' => $scholarshipId,
-            'status' => $status,
-            'ref' => $refNum !== '' ? $refNum : null,
-            'notes' => $personalNotes !== '' ? $personalNotes : null,
-            'applied' => $appliedAt
-        ]);
+            // Insert
+            $stmtIns = $this->db->prepare("
+                INSERT INTO scholarship_applications (user_id, scholarship_id, status, application_reference, personal_notes, applied_at)
+                VALUES (:uid, :sid, :status, :ref, :notes, :applied)
+            ");
+            $stmtIns->execute([
+                'uid' => $userId,
+                'sid' => $scholarshipId,
+                'status' => $status,
+                'ref' => $refNum !== '' ? $refNum : null,
+                'notes' => $personalNotes !== '' ? $personalNotes : null,
+                'applied' => $appliedAt
+            ]);
 
-        $appId = (int)$this->db->lastInsertId();
+            $appId = (int)$this->db->lastInsertId();
 
-        // Log to history
-        $stmtHist = $this->db->prepare("
-            INSERT INTO scholarship_application_history (application_id, old_status, new_status, changed_by, notes)
-            VALUES (:aid, 'none', :new_status, :changed_by, 'Application tracking initialized.')
-        ");
-        $stmtHist->execute([
-            'aid' => $appId,
-            'new_status' => $status,
-            'changed_by' => $userId
-        ]);
+            // Log to history
+            $stmtHist = $this->db->prepare("
+                INSERT INTO scholarship_application_history (application_id, old_status, new_status, changed_by, notes)
+                VALUES (:aid, 'none', :new_status, :changed_by, 'Application tracking initialized.')
+            ");
+            $stmtHist->execute([
+                'aid' => $appId,
+                'new_status' => $status,
+                'changed_by' => $userId
+            ]);
 
-        $this->logAudit('application.create', $userId, $appId, ['scholarship_title' => $sch['title']]);
+            $this->logAudit('application.create', $userId, $appId, ['scholarship_title' => $sch['title']]);
+
+            $this->db->commit();
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            if ($e->getCode() === '23000' || strpos($e->getMessage(), '1062 Duplicate entry') !== false) {
+                $_SESSION['application_errors'] = ['scholarship_id' => 'This scholarship is already in your application tracker.'];
+                header("Location: " . url('/scholarships/' . ($sch['slug'] ?? '')));
+                $this->halt();
+            }
+            throw $e;
+        }
 
         $_SESSION['application_success'] = 'Scholarship added to tracker successfully.';
         header("Location: " . url('/applications'));
@@ -285,6 +320,18 @@ class ApplicationController {
             $this->dieWithError(403, "Unauthorized access to application tracker.");
         }
 
+        // Fetch application-related notifications history
+        $stmtNotif = $this->db->prepare("
+            SELECT * FROM notification_logs 
+            WHERE user_id = :uid AND scholarship_id = :sid 
+            ORDER BY created_at DESC
+        ");
+        $stmtNotif->execute([
+            'uid' => $app['user_id'],
+            'sid' => $app['scholarship_id']
+        ]);
+        $notifications = $stmtNotif->fetchAll(PDO::FETCH_ASSOC);
+
         // Document readiness
         $readinessService = new DocumentReadinessService();
         $readiness = $readinessService->calculateForScholarship($userId, (int)$app['scholarship_id']);
@@ -310,10 +357,14 @@ class ApplicationController {
             $deadlineStatus = ($daysRemaining < 0) ? 'passed' : (($daysRemaining <= 7) ? 'closing_soon' : 'active');
         }
 
+        // Defense-in-depth: Unset internal staff notes to prevent any leakage to student view
+        unset($app['internal_notes']);
+
         View::render('applications.show', [
             'app' => $app,
             'readiness' => $readiness,
             'history' => $history,
+            'notifications' => $notifications,
             'days_remaining' => $daysRemaining,
             'deadline_status' => $deadlineStatus,
             'csrf_token' => Security::csrfToken()
@@ -360,6 +411,49 @@ class ApplicationController {
             $errors['status'] = 'Invalid application status selected.';
         }
 
+        $oldStatus = $app['status'];
+
+        // Get scholarship details
+        $stmtSch = $this->db->prepare("SELECT status, application_deadline FROM scholarships WHERE id = :id LIMIT 1");
+        $stmtSch->execute(['id' => $app['scholarship_id']]);
+        $sch = $stmtSch->fetch(PDO::FETCH_ASSOC);
+
+        // Check if student (visitor) is modifying
+        $adminStatuses = ['interview', 'accepted', 'rejected'];
+        if (!Auth::hasRole(['admin', 'employee'])) {
+            // Cannot change to administrative status
+            if (in_array($status, $adminStatuses)) {
+                $errors['status'] = 'Unauthorized status selection.';
+            }
+            // Cannot change from administrative status
+            if (in_array($oldStatus, $adminStatuses)) {
+                $errors['status'] = 'Cannot modify status after administrative review.';
+            }
+            
+            // Block transitions on inactive/archived or passed deadline scholarships (unless withdrawing)
+            if ($sch) {
+                if ($sch['status'] !== 'published') {
+                    $errors['status'] = 'This scholarship opportunity has been closed or archived.';
+                } elseif ($sch['application_deadline'] && strtotime($sch['application_deadline']) < strtotime(date('Y-m-d')) && $status !== 'withdrawn' && $status !== $oldStatus) {
+                    $errors['status'] = 'The application deadline for this scholarship has already passed.';
+                }
+            }
+
+            // Document readiness check for transition to applied
+            if ($status === 'applied' && $oldStatus !== 'applied') {
+                $readinessService = new DocumentReadinessService();
+                $readiness = $readinessService->calculateForScholarship($userId, (int)$app['scholarship_id']);
+                if ($readiness['readiness_percentage'] < 100) {
+                    $errors['status'] = 'All required documents must be uploaded and approved before applying.';
+                }
+            }
+
+            // If already applied, cannot change back to planning/interested
+            if ($oldStatus === 'applied' && $status !== 'applied' && $status !== 'withdrawn') {
+                $errors['status'] = 'Cannot revert status back after submission.';
+            }
+        }
+
         if (strlen($refNum) > 100) {
             $errors['application_reference'] = 'Reference number cannot exceed 100 characters.';
         }
@@ -390,43 +484,50 @@ class ApplicationController {
             $this->halt();
         }
 
-        $oldStatus = $app['status'];
-
-        // Update table
-        $stmtUp = $this->db->prepare("
-            UPDATE scholarship_applications 
-            SET status = :status,
-                application_reference = :ref,
-                personal_notes = :notes,
-                applied_at = :applied
-            WHERE id = :id
-        ");
-        $stmtUp->execute([
-            'status' => $status,
-            'ref' => $refNum !== '' ? $refNum : null,
-            'notes' => $personalNotes !== '' ? $personalNotes : null,
-            'applied' => $appliedAt,
-            'id' => $id
-        ]);
-
-        // Log status history if changed
-        if ($oldStatus !== $status) {
-            $stmtHist = $this->db->prepare("
-                INSERT INTO scholarship_application_history (application_id, old_status, new_status, changed_by, notes)
-                VALUES (:aid, :old_status, :new_status, :changed_by, 'Status changed by applicant.')
+        $this->db->beginTransaction();
+        try {
+            // Update table
+            $stmtUp = $this->db->prepare("
+                UPDATE scholarship_applications 
+                SET status = :status,
+                    application_reference = :ref,
+                    personal_notes = :notes,
+                    applied_at = :applied
+                WHERE id = :id
             ");
-            $stmtHist->execute([
-                'aid' => $id,
-                'old_status' => $oldStatus,
-                'new_status' => $status,
-                'changed_by' => $userId
+            $stmtUp->execute([
+                'status' => $status,
+                'ref' => $refNum !== '' ? $refNum : null,
+                'notes' => $personalNotes !== '' ? $personalNotes : null,
+                'applied' => $appliedAt,
+                'id' => $id
             ]);
-        }
 
-        $this->logAudit('application.update', $userId, $id, [
-            'old_status' => $oldStatus,
-            'new_status' => $status
-        ]);
+            // Log status history if changed
+            if ($oldStatus !== $status) {
+                $stmtHist = $this->db->prepare("
+                    INSERT INTO scholarship_application_history (application_id, old_status, new_status, changed_by, notes)
+                    VALUES (:aid, :old_status, :new_status, :changed_by, 'Status changed by applicant.')
+                ");
+                $stmtHist->execute([
+                    'aid' => $id,
+                    'old_status' => $oldStatus,
+                    'new_status' => $status,
+                    'changed_by' => $userId
+                ]);
+            }
+
+            $this->logAudit('application.update', $userId, $id, [
+                'old_status' => $oldStatus,
+                'new_status' => $status
+            ]);
+
+            $this->db->commit();
+            \App\Services\CacheService::clear();
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
 
         $_SESSION['application_success'] = 'Application tracker updated successfully.';
         header("Location: " . url('/applications/' . $id));
@@ -448,22 +549,30 @@ class ApplicationController {
             $this->halt();
         }
 
-        $stmt = $this->db->prepare("SELECT * FROM scholarship_applications WHERE id = :id LIMIT 1");
-        $stmt->execute(['id' => $id]);
-        $app = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare("SELECT * FROM scholarship_applications WHERE id = :id LIMIT 1 FOR UPDATE");
+            $stmt->execute(['id' => $id]);
+            $app = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$app) {
-            $this->dieWithError(404, "Application tracker record not found.");
+            if (!$app) {
+                $this->dieWithError(404, "Application tracker record not found.");
+            }
+
+            if ((int)$app['user_id'] !== $userId) {
+                $this->dieWithError(403, "Unauthorized access to application tracker.");
+            }
+
+            $stmtDel = $this->db->prepare("DELETE FROM scholarship_applications WHERE id = :id");
+            $stmtDel->execute(['id' => $id]);
+
+            $this->logAudit('application.delete', $userId, $id, ['scholarship_id' => $app['scholarship_id']]);
+
+            $this->db->commit();
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            throw $e;
         }
-
-        if ((int)$app['user_id'] !== $userId) {
-            $this->dieWithError(403, "Unauthorized access to application tracker.");
-        }
-
-        $stmtDel = $this->db->prepare("DELETE FROM scholarship_applications WHERE id = :id");
-        $stmtDel->execute(['id' => $id]);
-
-        $this->logAudit('application.delete', $userId, $id, ['scholarship_id' => $app['scholarship_id']]);
 
         $_SESSION['application_success'] = 'Application removed from tracker successfully.';
         header("Location: " . url('/applications'));
@@ -480,6 +589,8 @@ class ApplicationController {
 
         $search = trim($_GET['search'] ?? '');
         $status = trim($_GET['status'] ?? '');
+        $scholarshipId = (int)($_GET['scholarship_id'] ?? 0);
+        $sort = trim($_GET['sort'] ?? 'newest'); // newest, oldest, deadline, status
         $page = max(1, (int)($_GET['page'] ?? 1));
         $limit = 10;
         $offset = ($page - 1) * $limit;
@@ -497,6 +608,11 @@ class ApplicationController {
             $params['status'] = $status;
         }
 
+        if ($scholarshipId > 0) {
+            $whereClauses[] = "sa.scholarship_id = :scholarship_id";
+            $params['scholarship_id'] = $scholarshipId;
+        }
+
         $whereSql = implode(" AND ", $whereClauses);
 
         // Count total
@@ -511,6 +627,16 @@ class ApplicationController {
         $totalItems = (int)$countStmt->fetchColumn();
         $totalPages = ceil($totalItems / $limit);
 
+        // Sorting order logic
+        $orderSql = "sa.created_at DESC";
+        if ($sort === 'oldest') {
+            $orderSql = "sa.created_at ASC";
+        } elseif ($sort === 'deadline') {
+            $orderSql = "s.application_deadline ASC";
+        } elseif ($sort === 'status') {
+            $orderSql = "sa.status ASC";
+        }
+
         // Select
         $selectStmt = $this->db->prepare("
             SELECT sa.*, u.first_name, u.last_name, u.email as user_email, s.title as scholarship_title, s.application_deadline
@@ -518,16 +644,28 @@ class ApplicationController {
             JOIN users u ON sa.user_id = u.id
             JOIN scholarships s ON sa.scholarship_id = s.id
             WHERE $whereSql
-            ORDER BY sa.created_at DESC
+            ORDER BY $orderSql
             LIMIT $limit OFFSET $offset
         ");
         $selectStmt->execute($params);
         $applications = $selectStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Fetch distinct scholarships list for active filter options
+        $schStmt = $this->db->query("
+            SELECT DISTINCT s.id, s.title 
+            FROM scholarships s
+            JOIN scholarship_applications sa ON sa.scholarship_id = s.id
+            ORDER BY s.title ASC
+        ");
+        $scholarships = $schStmt->fetchAll(PDO::FETCH_ASSOC);
+
         View::render('admin.applications.index', [
             'applications' => $applications,
+            'scholarships' => $scholarships,
             'search' => $search,
             'status' => $status,
+            'scholarship_id' => $scholarshipId,
+            'sort' => $sort,
             'page' => $page,
             'totalPages' => $totalPages,
             'totalItems' => $totalItems,
@@ -575,10 +713,23 @@ class ApplicationController {
         $stmtHistory->execute(['aid' => $id]);
         $history = $stmtHistory->fetchAll(PDO::FETCH_ASSOC);
 
+        // Fetch application-related notifications history
+        $stmtNotif = $this->db->prepare("
+            SELECT * FROM notification_logs 
+            WHERE user_id = :uid AND scholarship_id = :sid 
+            ORDER BY created_at DESC
+        ");
+        $stmtNotif->execute([
+            'uid' => $app['user_id'],
+            'sid' => $app['scholarship_id']
+        ]);
+        $notifications = $stmtNotif->fetchAll(PDO::FETCH_ASSOC);
+
         View::render('admin.applications.show', [
             'app' => $app,
             'readiness' => $readiness,
             'history' => $history,
+            'notifications' => $notifications,
             'csrf_token' => Security::csrfToken()
         ]);
     }
@@ -598,56 +749,72 @@ class ApplicationController {
             $this->halt();
         }
 
-        $stmt = $this->db->prepare("
-            SELECT sa.*, u.email as user_email, s.title as scholarship_title 
-            FROM scholarship_applications sa
-            JOIN users u ON sa.user_id = u.id
-            JOIN scholarships s ON sa.scholarship_id = s.id
-            WHERE sa.id = :id 
-            LIMIT 1
-        ");
-        $stmt->execute(['id' => $id]);
-        $app = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare("
+                SELECT sa.*, u.email as user_email, s.title as scholarship_title 
+                FROM scholarship_applications sa
+                JOIN users u ON sa.user_id = u.id
+                JOIN scholarships s ON sa.scholarship_id = s.id
+                WHERE sa.id = :id 
+                LIMIT 1
+                FOR UPDATE
+            ");
+            $stmt->execute(['id' => $id]);
+            $app = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$app) {
-            $this->dieWithError(404, "Application record not found.");
+            if (!$app) {
+                $this->dieWithError(404, "Application record not found.");
+            }
+
+            $status = strtolower(trim($_POST['status'] ?? ''));
+            $notes = trim($_POST['notes'] ?? '');
+            $internalNotes = trim($_POST['internal_notes'] ?? '');
+
+            if (!in_array($status, $this->allowedStatuses)) {
+                $_SESSION['admin_app_error'] = 'Invalid status selected.';
+                header("Location: " . url('/admin/applications/' . $id));
+                $this->halt();
+            }
+
+            $oldStatus = $app['status'];
+
+            $stmtUp = $this->db->prepare("
+                UPDATE scholarship_applications 
+                SET status = :status, internal_notes = :internal_notes
+                WHERE id = :id
+            ");
+            $stmtUp->execute([
+                'status' => $status,
+                'internal_notes' => $internalNotes !== '' ? $internalNotes : null,
+                'id' => $id
+            ]);
+
+            $stmtHist = $this->db->prepare("
+                INSERT INTO scholarship_application_history (application_id, old_status, new_status, changed_by, notes)
+                VALUES (:aid, :old, :new, :changed_by, :notes)
+            ");
+            $stmtHist->execute([
+                'aid' => $id,
+                'old' => $oldStatus,
+                'new' => $status,
+                'changed_by' => Auth::userId(),
+                'notes' => $notes !== '' ? $notes : 'Status updated by administrator review.'
+            ]);
+
+            $this->logAudit('application.admin_review', $app['user_id'], $id, [
+                'old_status' => $oldStatus,
+                'new_status' => $status,
+                'review_notes' => $notes,
+                'internal_notes' => $internalNotes
+            ]);
+
+            $this->db->commit();
+            \App\Services\CacheService::clear();
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            throw $e;
         }
-
-        $status = strtolower(trim($_POST['status'] ?? ''));
-        $notes = trim($_POST['notes'] ?? '');
-
-        if (!in_array($status, $this->allowedStatuses)) {
-            $_SESSION['admin_app_error'] = 'Invalid status selected.';
-            header("Location: " . url('/admin/applications/' . $id));
-            $this->halt();
-        }
-
-        $oldStatus = $app['status'];
-
-        $stmtUp = $this->db->prepare("
-            UPDATE scholarship_applications 
-            SET status = :status
-            WHERE id = :id
-        ");
-        $stmtUp->execute(['status' => $status, 'id' => $id]);
-
-        $stmtHist = $this->db->prepare("
-            INSERT INTO scholarship_application_history (application_id, old_status, new_status, changed_by, notes)
-            VALUES (:aid, :old, :new, :changed_by, :notes)
-        ");
-        $stmtHist->execute([
-            'aid' => $id,
-            'old' => $oldStatus,
-            'new' => $status,
-            'changed_by' => Auth::userId(),
-            'notes' => $notes !== '' ? $notes : 'Status updated by administrator review.'
-        ]);
-
-        $this->logAudit('application.admin_review', $app['user_id'], $id, [
-            'old_status' => $oldStatus,
-            'new_status' => $status,
-            'review_notes' => $notes
-        ]);
 
         $notifService = new NotificationQueueService();
         $type = 'APPLICATION_STATUS_UPDATED';
@@ -656,6 +823,9 @@ class ApplicationController {
         } elseif ($status === 'rejected') {
             $type = 'APPLICATION_REJECTED';
         }
+
+        // Use transition-specific idempotency key
+        $idempKey = "app_status_change_{$id}_{$oldStatus}_{$status}";
 
         $notifService->enqueue(
             (int)$app['user_id'],
@@ -669,7 +839,8 @@ class ApplicationController {
                 'old_status' => strtoupper($oldStatus),
                 'new_status' => strtoupper($status),
                 'notes' => $notes
-            ]
+            ],
+            $idempKey
         );
 
         $_SESSION['admin_app_success'] = 'Application status updated successfully.';

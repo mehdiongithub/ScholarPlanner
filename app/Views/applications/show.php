@@ -416,6 +416,59 @@
                 </div>
             <?php endif; ?>
 
+            <!-- Actionable Warnings / Alerts Section -->
+            <?php
+                $warnings = [];
+                $successes = [];
+
+                // 1. Deadline checks
+                if ($days_remaining !== null) {
+                    if ($days_remaining < 0) {
+                        $warnings[] = "<strong>Deadline Expired:</strong> The application deadline for this scholarship has already passed.";
+                    } elseif ($days_remaining <= 7) {
+                        $warnings[] = "<strong>Urgent:</strong> The application deadline is approaching! Only " . e($days_remaining) . " days remaining to submit.";
+                    }
+                }
+
+                // 2. Required documents checks
+                $missingOrRejected = [];
+                foreach ($readiness['details'] as $doc) {
+                    if ($doc['is_required'] && ($doc['status'] === 'missing' || $doc['status'] === 'rejected')) {
+                        $missingOrRejected[] = e($doc['name']);
+                    }
+                }
+
+                if (!empty($missingOrRejected)) {
+                    $warnings[] = "<strong>Missing Required Documents:</strong> Please upload and get approval for: " . implode(', ', $missingOrRejected) . ".";
+                }
+
+                // 3. Status checks
+                if ($app['status'] !== 'applied' && $app['status'] !== 'accepted' && $app['status'] !== 'rejected' && $app['status'] !== 'withdrawn') {
+                    if ($readiness['readiness_percentage'] >= 100) {
+                        $successes[] = "<strong>Ready to Apply:</strong> You have approved copies of all required documents! Please set your status to <strong>Applied</strong> to submit your application.";
+                    } else {
+                        $warnings[] = "<strong>Application Incomplete:</strong> Your current tracking status is '" . e(str_replace('_', ' ', $app['status'])) . "'. Ensure all documents are approved and submit before the deadline.";
+                    }
+                }
+            ?>
+
+            <?php if (!empty($warnings) || !empty($successes)): ?>
+                <div class="warnings-container" style="margin-bottom: 24px;">
+                    <?php foreach ($warnings as $warning): ?>
+                        <div style="background: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #d97706; color: #b45309; padding: 12px 16px; border-radius: var(--radius-lg); margin-bottom: 10px; font-size: 0.875rem; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="alert-triangle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                            <div><?= $warning ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php foreach ($successes as $success): ?>
+                        <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-left: 4px solid #059669; color: #047857; padding: 12px 16px; border-radius: var(--radius-lg); margin-bottom: 10px; font-size: 0.875rem; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="check-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                            <div><?= $success ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
             <div style="margin-bottom: 32px;">
                 <h1 style="font-size: 2rem; font-weight: 700; color: var(--text-900); margin-bottom: 8px;"><?= e($app['title']) ?></h1>
                 <p style="color: var(--text-500); font-size: 1rem; display: flex; align-items: center; gap: 8px;">
@@ -499,6 +552,40 @@
                             <?php endforeach; ?>
                         </div>
                     </div>
+
+                    <!-- Communication Center / Notifications History -->
+                    <div class="card-panel">
+                        <h2 class="panel-title">
+                            <i data-lucide="mail"></i>
+                            <span>Communication Center (Notification Logs)</span>
+                        </h2>
+
+                        <?php if (empty($notifications)): ?>
+                            <p style="color: var(--text-500); font-size: 0.875rem;">No notification updates have been sent for this application yet.</p>
+                        <?php else: ?>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                <?php foreach ($notifications as $n): ?>
+                                    <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 16px; font-size: 0.875rem;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                                            <span style="font-weight: 600; color: var(--text-800); text-transform: uppercase; font-size: 0.75rem; background: #e2e8f0; padding: 2px 8px; border-radius: 4px;">
+                                                <?= e(str_replace('_', ' ', $n['notification_type'])) ?>
+                                            </span>
+                                            <span style="font-size: 0.75rem; color: var(--text-400);"><?= e($n['created_at']) ?></span>
+                                        </div>
+                                        <div style="font-weight: 500; color: var(--text-700); margin-bottom: 4px;"><?= e($n['subject']) ?></div>
+                                        <div style="font-size: 0.8125rem; color: var(--text-500);">
+                                            <strong>Channel:</strong> <?= ucfirst(e($n['channel'])) ?> &bull; 
+                                            <strong>Recipient:</strong> <?= e($n['recipient']) ?> &bull;
+                                            <strong>Status:</strong> 
+                                            <span style="font-weight: 600; color: <?= $n['status'] === 'sent' ? '#16a34a' : ($n['status'] === 'failed' ? '#dc2626' : '#d97706') ?>;">
+                                                <?= ucfirst(e($n['status'])) ?>
+                                            </span>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <!-- Right sidebar panel -->
@@ -551,19 +638,29 @@
                         <form method="POST" action="/applications/<?= e($app['id']) ?>/update">
                             <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
 
+                            <?php
+                                $adminStatuses = ['interview', 'accepted', 'rejected'];
+                                $isUnderAdminReview = in_array($app['status'], $adminStatuses);
+                            ?>
+
                             <div class="form-group">
                                 <label class="form-label" for="status">Workflow Status</label>
-                                <select id="status" name="status" class="form-input">
-                                    <option value="interested" <?= $app['status'] === 'interested' ? 'selected' : '' ?>>Interested</option>
-                                    <option value="planning" <?= $app['status'] === 'planning' ? 'selected' : '' ?>>Planning</option>
-                                    <option value="documents_pending" <?= $app['status'] === 'documents_pending' ? 'selected' : '' ?>>Documents Pending</option>
-                                    <option value="ready_to_apply" <?= $app['status'] === 'ready_to_apply' ? 'selected' : '' ?>>Ready to Apply</option>
-                                    <option value="applied" <?= $app['status'] === 'applied' ? 'selected' : '' ?>>Applied</option>
-                                    <option value="interview" <?= $app['status'] === 'interview' ? 'selected' : '' ?>>Interview</option>
-                                    <option value="accepted" <?= $app['status'] === 'accepted' ? 'selected' : '' ?>>Accepted</option>
-                                    <option value="rejected" <?= $app['status'] === 'rejected' ? 'selected' : '' ?>>Rejected</option>
-                                    <option value="withdrawn" <?= $app['status'] === 'withdrawn' ? 'selected' : '' ?>>Withdrawn</option>
-                                </select>
+                                <?php if ($isUnderAdminReview): ?>
+                                    <div style="padding: 10px 14px; background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between;">
+                                        <span class="badge-status status-<?= e($app['status']) ?>"><?= str_replace('_', ' ', e($app['status'])) ?></span>
+                                        <span style="font-size: 0.75rem; color: var(--text-500); font-weight: 500;">Locked under review</span>
+                                    </div>
+                                    <input type="hidden" name="status" value="<?= e($app['status']) ?>">
+                                <?php else: ?>
+                                    <select id="status" name="status" class="form-input">
+                                        <option value="interested" <?= $app['status'] === 'interested' ? 'selected' : '' ?>>Interested</option>
+                                        <option value="planning" <?= $app['status'] === 'planning' ? 'selected' : '' ?>>Planning</option>
+                                        <option value="documents_pending" <?= $app['status'] === 'documents_pending' ? 'selected' : '' ?>>Documents Pending</option>
+                                        <option value="ready_to_apply" <?= $app['status'] === 'ready_to_apply' ? 'selected' : '' ?>>Ready to Apply</option>
+                                        <option value="applied" <?= $app['status'] === 'applied' ? 'selected' : '' ?>>Applied</option>
+                                        <option value="withdrawn" <?= $app['status'] === 'withdrawn' ? 'selected' : '' ?>>Withdrawn</option>
+                                    </select>
+                                <?php endif; ?>
                             </div>
 
                             <div class="form-group" id="applied-at-group" style="display: <?= $app['status'] === 'applied' ? 'block' : 'none' ?>;">
@@ -573,12 +670,12 @@
 
                             <div class="form-group">
                                 <label class="form-label" for="application_reference">Reference/Application Number</label>
-                                <input type="text" id="application_reference" name="application_reference" class="form-input" placeholder="e.g. APP-89472" value="<?= e($app['application_reference']) ?>">
+                                <input type="text" id="application_reference" name="application_reference" class="form-input" placeholder="e.g. APP-89472" value="<?= e($app['application_reference'] ?? '') ?>">
                             </div>
 
                             <div class="form-group">
                                 <label class="form-label" for="personal_notes">Personal Notes (Private)</label>
-                                <textarea id="personal_notes" name="personal_notes" class="form-textarea" placeholder="Add links, contacts, or draft essays..."><?= e($app['personal_notes']) ?></textarea>
+                                <textarea id="personal_notes" name="personal_notes" class="form-textarea" placeholder="Add links, contacts, or draft essays..."><?= e($app['personal_notes'] ?? '') ?></textarea>
                             </div>
 
                             <button type="submit" class="btn-submit">
