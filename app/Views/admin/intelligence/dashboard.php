@@ -452,12 +452,56 @@
         </header>
 
         <main class="admin-content">
-            <div class="header-section">
-                <div>
-                    <h1 class="page-title">Operational Intelligence & Operations Console</h1>
-                    <p style="color:var(--text-500); font-size:0.9375rem; margin-top:4px;">Monitor scholarship quality metrics, dynamic analytics, system warnings, and bulk utility controls</p>
-                </div>
+            <?php
+            $getSignedUrl = function(string $type) {
+                $expires = time() + 3600;
+                $secret = $_ENV['APP_KEY'] ?? 'fallback_signing_secret_key_999';
+                $token = hash_hmac('sha256', "type={$type}&expires={$expires}", $secret);
+                return url("/admin/exports/download?type={$type}&expires={$expires}&token={$token}");
+            };
+            ?>
+
+            <div class="filter-section" style="margin-bottom: 24px; padding: 20px; background: var(--bg-white); border: 1px solid var(--border); border-radius: var(--radius-xl);">
+                <form method="GET" class="filter-form" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; width: 100%;">
+                    <input type="hidden" name="tab" value="<?= e($tab) ?>">
+                    
+                    <div class="form-group" style="flex-grow: 1; min-width: 200px;">
+                        <label class="form-label" for="range">Reporting Time Period</label>
+                        <select id="range" name="range" class="form-control" onchange="toggleCustomDates()">
+                            <option value="today" <?= ($date_range['range'] ?? '') === 'today' ? 'selected' : '' ?>>Today</option>
+                            <option value="yesterday" <?= ($date_range['range'] ?? '') === 'yesterday' ? 'selected' : '' ?>>Yesterday</option>
+                            <option value="last_7_days" <?= ($date_range['range'] ?? '') === 'last_7_days' ? 'selected' : '' ?>>Last 7 Days</option>
+                            <option value="last_30_days" <?= ($date_range['range'] ?? '') === 'last_30_days' ? 'selected' : '' ?>>Last 30 Days</option>
+                            <option value="current_month" <?= ($date_range['range'] ?? '') === 'current_month' ? 'selected' : '' ?>>Current Month</option>
+                            <option value="previous_month" <?= ($date_range['range'] ?? '') === 'previous_month' ? 'selected' : '' ?>>Previous Month</option>
+                            <option value="custom" <?= ($date_range['range'] ?? '') === 'custom' ? 'selected' : '' ?>>Custom Range</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group custom-date-group" style="min-width: 150px; display: <?= ($date_range['range'] ?? '') === 'custom' ? 'block' : 'none' ?>;">
+                        <label class="form-label" for="start_date">Start Date</label>
+                        <input type="date" id="start_date" name="start_date" class="form-control" value="<?= e($date_range['start_date'] ?? '') ?>">
+                    </div>
+
+                    <div class="form-group custom-date-group" style="min-width: 150px; display: <?= ($date_range['range'] ?? '') === 'custom' ? 'block' : 'none' ?>;">
+                        <label class="form-label" for="end_date">End Date</label>
+                        <input type="date" id="end_date" name="end_date" class="form-control" value="<?= e($date_range['end_date'] ?? '') ?>">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="padding: 10px 24px;">Apply Date Filters</button>
+                </form>
             </div>
+
+            <script>
+            function toggleCustomDates() {
+                var range = document.getElementById('range').value;
+                var groups = document.querySelectorAll('.custom-date-group');
+                groups.forEach(function(el) {
+                    el.style.display = (range === 'custom') ? 'block' : 'none';
+                });
+            }
+            document.addEventListener('DOMContentLoaded', toggleCustomDates);
+            </script>
 
             <!-- Toast Feedbacks -->
             <?php if (!empty($_SESSION['intelligence_success'])): ?>
@@ -802,55 +846,97 @@
                     <div class="card" style="grid-column: 1 / -1;">
                         <h3 class="section-title">
                             <i data-lucide="funnel"></i>
-                            <span>Application Tracking Conversion Funnel (Unique Count: <?= e($app_analytics['funnel']['interested']) ?> students)</span>
+                            <span>Application Tracking Conversion Funnel</span>
                         </h3>
                         <div style="margin-top:16px;">
-                            <!-- Stage 1 -->
+                            <!-- Stage 1: Registered -->
                             <div class="chart-bar-horizontal">
-                                <div class="chart-label">Stage 1: Interested Bookmarks</div>
+                                <div class="chart-label">1. Registered Visitors</div>
                                 <div class="chart-track">
-                                    <div class="chart-fill" style="width: 100%; background: #94a3b8;"></div>
+                                    <div class="chart-fill" style="width: 100%; background: #64748b;"></div>
                                 </div>
-                                <div class="chart-value"><?= e($app_analytics['funnel']['interested']) ?></div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['registered']) ?></div>
                             </div>
-                            <!-- Stage 2 -->
+                            <!-- Stage 2: Profile Completed -->
                             <div class="chart-bar-horizontal">
-                                <div class="chart-label">Stage 2: Active Planning</div>
+                                <div class="chart-label">2. Profiles Completed</div>
                                 <div class="chart-track">
                                     <?php 
-                                        $planningPercent = $app_analytics['funnel']['interested'] > 0 
-                                            ? round(($app_analytics['funnel']['planning'] / $app_analytics['funnel']['interested']) * 100) 
+                                        $profilePct = $app_analytics['funnel']['registered'] > 0 
+                                            ? round(($app_analytics['funnel']['profile_completed'] / $app_analytics['funnel']['registered']) * 100) 
                                             : 0;
                                     ?>
-                                    <div class="chart-fill" style="width: <?= e($planningPercent) ?>%; background: #d97706;"></div>
+                                    <div class="chart-fill" style="width: <?= e($profilePct) ?>%; background: #475569;"></div>
                                 </div>
-                                <div class="chart-value"><?= e($app_analytics['funnel']['planning']) ?> (<?= e($planningPercent) ?>%)</div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['profile_completed']) ?> (<?= e($profilePct) ?>%)</div>
                             </div>
-                            <!-- Stage 3 -->
+                            <!-- Stage 3: Viewed -->
                             <div class="chart-bar-horizontal">
-                                <div class="chart-label">Stage 3: Submitted App</div>
+                                <div class="chart-label">3. Scholarships Viewed</div>
+                                <div class="chart-track">
+                                    <div class="chart-fill" style="width: 100%; background: #475569; opacity: 0.85;"></div>
+                                </div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['viewed']) ?> views</div>
+                            </div>
+                            <!-- Stage 4: Saved -->
+                            <div class="chart-bar-horizontal">
+                                <div class="chart-label">4. Scholarships Saved</div>
+                                <div class="chart-track">
+                                    <div class="chart-fill" style="width: 100%; background: #475569; opacity: 0.7;"></div>
+                                </div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['saved']) ?> saves</div>
+                            </div>
+                            <!-- Stage 5: Application Started -->
+                            <div class="chart-bar-horizontal">
+                                <div class="chart-label">5. Applications Started</div>
                                 <div class="chart-track">
                                     <?php 
-                                        $subPercent = $app_analytics['funnel']['interested'] > 0 
-                                            ? round(($app_analytics['funnel']['submitted'] / $app_analytics['funnel']['interested']) * 100) 
+                                        $startedPct = $app_analytics['funnel']['registered'] > 0 
+                                            ? round(($app_analytics['funnel']['started'] / $app_analytics['funnel']['registered']) * 100) 
                                             : 0;
                                     ?>
-                                    <div class="chart-fill" style="width: <?= e($subPercent) ?>%; background: var(--primary);"></div>
+                                    <div class="chart-fill" style="width: <?= e($startedPct) ?>%; background: #d97706;"></div>
                                 </div>
-                                <div class="chart-value"><?= e($app_analytics['funnel']['submitted']) ?> (<?= e($subPercent) ?>%)</div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['started']) ?> (<?= e($startedPct) ?>%)</div>
                             </div>
-                            <!-- Stage 4 -->
+                            <!-- Stage 6: Application Submitted -->
                             <div class="chart-bar-horizontal">
-                                <div class="chart-label">Stage 4: Administrative Outcome</div>
+                                <div class="chart-label">6. Applications Submitted</div>
                                 <div class="chart-track">
                                     <?php 
-                                        $outPercent = $app_analytics['funnel']['interested'] > 0 
-                                            ? round(($app_analytics['funnel']['outcome'] / $app_analytics['funnel']['interested']) * 100) 
+                                        $submittedPct = $app_analytics['funnel']['started'] > 0 
+                                            ? round(($app_analytics['funnel']['submitted'] / $app_analytics['funnel']['started']) * 100) 
                                             : 0;
                                     ?>
-                                    <div class="chart-fill" style="width: <?= e($outPercent) ?>%; background: #16a34a;"></div>
+                                    <div class="chart-fill" style="width: <?= e($submittedPct) ?>%; background: var(--primary);"></div>
                                 </div>
-                                <div class="chart-value"><?= e($app_analytics['funnel']['outcome']) ?> (<?= e($outPercent) ?>%)</div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['submitted']) ?> (<?= e($submittedPct) ?>%)</div>
+                            </div>
+                            <!-- Stage 7: Under Review -->
+                            <div class="chart-bar-horizontal">
+                                <div class="chart-label">7. Under Review</div>
+                                <div class="chart-track">
+                                    <?php 
+                                        $reviewPct = $app_analytics['funnel']['submitted'] > 0 
+                                            ? round(($app_analytics['funnel']['review'] / $app_analytics['funnel']['submitted']) * 100) 
+                                            : 0;
+                                    ?>
+                                    <div class="chart-fill" style="width: <?= e($reviewPct) ?>%; background: #3b82f6;"></div>
+                                </div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['review']) ?> (<?= e($reviewPct) ?>%)</div>
+                            </div>
+                            <!-- Stage 8: Accepted -->
+                            <div class="chart-bar-horizontal">
+                                <div class="chart-label">8. Accepted Outcomes</div>
+                                <div class="chart-track">
+                                    <?php 
+                                        $acceptedPct = $app_analytics['funnel']['submitted'] > 0 
+                                            ? round(($app_analytics['funnel']['accepted'] / $app_analytics['funnel']['submitted']) * 100) 
+                                            : 0;
+                                    ?>
+                                    <div class="chart-fill" style="width: <?= e($acceptedPct) ?>%; background: #16a34a;"></div>
+                                </div>
+                                <div class="chart-value"><?= e($app_analytics['funnel']['accepted']) ?> accepted (<?= e($acceptedPct) ?>%)</div>
                             </div>
                         </div>
                     </div>
@@ -1052,6 +1138,98 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- Document Readiness report -->
+                    <div class="card">
+                        <h3 class="section-title">
+                            <i data-lucide="files"></i>
+                            <span>Student Document Readiness Summary</span>
+                        </h3>
+                        <table class="table" style="margin-top:12px;">
+                            <thead>
+                                <tr>
+                                    <th>Status Metric</th>
+                                    <th style="text-align:right;">Students / Files Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Complete Student Profiles (>= 80% completeness)</td>
+                                    <td style="text-align:right; font-weight:600;"><?= e($match_analytics['doc_readiness']['complete_profiles'] ?? 0) ?></td>
+                                </tr>
+                                <tr>
+                                    <td>Incomplete Student Profiles (< 80% completeness)</td>
+                                    <td style="text-align:right; font-weight:600;"><?= e($match_analytics['doc_readiness']['incomplete_profiles'] ?? 0) ?></td>
+                                </tr>
+                                <tr>
+                                    <td>Submitted Documents (Pending Review)</td>
+                                    <td style="text-align:right; font-weight:600;"><?= e($match_analytics['doc_readiness']['pending_docs'] ?? 0) ?></td>
+                                </tr>
+                                <tr>
+                                    <td>Rejected Documents (Re-upload Required)</td>
+                                    <td style="text-align:right; font-weight:600;"><?= e($match_analytics['doc_readiness']['rejected_docs'] ?? 0) ?></td>
+                                </tr>
+                                <tr>
+                                    <td>Ready-to-Apply Status Applications</td>
+                                    <td style="text-align:right; font-weight:600;"><?= e($match_analytics['doc_readiness']['ready_to_apply'] ?? 0) ?></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Daily registrations timeline -->
+                    <div class="card">
+                        <h3 class="section-title">
+                            <i data-lucide="calendar"></i>
+                            <span>New Registrations Timeline (Filtered: <?= e($app_analytics['students_range']) ?> registrations)</span>
+                        </h3>
+                        <div style="max-height:260px; overflow-y:auto; margin-top:12px;">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th style="text-align:right;">New Registered Students</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($app_analytics['reg_timeline'])): ?>
+                                        <tr>
+                                            <td colspan="2" style="text-align:center; color:var(--text-400);">No registrations in this range.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($app_analytics['reg_timeline'] as $reg): ?>
+                                            <tr>
+                                                <td><?= e($reg['reg_date']) ?></td>
+                                                <td style="text-align:right; font-weight:600;"><?= e($reg['count']) ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Secure Data Exports Console -->
+                    <div class="card" style="grid-column: 1 / -1; margin-top: 16px;">
+                        <h3 class="section-title">
+                            <i data-lucide="download-cloud"></i>
+                            <span>Secure Data Exports Console</span>
+                        </h3>
+                        <p style="color:var(--text-500); font-size:0.875rem; margin-top:4px; margin-bottom:16px;">
+                            Download cryptographically signed spreadsheet exports. Access permissions are strictly isolated per role.
+                        </p>
+                        <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                            <a href="<?= $getSignedUrl('student') ?>" class="btn btn-secondary">
+                                <i data-lucide="users"></i> Export Students (CSV)
+                            </a>
+                            <a href="<?= $getSignedUrl('application') ?>" class="btn btn-secondary">
+                                <i data-lucide="file-spreadsheet"></i> Export Applications (CSV)
+                            </a>
+                            <a href="<?= $getSignedUrl('scholarship') ?>" class="btn btn-secondary">
+                                <i data-lucide="award"></i> Export Scholarships (CSV)
+                            </a>
+                        </div>
+                    </div>
                 </div>
 
             <!-- TAB CONTENT: OUTBOX METRICS & QUEUE SEARCH -->
@@ -1168,6 +1346,22 @@
                     </div>
                 <?php endif; ?>
 
+                <!-- Secure Outbox Exports Console -->
+                <div class="card" style="margin-top: 24px;">
+                    <h3 class="section-title">
+                        <i data-lucide="download-cloud"></i>
+                        <span>Secure Outbox Dispatches Export</span>
+                    </h3>
+                    <p style="color:var(--text-500); font-size:0.875rem; margin-top:4px; margin-bottom:16px;">
+                        Download a cryptographically signed CSV snapshot of all notification dispatches.
+                    </p>
+                    <div style="display:flex; gap:12px;">
+                        <a href="<?= $getSignedUrl('notification') ?>" class="btn btn-secondary">
+                            <i data-lucide="send"></i> Export Outbox Logs (CSV)
+                        </a>
+                    </div>
+                </div>
+
             <?php elseif ($tab === 'billing'): ?>
                 <!-- Aggregate Stats Cards -->
                 <div class="metrics-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:30px;">
@@ -1277,6 +1471,25 @@
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </ul>
+                    </div>
+
+                    <!-- Secure Billing Exports Console -->
+                    <div style="background:var(--bg-white); border:1px solid var(--border); border-radius:var(--radius-2xl); padding:32px; box-shadow:var(--shadow-sm); grid-column: 1 / -1; margin-top:24px;">
+                        <h3 style="font-size:1.125rem; font-weight:700; color:var(--text-900); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                            <i data-lucide="download-cloud"></i>
+                            <span>Secure Monetization Exports</span>
+                        </h3>
+                        <p style="color:var(--text-500); font-size:0.875rem; margin-bottom:16px;">
+                            Download CSV statements for billing transactions and active plan memberships.
+                        </p>
+                        <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                            <a href="<?= $getSignedUrl('payment') ?>" class="btn btn-secondary">
+                                <i data-lucide="receipt"></i> Export Payment Transactions (CSV)
+                            </a>
+                            <a href="<?= $getSignedUrl('subscription') ?>" class="btn btn-secondary">
+                                <i data-lucide="user-check"></i> Export Subscriptions List (CSV)
+                            </a>
+                        </div>
                     </div>
                 </div>
 

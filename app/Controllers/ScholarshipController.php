@@ -1528,6 +1528,7 @@ class ScholarshipController {
         }
 
         $id = $scholarship['id'];
+        $db->prepare("UPDATE scholarships SET views_count = views_count + 1 WHERE id = ?")->execute([$id]);
 
         // 2. Fetch study fields mappings
         $fields = $db->query("
@@ -1929,6 +1930,7 @@ class ScholarshipController {
 
         $compareIds[] = $id;
         $_SESSION['compare_ids'] = $compareIds;
+        $db->prepare("UPDATE scholarships SET compared_count = compared_count + 1 WHERE id = ?")->execute([$id]);
 
         $_SESSION['discovery_success'] = 'Added to comparison list.';
         $this->redirectBackToDiscovery();

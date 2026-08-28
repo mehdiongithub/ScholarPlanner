@@ -23,6 +23,9 @@ try {
     // Tests can run with default fallback environments if .env is missing
 }
 
+$_ENV['APP_ENV'] = 'testing';
+$_ENV['APP_DEBUG'] = 'true';
+
 // Start logger
 \App\Services\Logger::init();
 

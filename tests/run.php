@@ -23,6 +23,8 @@ require_once __DIR__ . '/ScholarshipDiscoveryTest.php';
 require_once __DIR__ . '/PlatformOperationsTest.php';
 require_once __DIR__ . '/PublicDiscoverySeoTest.php';
 require_once __DIR__ . '/BillingSubscriptionTest.php';
+require_once __DIR__ . '/AnalyticsExportTest.php';
+require_once __DIR__ . '/EndToEndLaunchTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -97,6 +99,14 @@ try {
     // 17. Billing & Subscription Monetization Verification
     $billingTest = new BillingSubscriptionTest();
     $billingTest->run();
+
+    // 18. Analytics Reporting & Secure CSV Exports Verification
+    $analyticsTest = new AnalyticsExportTest();
+    $analyticsTest->run();
+
+    // 19. End-To-End Testing & Launch Readiness Verification
+    $e2eTest = new \App\Tests\EndToEndLaunchTest();
+    $e2eTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

@@ -44,7 +44,7 @@ class ProfileController {
         if (!$user) {
             Auth::logout();
             header("Location: " . url('/login'));
-            exit();
+            $this->halt("Redirect to login");
         }
 
         // 2. Calculate dynamic age
@@ -337,7 +337,7 @@ class ProfileController {
             $this->invalidateMatches($userId);
 
             header("Location: " . url('/profile/edit?success=Profile updated successfully.'));
-            exit();
+            $this->halt("Redirect profile update success");
 
         } catch (Exception $e) {
             $db->rollBack();
@@ -738,10 +738,17 @@ class ProfileController {
     }
 
     // Helper functions
+    private function halt(string $message = 'Halt execution'): void {
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            throw new \RuntimeException($message);
+        }
+        exit();
+    }
+
     private function redirectBackWithErrors(array $errors): void {
         $_SESSION['profile_errors'] = $errors;
         header("Location: " . url('/profile/edit'));
-        exit();
+        $this->halt("Redirect back with errors");
     }
 
     private function validateEducation(string $institution, string $level, string $title, string $field, ?float $cgpa, ?float $scale, ?float $pct, string $start, string $end): array {

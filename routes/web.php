@@ -112,6 +112,7 @@ $router->get('/scholarships/compare', ['App\Controllers\ScholarshipController', 
 // Step 12 Admin Intelligence & Platform Operations Routes
 $router->get('/admin/intelligence', ['App\Controllers\IntelligenceController', 'index']);
 $router->post('/admin/intelligence/quality/bulk', ['App\Controllers\IntelligenceController', 'bulkAction']);
+$router->get('/admin/exports/download', ['App\Controllers\IntelligenceController', 'downloadExport']);
 
 // Step 14 Billing, Subscription & Monetization Routes
 $router->get('/pricing', ['App\Controllers\BillingController', 'pricing']);

@@ -299,6 +299,7 @@ class DocumentController {
             $_SESSION['document_success'] = "Document uploaded successfully.";
         }
 
+        \App\Services\CacheService::clear();
         header("Location: " . url('/documents'));
         $this->halt();
     }
@@ -388,6 +389,7 @@ class DocumentController {
         $this->logAudit('document.delete', $userId, $id, ['original_filename' => $doc['original_filename']]);
         $_SESSION['document_success'] = "Document deleted successfully.";
 
+        \App\Services\CacheService::clear();
         header("Location: " . url('/documents'));
         $this->halt();
     }
