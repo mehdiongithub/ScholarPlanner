@@ -100,3 +100,15 @@ if (!function_exists('active_route')) {
         return strpos($uri, $path) === 0;
     }
 }
+
+if (!function_exists('encode_id')) {
+    function encode_id(int $id): string {
+        return \App\Services\UrlIdService::encode($id);
+    }
+}
+
+if (!function_exists('decode_id')) {
+    function decode_id(?string $token): ?int {
+        return \App\Services\UrlIdService::decode($token);
+    }
+}

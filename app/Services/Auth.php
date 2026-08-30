@@ -506,6 +506,14 @@ class Auth {
                 $metadataStr = null;
             }
 
+            if ($userId !== null) {
+                $checkStmt = $db->prepare("SELECT 1 FROM users WHERE id = ?");
+                $checkStmt->execute([$userId]);
+                if (!$checkStmt->fetchColumn()) {
+                    $userId = null;
+                }
+            }
+
             $stmt = $db->prepare("
                 INSERT INTO audit_logs (user_id, action, module, resource_type, resource_id, ip_address, user_agent, metadata) 
                 VALUES (:user_id, :action, :module, :res_type, :res_id, :ip, :ua, :metadata)

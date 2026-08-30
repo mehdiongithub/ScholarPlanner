@@ -1,3 +1,4 @@
+<?php use App\Helpers\Security; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,6 +10,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <style>
         :root {
             --sidebar-width: 260px;
@@ -293,83 +299,240 @@
     <!-- Sidebar Navigation -->
     <aside class="admin-sidebar" id="adminSidebar">
         <a href="<?= url('/admin') ?>" class="sidebar-brand">
-            <i class="lucide-graduation-cap"></i>
+            <i data-lucide="graduation-cap"></i>
             <span>ScholarMatch</span>
         </a>
 
         <div class="sidebar-menu">
-            <a href="<?= url('/admin') ?>" class="menu-item <?= active_route('/admin') ? 'active' : '' ?>">
-                <i data-lucide="layout-dashboard"></i>
-                <span>Dashboard</span>
-            </a>
+            <?php
+            // Centralized Admin Sidebar Navigation Configuration
+            $sidebarNav = [
+                [
+                    'type' => 'link',
+                    'label' => 'Dashboard',
+                    'icon' => 'layout-dashboard',
+                    'url' => '/admin',
+                    'active_prefix' => '/admin',
+                    'exact' => true
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'USER MANAGEMENT'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Students / Visitors',
+                    'icon' => 'users',
+                    'url' => '/admin/users',
+                    'active_prefix' => '/admin/users'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Staff & Employees',
+                    'icon' => 'shield-check',
+                    'url' => '/admin/employees',
+                    'active_prefix' => '/admin/employees',
+                    'exclude_prefix' => '/admin/employees/roles'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Roles & Permissions',
+                    'icon' => 'lock',
+                    'url' => '/admin/employees/roles',
+                    'active_prefix' => '/admin/employees/roles'
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'SCHOLARSHIPS & PLATFORM'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Scholarships',
+                    'icon' => 'award',
+                    'url' => '/admin/scholarships',
+                    'active_prefix' => '/admin/scholarships'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Institutions',
+                    'icon' => 'landmark',
+                    'url' => '/admin/institutions',
+                    'active_prefix' => '/admin/institutions'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Applications',
+                    'icon' => 'file-text',
+                    'url' => '/admin/applications',
+                    'active_prefix' => '/admin/applications'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Uploaded Documents',
+                    'icon' => 'files',
+                    'url' => '/admin/documents',
+                    'active_prefix' => '/admin/documents'
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'ACADEMIC & LOCATIONS'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Countries',
+                    'icon' => 'globe',
+                    'url' => '/admin/locations/countries',
+                    'active_prefix' => '/admin/locations/countries'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'States / Provinces',
+                    'icon' => 'map-pin',
+                    'url' => '/admin/locations/states',
+                    'active_prefix' => '/admin/locations/states'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Cities',
+                    'icon' => 'navigation',
+                    'url' => '/admin/locations/cities',
+                    'active_prefix' => '/admin/locations/cities'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Fields of Study',
+                    'icon' => 'book-open',
+                    'url' => '/admin/academic/fields',
+                    'active_prefix' => '/admin/academic/fields'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Degree Levels',
+                    'icon' => 'award',
+                    'url' => '/admin/academic/degrees',
+                    'active_prefix' => '/admin/academic/degrees'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Funding Types',
+                    'icon' => 'banknote',
+                    'url' => '/admin/academic/funding',
+                    'active_prefix' => '/admin/academic/funding'
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'MATCHING'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Matching Rules',
+                    'icon' => 'git-branch',
+                    'url' => '/admin/matching/rules',
+                    'active_prefix' => '/admin/matching/rules'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Matching Statistics',
+                    'icon' => 'bar-chart-2',
+                    'url' => '/admin/matching/stats',
+                    'active_prefix' => '/admin/matching/stats'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Intelligence',
+                    'icon' => 'brain',
+                    'url' => '/admin/intelligence',
+                    'active_prefix' => '/admin/intelligence'
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'COMMUNICATION'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Notifications',
+                    'icon' => 'bell',
+                    'url' => '/admin/notifications',
+                    'active_prefix' => '/admin/notifications'
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'BILLING'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Subscriptions',
+                    'icon' => 'refresh-cw',
+                    'url' => '/admin/subscriptions',
+                    'active_prefix' => '/admin/subscriptions'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Payments',
+                    'icon' => 'dollar-sign',
+                    'url' => '/admin/payments',
+                    'active_prefix' => '/admin/payments'
+                ],
+                [
+                    'type' => 'section',
+                    'label' => 'SYSTEM'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Settings',
+                    'icon' => 'settings',
+                    'url' => '/admin/settings',
+                    'active_prefix' => '/admin/settings'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Audit Logs',
+                    'icon' => 'history',
+                    'url' => '/admin/audit-logs',
+                    'active_prefix' => '/admin/audit-logs'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Admin Profile',
+                    'icon' => 'user',
+                    'url' => '/admin/profile',
+                    'active_prefix' => '/admin/profile'
+                ]
+            ];
 
-            <div class="menu-label">User Management</div>
-            <a href="<?= url('/admin/users') ?>" class="menu-item <?= active_route('/admin/users') ? 'active' : '' ?>">
-                <i data-lucide="users"></i>
-                <span>Students / Visitors</span>
-            </a>
-            <a href="<?= url('/admin/employees') ?>" class="menu-item <?= active_route('/admin/employees') ? 'active' : '' ?>">
-                <i data-lucide="shield-check"></i>
-                <span>Staff & Employees</span>
-            </a>
-            <a href="<?= url('/admin/employees/roles') ?>" class="menu-item <?= active_route('/admin/employees/roles') ? 'active' : '' ?>">
-                <i data-lucide="lock"></i>
-                <span>Roles & Permissions</span>
-            </a>
+            if (!function_exists('is_nav_active')) {
+                function is_nav_active(array $navItem): bool {
+                    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+                    $basePath = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+                    $basePath = ($basePath === '/' || $basePath === '\\') ? '' : rtrim($basePath, '/');
+                    
+                    $prefix = $basePath . $navItem['active_prefix'];
+                    $exclude = isset($navItem['exclude_prefix']) ? $basePath . $navItem['exclude_prefix'] : null;
+                    
+                    if ($exclude !== null && strpos($uri, $exclude) === 0) {
+                        return false;
+                    }
+                    
+                    if (!empty($navItem['exact'])) {
+                        return $uri === $prefix || $uri === $prefix . '/';
+                    }
+                    
+                    return strpos($uri, $prefix) === 0;
+                }
+            }
 
-            <div class="menu-label">Scholarships & Platform</div>
-            <a href="<?= url('/admin/scholarships') ?>" class="menu-item <?= active_route('/admin/scholarships') ? 'active' : '' ?>">
-                <i data-lucide="award"></i>
-                <span>Scholarships</span>
-            </a>
-            <a href="<?= url('/admin/institutions') ?>" class="menu-item <?= active_route('/admin/institutions') ? 'active' : '' ?>">
-                <i data-lucide="landmark"></i>
-                <span>Institutions</span>
-            </a>
-            <a href="<?= url('/admin/applications') ?>" class="menu-item <?= active_route('/admin/applications') ? 'active' : '' ?>">
-                <i data-lucide="file-text"></i>
-                <span>Applications</span>
-            </a>
-            <a href="<?= url('/admin/documents') ?>" class="menu-item <?= active_route('/admin/documents') ? 'active' : '' ?>">
-                <i data-lucide="files"></i>
-                <span>Uploaded Documents</span>
-            </a>
-
-            <div class="menu-label">Configurations</div>
-            <a href="<?= url('/admin/locations/countries') ?>" class="menu-item <?= active_route('/admin/locations') ? 'active' : '' ?>">
-                <i data-lucide="map-pin"></i>
-                <span>Locations CRUD</span>
-            </a>
-            <a href="<?= url('/admin/academic/fields') ?>" class="menu-item <?= active_route('/admin/academic') ? 'active' : '' ?>">
-                <i data-lucide="book-open"></i>
-                <span>Academic Data</span>
-            </a>
-            <a href="<?= url('/admin/matching/rules') ?>" class="menu-item <?= active_route('/admin/matching') ? 'active' : '' ?>">
-                <i data-lucide="git-branch"></i>
-                <span>Matching Engine</span>
-            </a>
-
-            <div class="menu-label">System Operations</div>
-            <a href="<?= url('/admin/notifications') ?>" class="menu-item <?= active_route('/admin/notifications') ? 'active' : '' ?>">
-                <i data-lucide="bell"></i>
-                <span>Notification Logs</span>
-            </a>
-            <a href="<?= url('/admin/subscriptions') ?>" class="menu-item <?= active_route('/admin/subscriptions') ? 'active' : '' ?>">
-                <i data-lucide="credit-card"></i>
-                <span>Subscriptions</span>
-            </a>
-            <a href="<?= url('/admin/payments') ?>" class="menu-item <?= active_route('/admin/payments') ? 'active' : '' ?>">
-                <i data-lucide="dollar-sign"></i>
-                <span>Payments</span>
-            </a>
-            <a href="<?= url('/admin/settings') ?>" class="menu-item <?= active_route('/admin/settings') ? 'active' : '' ?>">
-                <i data-lucide="settings"></i>
-                <span>System Settings</span>
-            </a>
-            <a href="<?= url('/admin/audit-logs') ?>" class="menu-item <?= active_route('/admin/audit-logs') ? 'active' : '' ?>">
-                <i data-lucide="history"></i>
-                <span>Audit Logs</span>
-            </a>
+            foreach ($sidebarNav as $navItem) {
+                if ($navItem['type'] === 'section') {
+                    echo '<div class="menu-label">' . e($navItem['label']) . '</div>';
+                } elseif ($navItem['type'] === 'link') {
+                    $activeClass = is_nav_active($navItem) ? 'active' : '';
+                    echo '<a href="' . url($navItem['url']) . '" class="menu-item ' . $activeClass . '">';
+                    echo '<i data-lucide="' . $navItem['icon'] . '"></i>';
+                    echo '<span>' . e($navItem['label']) . '</span>';
+                    echo '</a>';
+                }
+            }
+            ?>
         </div>
     </aside>
 

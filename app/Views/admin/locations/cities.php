@@ -41,6 +41,23 @@
         color: var(--primary);
         border-bottom-color: var(--primary);
     }
+    .employees-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .employees-table th, .employees-table td {
+        padding: 14px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-slate-200);
+    }
+    .employees-table th {
+        background-color: var(--bg-slate-50);
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.8125rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
 </style>
 
 <div style="margin-bottom: 24px;">
@@ -50,9 +67,9 @@
 
 <!-- Navigation Tabs -->
 <div class="location-nav">
-    <a href="/admin/locations/countries" class="location-nav-link">Countries</a>
-    <a href="/admin/locations/states" class="location-nav-link">States / Provinces</a>
-    <a href="/admin/locations/cities" class="location-nav-link active">Cities</a>
+    <a href="<?= url('/admin/locations/countries') ?>" class="location-nav-link">Countries</a>
+    <a href="<?= url('/admin/locations/states') ?>" class="location-nav-link">States / Provinces</a>
+    <a href="<?= url('/admin/locations/cities') ?>" class="location-nav-link active">Cities</a>
 </div>
 
 <div class="location-layout">
@@ -60,7 +77,7 @@
     <div>
         <div class="form-card">
             <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add New City</h2>
-            <form action="/admin/locations/cities" method="POST">
+            <form action="<?= url('/admin/locations/cities') ?>" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
                 
                 <div class="form-group">
@@ -94,7 +111,7 @@
     <div>
         <div class="data-table-card">
             <div style="overflow-x: auto;">
-                <table class="employees-table">
+                <table class="employees-table" id="cities-datatable" style="width:100%">
                     <thead>
                         <tr>
                             <th>City Name</th>
@@ -104,26 +121,6 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($cities)): ?>
-                            <tr>
-                                <td colspan="4" style="text-align: center; color: #94a3b8; padding: 24px;">No cities registered in system.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($cities as $ci): ?>
-                                <tr>
-                                    <td><strong><?= e($ci['name']) ?></strong></td>
-                                    <td><?= e($ci['state_name']) ?></td>
-                                    <td><?= e($ci['country_name']) ?></td>
-                                    <td>
-                                        <a href="/admin/locations/cities/<?= $ci['id'] ?>/edit" class="action-link">Edit</a>
-                                        <form action="/admin/locations/cities/<?= $ci['id'] ?>/delete" method="POST" onsubmit="return confirm('Delete this city?');" style="display: inline;">
-                                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
-                                            <button type="submit" class="action-link danger" style="background: none; border: none; cursor: pointer; font-family: inherit;">Delete</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -132,46 +129,105 @@
 </div>
 
 <script>
-    // Cascading state selection script
-    const countrySelect = document.getElementById('country_select');
-    const stateSelect = document.getElementById('state_select');
-    const submitBtn = document.getElementById('addCitySubmit');
-
-    if (countrySelect && stateSelect) {
-        countrySelect.addEventListener('change', function() {
-            const countryId = this.value;
-            stateSelect.innerHTML = '<option value="">-- Loading States... --</option>';
-            stateSelect.disabled = true;
-            submitBtn.disabled = true;
-
-            if (countryId === '') {
-                stateSelect.innerHTML = '<option value="">-- Select Country First --</option>';
-                return;
+$(document).ready(function() {
+    $('#cities-datatable').DataTable({
+        processing: true,
+        serverSide: true,
+        responsive: true,
+        ajax: {
+            url: '<?= url("/admin/cities/data") ?>',
+            type: 'GET'
+        },
+        columns: [
+            { 
+                data: 'name',
+                render: function(data, type, row) {
+                    return '<strong>' + data + '</strong>';
+                }
+            },
+            { data: 'state_name' },
+            { data: 'country_name' },
+            {
+                data: null,
+                orderable: false,
+                render: function(data, type, row) {
+                    var editUrl = '<?= url("/admin/locations/cities") ?>' + '/' + row.record_id + '/edit';
+                    return '<a href="' + editUrl + '" class="action-link">Edit</a>' +
+                           '<a href="javascript:void(0)" onclick="deleteCity(\'' + row.record_id + '\')" class="action-link danger">Delete</a>';
+                }
             }
+        ]
+    });
+});
 
-            fetch('/api/states?country_id=' + countryId)
-                .then(res => res.json())
-                .then(data => {
-                    stateSelect.innerHTML = '<option value="">-- Choose State --</option>';
-                    if (data && data.length > 0) {
-                        data.forEach(state => {
-                            const opt = document.createElement('option');
-                            opt.value = state.id;
-                            opt.innerText = state.name;
-                            stateSelect.appendChild(opt);
-                        });
-                        stateSelect.disabled = false;
-                        submitBtn.disabled = false;
-                    } else {
-                        stateSelect.innerHTML = '<option value="">-- No States Found --</option>';
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    stateSelect.innerHTML = '<option value="">-- Error Loading States --</option>';
-                });
-        });
+function deleteCity(recordId) {
+    if (!confirm('Are you sure you want to delete this city?')) {
+        return;
     }
+    const formData = new FormData();
+    formData.append('csrf_token', '<?= Security::csrfToken() ?>');
+
+    fetch('<?= url("/admin/locations/cities") ?>/' + recordId + '/delete', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            $('#cities-datatable').DataTable().ajax.reload(null, false);
+        } else {
+            alert(data.error || 'Failed to delete city.');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('An error occurred during communication.');
+    });
+}
+
+// Cascading state selection script
+const countrySelect = document.getElementById('country_select');
+const stateSelect = document.getElementById('state_select');
+const submitBtn = document.getElementById('addCitySubmit');
+
+if (countrySelect && stateSelect) {
+    countrySelect.addEventListener('change', function() {
+        const countryId = this.value;
+        stateSelect.innerHTML = '<option value="">-- Loading States... --</option>';
+        stateSelect.disabled = true;
+        submitBtn.disabled = true;
+
+        if (countryId === '') {
+            stateSelect.innerHTML = '<option value="">-- Select Country First --</option>';
+            return;
+        }
+
+        fetch('<?= url("/api/states") ?>?country_id=' + countryId)
+            .then(res => res.json())
+            .then(data => {
+                stateSelect.innerHTML = '<option value="">-- Choose State --</option>';
+                if (data && data.length > 0) {
+                    data.forEach(state => {
+                        const opt = document.createElement('option');
+                        opt.value = state.id;
+                        opt.innerText = state.name;
+                        stateSelect.appendChild(opt);
+                    });
+                    stateSelect.disabled = false;
+                    submitBtn.disabled = false;
+                } else {
+                    stateSelect.innerHTML = '<option value="">-- No States Found --</option>';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                stateSelect.innerHTML = '<option value="">-- Error Loading States --</option>';
+            });
+    });
+}
 </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

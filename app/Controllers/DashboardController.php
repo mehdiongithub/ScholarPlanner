@@ -510,7 +510,13 @@ class DashboardController {
         Auth::requireRole('admin');
         $db = Database::connection();
 
-        $instId = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            http_response_code(404);
+            echo "Institution not found.";
+            exit();
+        }
+        $instId = $rawId;
         $stmt = $db->prepare("SELECT * FROM institutions WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $instId]);
         $institution = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -557,6 +563,13 @@ class DashboardController {
     public function adminInstitutionsUpdate(string $id): void {
         Auth::requireRole('admin');
         
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            http_response_code(404);
+            echo "Institution not found.";
+            exit();
+        }
+
         $csrf = $_POST['csrf_token'] ?? null;
         if (!\App\Services\Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
@@ -564,7 +577,7 @@ class DashboardController {
         }
 
         $db = Database::connection();
-        $instId = (int)$id;
+        $instId = $rawId;
 
         $name = trim($_POST['name'] ?? '');
         $type = trim($_POST['institution_type'] ?? '');
@@ -656,6 +669,13 @@ class DashboardController {
     public function adminInstitutionsDelete(string $id): void {
         Auth::requireRole('admin');
         
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            http_response_code(404);
+            echo "Institution not found.";
+            exit();
+        }
+
         $csrf = $_POST['csrf_token'] ?? null;
         if (!\App\Services\Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
@@ -663,7 +683,7 @@ class DashboardController {
         }
 
         $db = Database::connection();
-        $instId = (int)$id;
+        $instId = $rawId;
 
         try {
             $db->prepare("DELETE FROM institutions WHERE id = :id")->execute(['id' => $instId]);
@@ -673,5 +693,75 @@ class DashboardController {
         }
         
         $this->redirect(url('/admin/institutions'));
+    }
+
+    public function institutionsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('institutions.view') && !Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = Database::connection();
+        
+        $customWhere = "";
+        $customParams = [];
+        
+        if (!empty($_GET['status'])) {
+            $customWhere = "institutions.status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['country_id'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "institutions.country_id = :country_id";
+            $customParams['country_id'] = $_GET['country_id'];
+        }
+        if (!empty($_GET['institution_type'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "institutions.institution_type = :institution_type";
+            $customParams['institution_type'] = $_GET['institution_type'];
+        }
+        
+        $columns = [
+            'id' => 'institutions.id',
+            'name' => 'institutions.name',
+            'institution_type' => 'institutions.institution_type',
+            'coverage_type' => 'institutions.coverage_type',
+            'status' => 'institutions.status',
+            'country_name' => 'countries.name',
+            'city_name' => 'cities.name'
+        ];
+        $joins = [
+            'LEFT JOIN countries ON institutions.country_id = countries.id',
+            'LEFT JOIN cities ON institutions.city_id = cities.id'
+        ];
+        $searchableColumns = ['institutions.name', 'institutions.institution_type', 'countries.name'];
+        $columnMapping = [
+            'name' => 'institutions.name',
+            'institution_type' => 'institutions.institution_type',
+            'coverage_type' => 'institutions.coverage_type',
+            'status' => 'institutions.status',
+            'country_name' => 'countries.name'
+        ];
+        
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'institutions',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
     }
 }

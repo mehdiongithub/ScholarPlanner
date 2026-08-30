@@ -526,7 +526,12 @@ class BillingController {
             $this->redirect(url('/admin/intelligence?tab=billing'));
         }
 
-        $txId = (int)($_POST['transaction_id'] ?? 0);
+        $txIdToken = $_POST['transaction_id'] ?? '';
+        $txId = decode_id($txIdToken);
+        if ($txId === null) {
+            $_SESSION['intelligence_error'] = 'Invalid transaction ID.';
+            $this->redirect(url('/admin/intelligence?tab=billing'));
+        }
         
         $stmt = $this->db->prepare("SELECT * FROM payment_transactions WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $txId]);

@@ -47,38 +47,6 @@
     .logs-table tbody tr:hover {
         background-color: #fafafb;
     }
-    
-    /* Pagination */
-    .pagination-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 24px;
-    }
-    .pagination-links {
-        display: flex;
-        gap: 6px;
-    }
-    .page-link {
-        padding: 8px 14px;
-        background-color: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 6px;
-        color: #334155;
-        text-decoration: none;
-        font-size: 0.875rem;
-        font-weight: 500;
-        transition: all 0.2s;
-    }
-    .page-link:hover {
-        background-color: var(--bg-slate-50);
-        border-color: #cbd5e1;
-    }
-    .page-link.active {
-        background-color: var(--primary);
-        color: #fff;
-        border-color: var(--primary);
-    }
 </style>
 
 <div style="margin-bottom: 24px;">
@@ -88,10 +56,10 @@
 
 <!-- Filters -->
 <div class="filter-card">
-    <form method="GET" action="/admin/audit-logs" class="filter-form">
+    <form class="filter-form">
         <div class="form-group" style="margin: 0;">
             <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Search Logs</label>
-            <input type="text" name="search" class="form-control" placeholder="Search by email, action, metadata..." value="<?= e($search) ?>">
+            <input type="text" name="search" class="form-control" placeholder="Search by email, action, metadata..." value="<?= e($search ?? '') ?>">
         </div>
 
         <div class="form-group" style="margin: 0;">
@@ -99,7 +67,7 @@
             <select name="module" class="form-control">
                 <option value="">All Modules</option>
                 <?php foreach ($modules as $mod): ?>
-                    <option value="<?= e($mod) ?>" <?= $selectedModule === $mod ? 'selected' : '' ?>><?= e(strtoupper($mod)) ?></option>
+                    <option value="<?= e($mod) ?>" <?= ($selectedModule ?? '') === $mod ? 'selected' : '' ?>><?= e(strtoupper($mod)) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -116,7 +84,7 @@
 <!-- Logs List -->
 <div class="data-table-card">
     <div style="overflow-x: auto;">
-        <table class="logs-table">
+        <table class="logs-table" id="logs-datatable" style="width:100%">
             <thead>
                 <tr>
                     <th>Actor / User</th>
@@ -128,53 +96,79 @@
                 </tr>
             </thead>
             <tbody>
-                <?php if (empty($logs)): ?>
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #94a3b8; padding: 32px;">No audit log records found matching constraints.</td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($logs as $log): ?>
-                        <tr>
-                            <td>
-                                <strong><?= e($log['first_name'] . ' ' . $log['last_name']) ?></strong>
-                                <div style="font-size: 0.75rem; color: #64748b;"><?= e($log['actor_email'] ?: 'System / CLI') ?></div>
-                            </td>
-                            <td>
-                                <code style="background-color: var(--bg-slate-100); padding: 4px 8px; border-radius: 6px; font-weight: 600; color: #b91c1c; font-size: 0.75rem;"><?= e($log['action']) ?></code>
-                            </td>
-                            <td><span style="font-weight: 600; text-transform: uppercase; font-size: 0.75rem; color: #475569;"><?= e($log['module']) ?></span></td>
-                            <td>
-                                <span style="font-size: 0.8125rem; font-weight: 500; color: #334155;"><?= e($log['resource_type']) ?> #<?= $log['resource_id'] ?: '-' ?></span>
-                            </td>
-                            <td>
-                                <div style="font-size: 0.8125rem; font-weight: 600; color: #475569;"><?= e($log['ip_address'] ?? '127.0.0.1') ?></div>
-                                <div style="font-size: 0.6875rem; color: #94a3b8; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?= e($log['user_agent']) ?>"><?= e($log['user_agent']) ?></div>
-                            </td>
-                            <td style="color: #64748b; font-size: 0.8125rem;"><?= e(date('M d, Y H:i:s', strtotime($log['created_at']))) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
             </tbody>
         </table>
     </div>
-
-    <!-- Pagination -->
-    <?php if ($totalPages > 1): ?>
-        <div class="pagination-bar">
-            <span style="font-size: 0.8125rem; color: #64748b;">Showing page <?= $page ?> of <?= $totalPages ?> (Total: <?= $totalCount ?> records)</span>
-            <div class="pagination-links">
-                <?php if ($page > 1): ?>
-                    <a href="?search=<?= urlencode($search) ?>&module=<?= urlencode($selectedModule) ?>&page=<?= $page - 1 ?>" class="page-link">&larr; Previous</a>
-                <?php endif; ?>
-                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                    <a href="?search=<?= urlencode($search) ?>&module=<?= urlencode($selectedModule) ?>&page=<?= $i ?>" class="page-link <?= $page === $i ? 'active' : '' ?>"><?= $i ?></a>
-                <?php endfor; ?>
-                <?php if ($page < $totalPages): ?>
-                    <a href="?search=<?= urlencode($search) ?>&module=<?= urlencode($selectedModule) ?>&page=<?= $page + 1 ?>" class="page-link">Next &rarr;</a>
-                <?php endif; ?>
-            </div>
-        </div>
-    <?php endif; ?>
 </div>
+
+<script>
+$(document).ready(function() {
+    var table = $('#logs-datatable').DataTable({
+        processing: true,
+        serverSide: true,
+        responsive: true,
+        ajax: {
+            url: '<?= url("/admin/audit-logs/data") ?>',
+            type: 'GET',
+            data: function(d) {
+                d.search_query = $('input[name="search"]').val();
+                d.module = $('select[name="module"]').val();
+            }
+        },
+        columns: [
+            { 
+                data: 'actor',
+                render: function(data, type, row) {
+                    var email = row.actor_email ? row.actor_email : 'System / CLI';
+                    return '<strong>' + data + '</strong><div style="font-size: 0.75rem; color: #64748b;">' + email + '</div>';
+                }
+            },
+            { 
+                data: 'action',
+                render: function(data, type, row) {
+                    return '<code style="background-color: var(--bg-slate-100); padding: 4px 8px; border-radius: 6px; font-weight: 600; color: #b91c1c; font-size: 0.75rem;">' + data + '</code>';
+                }
+            },
+            { 
+                data: 'module',
+                render: function(data, type, row) {
+                    return '<span style="font-weight: 600; text-transform: uppercase; font-size: 0.75rem; color: #475569;">' + data + '</span>';
+                }
+            },
+            { 
+                data: 'resource_type',
+                render: function(data, type, row) {
+                    var resId = row.resource_id ? row.resource_id : '-';
+                    return '<span style="font-size: 0.8125rem; font-weight: 500; color: #334155;">' + data + ' #' + resId + '</span>';
+                }
+            },
+            { 
+                data: 'ip_address',
+                render: function(data, type, row) {
+                    var ip = data ? data : '127.0.0.1';
+                    var ua = row.user_agent ? row.user_agent : '';
+                    return '<div style="font-size: 0.8125rem; font-weight: 600; color: #475569;">' + ip + '</div>' +
+                           '<div style="font-size: 0.6875rem; color: #94a3b8; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + ua + '">' + ua + '</div>';
+                }
+            },
+            { 
+                data: 'created_at',
+                render: function(data, type, row) {
+                    if (!data) return '';
+                    var date = new Date(data);
+                    return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + ' ' + 
+                           date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                }
+            }
+        ]
+    });
+
+    // Handle filter form submission
+    $('.filter-form').on('submit', function(e) {
+        e.preventDefault();
+        table.draw();
+    });
+});
+</script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

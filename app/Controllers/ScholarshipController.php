@@ -12,8 +12,6 @@ use Exception;
 class ScholarshipController {
     
     /**
-     * Helper to sanitize rich text descriptions
-     */
     private function sanitizeHtml(string $html): string {
         // Preprocess tags with slashes immediately after tag name (e.g. <p/onmouseover)
         $clean = preg_replace('/<([a-z1-6]+)\//i', '<$1 /', $html);
@@ -25,9 +23,22 @@ class ScholarshipController {
             $clean = preg_replace('/<style\b[^>]*>(.*?)<\/style>/is', '', $clean);
         }
         // Strip all other tags except whitelisted basic formatting elements
-        $clean = strip_tags($clean, '<p><br><strong><em><ul><ol><li>');
-        // Strip all attributes from whitelisted tags to block any event-handler injection
-        $clean = preg_replace('/<([a-z1-6]+)\b[^>]*>/i', '<$1>', $clean);
+        $clean = strip_tags($clean, '<p><br><strong><em><ul><ol><li><u><h2><h3><a>');
+        // Strip all attributes from whitelisted tags except <a> tags
+        $clean = preg_replace('/<(p|br|strong|em|ul|ol|li|u|h2|h3)\b[^>]*>/i', '<$1>', $clean);
+        
+        // Strip all attributes from <a> tags except a safe href URL
+        $clean = preg_replace_callback('/<a\b([^>]*)>/i', function($matches) {
+            $attrs = $matches[1];
+            if (preg_match('/href=["\']([^"\']*)["\']/i', $attrs, $hrefMatches)) {
+                $url = $hrefMatches[1];
+                if (preg_match('/^(https?:\/\/|\/|mailto:|tel:)/i', $url)) {
+                    return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener noreferrer">';
+                }
+            }
+            return '<a>';
+        }, $clean);
+
         return trim($clean);
     }
 
@@ -159,6 +170,7 @@ class ScholarshipController {
         $status = trim($_GET['status'] ?? '');
         $verified = trim($_GET['verified'] ?? '');
         $featured = trim($_GET['featured'] ?? '');
+        $expired = trim($_GET['expired'] ?? '');
 
         // Sort params
         $sort = trim($_GET['sort'] ?? 'created_at');
@@ -207,6 +219,9 @@ class ScholarshipController {
         if ($featured !== '') {
             $whereClauses[] = "s.is_featured = :featured";
             $params['featured'] = (int)$featured;
+        }
+        if ($expired === '1') {
+            $whereClauses[] = "s.application_deadline IS NOT NULL AND s.application_deadline < CURDATE()";
         }
 
         $whereSql = '';
@@ -633,7 +648,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.edit');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         // 1. Fetch main record
@@ -701,7 +720,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.edit');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         // Verify exists
@@ -1068,7 +1091,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.delete');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1115,7 +1142,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.publish');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1195,7 +1226,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.archive');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1227,7 +1262,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.publish');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1263,7 +1302,11 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.create');
 
-        $id = (int)$id;
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        $id = $rawId;
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -2460,6 +2503,84 @@ class ScholarshipController {
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new \RuntimeException("404 Not Found");
         }
+        exit();
+    }
+
+    public function scholarshipsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('scholarships.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        
+        $customWhere = "";
+        $customParams = [];
+        
+        if (!empty($_GET['status'])) {
+            $customWhere = "scholarships.status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['country_id'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "scholarships.country_id = :country_id";
+            $customParams['country_id'] = $_GET['country_id'];
+        }
+        if (!empty($_GET['degree_level_id'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "scholarships.degree_level_id = :degree_level_id";
+            $customParams['degree_level_id'] = $_GET['degree_level_id'];
+        }
+        if (!empty($_GET['expired'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "scholarships.application_deadline < CURDATE()";
+        }
+        
+        $columns = [
+            'id' => 'scholarships.id',
+            'title' => 'scholarships.title',
+            'provider' => 'scholarships.provider',
+            'country_name' => 'countries.name',
+            'degree_name' => 'degree_levels.name',
+            'application_deadline' => 'scholarships.application_deadline',
+            'status' => 'scholarships.status',
+            'created_at' => 'scholarships.created_at',
+            'cover_image' => 'scholarships.cover_image'
+        ];
+        $joins = [
+            'LEFT JOIN countries ON scholarships.country_id = countries.id',
+            'LEFT JOIN degree_levels ON scholarships.degree_level_id = degree_levels.id'
+        ];
+        $searchableColumns = ['scholarships.title', 'scholarships.provider', 'countries.name', 'scholarships.status'];
+        $columnMapping = [
+            'title' => 'scholarships.title',
+            'provider' => 'scholarships.provider',
+            'country_name' => 'countries.name',
+            'degree_name' => 'degree_levels.name',
+            'application_deadline' => 'scholarships.application_deadline',
+            'status' => 'scholarships.status',
+            'created_at' => 'scholarships.created_at'
+        ];
+        
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'scholarships',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
         exit();
     }
 }

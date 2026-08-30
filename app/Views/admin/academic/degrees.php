@@ -41,6 +41,35 @@
         color: var(--primary);
         border-bottom-color: var(--primary);
     }
+    .employees-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .employees-table th, .employees-table td {
+        padding: 14px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-slate-200);
+    }
+    .employees-table th {
+        background-color: var(--bg-slate-50);
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.8125rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    /* Badge styles */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .status-badge.active { background-color: #dcfce7; color: #15803d; }
+    .status-badge.inactive { background-color: #fee2e2; color: #b91c1c; }
 </style>
 
 <div style="margin-bottom: 24px;">
@@ -50,9 +79,9 @@
 
 <!-- Navigation Tabs -->
 <div class="location-nav">
-    <a href="/admin/academic/fields" class="location-nav-link">Fields of Study</a>
-    <a href="/admin/academic/degrees" class="location-nav-link active">Degree Levels</a>
-    <a href="/admin/academic/funding" class="location-nav-link">Funding Types</a>
+    <a href="<?= url('/admin/academic/fields') ?>" class="location-nav-link">Fields of Study</a>
+    <a href="<?= url('/admin/academic/degrees') ?>" class="location-nav-link active">Degree Levels</a>
+    <a href="<?= url('/admin/academic/funding') ?>" class="location-nav-link">Funding Types</a>
 </div>
 
 <div class="location-layout">
@@ -60,7 +89,7 @@
     <div>
         <div class="form-card">
             <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add Degree Level</h2>
-            <form action="/admin/academic/degrees" method="POST">
+            <form action="<?= url('/admin/academic/degrees') ?>" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
                 
                 <div class="form-group">
@@ -90,7 +119,7 @@
     <div>
         <div class="data-table-card">
             <div style="overflow-x: auto;">
-                <table class="employees-table">
+                <table class="employees-table" id="degrees-datatable" style="width:100%">
                     <thead>
                         <tr>
                             <th>Degree Level Name</th>
@@ -100,33 +129,83 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($degrees)): ?>
-                            <tr>
-                                <td colspan="4" style="text-align: center; color: #94a3b8; padding: 24px;">No degree levels registered.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($degrees as $d): ?>
-                                <tr>
-                                    <td><strong><?= e($d['name']) ?></strong></td>
-                                    <td><code><?= e($d['sort_order']) ?></code></td>
-                                    <td>
-                                        <span class="status-badge <?= $d['status'] === 'active' ? 'active' : 'suspended' ?>"><?= e($d['status']) ?></span>
-                                    </td>
-                                    <td>
-                                        <a href="/admin/academic/degrees/<?= $d['id'] ?>/edit" class="action-link">Edit</a>
-                                        <form action="/admin/academic/degrees/<?= $d['id'] ?>/delete" method="POST" onsubmit="return confirm('Delete this degree level?');" style="display: inline;">
-                                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
-                                            <button type="submit" class="action-link danger" style="background: none; border: none; cursor: pointer; font-family: inherit;">Delete</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+$(document).ready(function() {
+    $('#degrees-datatable').DataTable({
+        processing: true,
+        serverSide: true,
+        responsive: true,
+        ajax: {
+            url: '<?= url("/admin/degrees/data") ?>',
+            type: 'GET'
+        },
+        columns: [
+            { 
+                data: 'name',
+                render: function(data, type, row) {
+                    return '<strong>' + data + '</strong>';
+                }
+            },
+            { 
+                data: 'sort_order',
+                render: function(data, type, row) {
+                    return '<code>' + data + '</code>';
+                }
+            },
+            { 
+                data: 'status',
+                render: function(data, type, row) {
+                    var cls = data === 'active' ? 'active' : 'inactive';
+                    return '<span class="status-badge ' + cls + '">' + data + '</span>';
+                }
+            },
+            {
+                data: null,
+                orderable: false,
+                render: function(data, type, row) {
+                    var editUrl = '<?= url("/admin/academic/degrees") ?>' + '/' + row.record_id + '/edit';
+                    return '<a href="' + editUrl + '" class="action-link">Edit</a>' +
+                           '<a href="javascript:void(0)" onclick="deleteDegree(\'' + row.record_id + '\')" class="action-link danger">Delete</a>';
+                }
+            }
+        ]
+    });
+});
+
+function deleteDegree(recordId) {
+    if (!confirm('Are you sure you want to delete this degree level?')) {
+        return;
+    }
+    const formData = new FormData();
+    formData.append('csrf_token', '<?= Security::csrfToken() ?>');
+
+    fetch('<?= url("/admin/academic/degrees") ?>/' + recordId + '/delete', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            $('#degrees-datatable').DataTable().ajax.reload(null, false);
+        } else {
+            alert(data.error || 'Failed to delete degree level.');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('An error occurred during communication.');
+    });
+}
+</script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

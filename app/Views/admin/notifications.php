@@ -1,53 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notification Management | ScholarMatch</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
-        .dashboard-layout {
-            min-height: 100vh;
-            background: #f8fafc;
-            display: flex;
-            flex-direction: column;
-        }
-        .dashboard-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .page-content {
-            padding: 32px 24px;
-            max-width: 1400px;
-            width: 100%;
-            margin: 0 auto;
-            box-sizing: border-box;
-        }
-        .header-title-box {
-            margin-bottom: 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
+<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
+
+<style>
         .header-title-box h1 {
             font-size: 1.75rem;
             font-weight: 800;
@@ -219,24 +172,7 @@
                 padding: 16px;
             }
         }
-    </style>
-</head>
-<body>
-    <div class="dashboard-layout">
-        <header class="dashboard-header">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch Admin</span>
-            </a>
-            <div class="user-menu">
-                <a href="<?= url('/admin') ?>" class="btn-page">Back to Admin</a>
-                <form action="<?= url('/logout') ?>" method="POST" style="margin: 0;">
-                    <button type="submit" class="btn-page" style="cursor:pointer;">Log Out</button>
-                </form>
-            </div>
-        </header>
-
-        <main class="page-content">
+</style>
             <div class="header-title-box">
                 <h1>Notification Log Center</h1>
             </div>
@@ -415,10 +351,4 @@
                     </div>
                 <?php endif; ?>
             </div>
-        </main>
-    </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+<?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

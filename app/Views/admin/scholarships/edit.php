@@ -245,9 +245,29 @@
                             <input type="text" id="short_description" name="short_description" class="form-control" value="<?= e($shortDescVal) ?>">
                             <?php if (!empty($errors['short_description'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['short_description']) ?></span><?php endif; ?>
                         </div>
+                        <!-- Include Quill stylesheet & library -->
+                        <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet" />
+                        <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+
+                        <style>
+                            .ql-container {
+                                font-family: inherit;
+                                font-size: 0.875rem;
+                                border-bottom-left-radius: 8px;
+                                border-bottom-right-radius: 8px;
+                                background: #fff;
+                            }
+                            .ql-toolbar {
+                                border-top-left-radius: 8px;
+                                border-top-right-radius: 8px;
+                                background: #f8fafc;
+                            }
+                        </style>
+
                         <div class="form-group full-width">
                             <label class="form-label" for="description">Full Description * (Supports safe HTML formatting)</label>
-                            <textarea id="description" name="description" class="form-control" rows="8" required><?= e($descVal) ?></textarea>
+                            <textarea id="description" name="description" style="display:none;"><?= e($descVal) ?></textarea>
+                            <div id="description-editor" style="height: 300px;"><?= $descVal ?></div>
                             <?php if (!empty($errors['description'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['description']) ?></span><?php endif; ?>
                         </div>
                         <div class="form-group">
@@ -613,6 +633,30 @@
             `;
             tableBody.appendChild(row);
             langIndex++;
+        }
+
+        // Initialize Quill editor
+        var quill = new Quill('#description-editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    [{ 'header': [2, 3, false] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['link', 'clean']
+                ]
+            }
+        });
+
+        // Sync Quill HTML to hidden textarea on form submit
+        var form = document.querySelector('form');
+        if (form) {
+            form.addEventListener('submit', function() {
+                var descriptionTextarea = document.getElementById('description');
+                if (descriptionTextarea) {
+                    descriptionTextarea.value = quill.root.innerHTML;
+                }
+            });
         }
     </script>
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

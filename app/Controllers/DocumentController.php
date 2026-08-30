@@ -308,8 +308,13 @@ class DocumentController {
      * GET /documents/{id}/download
      * Securely download document owned by applicant
      */
-    public function download(int $id): void {
+    public function download(string $id): void {
         Auth::requireAuth();
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid document ID.");
+        }
+        $id = $rawId;
         $userId = Auth::userId();
 
         $stmt = $this->db->prepare("SELECT * FROM user_documents WHERE id = :id LIMIT 1");
@@ -342,8 +347,14 @@ class DocumentController {
      * POST /documents/{id}/delete
      * Delete document owned by applicant
      */
-    public function delete(int $id): void {
+    public function delete(string $id): void {
         Auth::requireAuth();
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid document ID.");
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
         $userId = Auth::userId();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -506,9 +517,15 @@ class DocumentController {
      * GET /admin/documents/{id}
      * Administrative uploaded document detail view and review options
      */
-    public function adminShow(int $id): void {
+    public function adminShow(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('documents.view');
+
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid document ID.");
+        }
+        $id = $rawId;
 
         $stmt = $this->db->prepare("
             SELECT ud.*, u.first_name, u.last_name, u.email as user_email, d.name as doc_type_name, d.description as doc_desc
@@ -535,14 +552,21 @@ class DocumentController {
      * POST /admin/documents/{id}/approve
      * Approve document
      */
-    public function approve(int $id): void {
+    public function approve(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('documents.review');
+
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid document ID.");
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_doc_error'] = 'CSRF verification failed.';
-            header("Location: " . url('/admin/documents/' . $id));
+            header("Location: " . url('/admin/documents/' . $encId));
             $this->halt();
         }
 
@@ -600,21 +624,28 @@ class DocumentController {
      * POST /admin/documents/{id}/reject
      * Reject document
      */
-    public function reject(int $id): void {
+    public function reject(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('documents.review');
+
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid document ID.");
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_doc_error'] = 'CSRF verification failed.';
-            header("Location: " . url('/admin/documents/' . $id));
+            header("Location: " . url('/admin/documents/' . $encId));
             $this->halt();
         }
 
         $reason = trim($_POST['rejection_reason'] ?? '');
         if (empty($reason)) {
             $_SESSION['admin_doc_error'] = 'Rejection reason is required.';
-            header("Location: " . url('/admin/documents/' . $id));
+            header("Location: " . url('/admin/documents/' . $encId));
             $this->halt();
         }
 
@@ -676,9 +707,15 @@ class DocumentController {
      * GET /admin/documents/{id}/download
      * Securely download document by administrator
      */
-    public function adminDownload(int $id): void {
+    public function adminDownload(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('documents.download');
+
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid document ID.");
+        }
+        $id = $rawId;
 
         $stmt = $this->db->prepare("SELECT * FROM user_documents WHERE id = :id LIMIT 1");
         $stmt->execute(['id' => $id]);
@@ -720,5 +757,71 @@ class DocumentController {
             throw new \RuntimeException($message);
         }
         die($message);
+    }
+
+    public function documentsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('documents.review')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        
+        $customWhere = "";
+        $customParams = [];
+        
+        if (!empty($_GET['status'])) {
+            $customWhere = "user_documents.verification_status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['document_id'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "user_documents.document_id = :document_id";
+            $customParams['document_id'] = $_GET['document_id'];
+        }
+
+        $columns = [
+            'id' => 'user_documents.id',
+            'original_filename' => 'user_documents.original_filename',
+            'verification_status' => 'user_documents.verification_status',
+            'created_at' => 'user_documents.created_at',
+            'document_name' => 'required_documents.document_name',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'user_email' => 'users.email'
+        ];
+        $joins = [
+            'JOIN required_documents ON user_documents.document_id = required_documents.id',
+            'JOIN users ON user_documents.user_id = users.id'
+        ];
+        $searchableColumns = ['user_documents.original_filename', 'required_documents.document_name', 'users.first_name', 'users.last_name', 'users.email'];
+        $columnMapping = [
+            'original_filename' => 'user_documents.original_filename',
+            'verification_status' => 'user_documents.verification_status',
+            'created_at' => 'user_documents.created_at',
+            'document_name' => 'required_documents.document_name'
+        ];
+        
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'user_documents',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                $row['student_name'] = e($row['first_name'] . ' ' . $row['last_name']);
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
     }
 }

@@ -1,137 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platform Operations & Operational Intelligence | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
-        .admin-layout {
-            min-height: 100vh;
-            background: #f8fafc;
-            display: flex;
-            flex-direction: column;
-        }
-        .admin-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .nav-link {
-            font-size: 0.875rem;
-            color: var(--text-600);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .nav-link:hover {
-            color: var(--primary);
-        }
-        .admin-content {
-            max-width: 1200px;
-            width: 100%;
-            margin: 40px auto;
-            padding: 0 20px;
-            flex-grow: 1;
-        }
-        .header-section {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        .page-title {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--text-900);
-        }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            border-radius: var(--radius-lg);
-            text-decoration: none;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s;
-        }
-        .btn-primary {
-            background: var(--primary);
-            color: var(--bg-white);
-        }
-        .btn-primary:hover {
-            background: var(--primary-dark, #1d4ed8);
-        }
-        .btn-secondary {
-            background: var(--bg-white);
-            color: var(--text-700);
-            border: 1px solid var(--border);
-        }
-        .btn-secondary:hover {
-            background: #f1f5f9;
-        }
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 0.75rem;
-            border-radius: var(--radius-md);
-        }
-        .btn-danger {
-            background: #ef4444;
-            color: var(--bg-white);
-        }
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-        .alert {
-            padding: 16px;
-            border-radius: var(--radius-lg);
-            margin-bottom: 24px;
-            font-size: 0.875rem;
-        }
-        .alert-success {
-            background: #ecfdf5;
-            color: #065f46;
-            border: 1px solid #a7f3d0;
-        }
-        .alert-danger {
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fca5a5;
-        }
-        .alert-warning {
-            background: #fffbeb;
-            color: #92400e;
-            border: 1px solid #fde68a;
-        }
+<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
+
+<style>
         .tab-menu {
             display: flex;
             gap: 8px;
@@ -349,61 +218,43 @@
             font-weight: 600;
             color: var(--text-800);
         }
-
-        .alert-card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 24px;
-        }
-        .alert-card {
-            border: 1px solid transparent;
-            border-radius: var(--radius-xl);
-            padding: 20px;
-            display: flex;
-            gap: 16px;
-            box-shadow: var(--shadow-sm);
-        }
-        .alert-card-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: var(--radius-lg);
+        .metric-row {
             display: flex;
             align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px dashed var(--border);
         }
-        .alert-card.danger {
-            background: #fff5f5;
-            border-color: #feb2b2;
+        .metric-row:last-child {
+            border-bottom: none;
         }
-        .alert-card.danger .alert-card-icon {
-            background: #fed7d7;
-            color: #c53030;
-        }
-        .alert-card.warning {
-            background: #fffdf5;
-            border-color: #fef3c7;
-        }
-        .alert-card.warning .alert-card-icon {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        .alert-card-content h3 {
-            font-size: 1rem;
-            font-weight: 700;
-            color: var(--text-900);
-            margin-bottom: 4px;
-        }
-        .alert-card-content p {
+        .metric-name {
             font-size: 0.875rem;
             color: var(--text-600);
-            margin-bottom: 12px;
-            line-height: 1.5;
         }
+        .metric-value {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-900);
+        }
+        .metric-percentage-tag {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+        }
+        .pct-positive { background: #d1fae5; color: #065f46; }
+        .pct-negative { background: #fee2e2; color: #991b1b; }
+        .pct-neutral { background: #f1f5f9; color: #475569; }
 
         @media (max-width: 768px) {
             .filter-form {
                 grid-template-columns: 1fr;
+            }
+            .header-section {
+                flex-direction: column;
+                align-items: flex-start;
             }
             .chart-bar-horizontal {
                 flex-direction: column;
@@ -413,10 +264,27 @@
             .chart-label {
                 width: 100%;
             }
-            .chart-value {
+            .chart-track {
                 width: 100%;
-                text-align: left;
-                font-size: 0.75rem;
+            }
+            .chart-value {
+                align-self: flex-end;
+            }
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 576px) {
+            .tab-link {
+                padding: 10px 14px;
+                font-size: 0.875rem;
+            }
+            .table th, .table td {
+                padding: 12px 14px;
+                font-size: 0.8125rem;
+            }
+            .card-value {
+                font-size: 1.5rem;
             }
         }
         @media (max-width: 280px) {
@@ -428,30 +296,7 @@
                 font-size: 1.5rem;
             }
         }
-    </style>
-</head>
-<body>
-    <div class="admin-layout">
-        <header class="admin-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch Admin Center</span>
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                <a href="<?= url('/admin/scholarships') ?>" class="nav-link">Scholarships</a>
-                <a href="<?= url('/admin/applications') ?>" class="nav-link">Applications</a>
-                <a href="<?= url('/admin/documents') ?>" class="nav-link">Documents</a>
-                <a href="<?= url('/admin/notifications') ?>" class="nav-link">Outbox</a>
-                <a href="<?= url('/admin/intelligence') ?>" class="nav-link" style="color:var(--primary); font-weight:700;">Ops Panel</a>
-                <form action="<?= url('/logout') ?>" method="POST" style="display:inline;">
-                    <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
-                    <button type="submit" class="nav-link" style="background:none; border:none; cursor:pointer; font-weight:500;">Log Out</button>
-                </form>
-            </div>
-        </header>
-
-        <main class="admin-content">
+</style>
             <?php
             $getSignedUrl = function(string $type) {
                 $expires = time() + 3600;
@@ -1495,32 +1340,26 @@
 
             <?php endif; ?>
 
-        </main>
-    </div>
-
-    <script>
-        lucide.createIcons();
-
-        function toggleSelectAll(masterCheckbox) {
-            const checkboxes = document.querySelectorAll('.scholarship-checkbox');
-            checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
-        }
-
-        function confirmBulkAction() {
-            const action = document.getElementById('bulkActionSelect').value;
-            if (!action) {
-                alert('Please select a bulk action from the dropdown menu first.');
-                return false;
+        <script>
+            function toggleSelectAll(masterCheckbox) {
+                const checkboxes = document.querySelectorAll('.scholarship-checkbox');
+                checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
             }
 
-            const checkedCount = document.querySelectorAll('.scholarship-checkbox:checked').length;
-            if (checkedCount === 0) {
-                alert('Please check at least one scholarship checkbox from the table.');
-                return false;
-            }
+            function confirmBulkAction() {
+                const action = document.getElementById('bulkActionSelect').value;
+                if (!action) {
+                    alert('Please select a bulk action from the dropdown menu first.');
+                    return false;
+                }
 
-            return confirm(`Are you absolutely sure you want to run the selected bulk operation on the ${checkedCount} checked scholarship opportunities?`);
-        }
-    </script>
-</body>
-</html>
+                const checkedCount = document.querySelectorAll('.scholarship-checkbox:checked').length;
+                if (checkedCount === 0) {
+                    alert('Please check at least one scholarship checkbox from the table.');
+                    return false;
+                }
+
+                return confirm(`Are you absolutely sure you want to run the selected bulk operation on the ${checkedCount} checked scholarship opportunities?`);
+            }
+        </script>
+        <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

@@ -211,3 +211,21 @@ $router->post('/admin/profile', ['App\Controllers\AdminController', 'profileUpda
 
 $router->get('/admin/subscriptions', ['App\Controllers\AdminController', 'subscriptionsIndex']);
 $router->get('/admin/payments', ['App\Controllers\AdminController', 'paymentsIndex']);
+
+// Server-Side DataTables JSON endpoints
+$router->get('/admin/users/data', ['App\Controllers\AdminController', 'usersData']);
+$router->get('/admin/employees/data', ['App\Controllers\AdminController', 'employeesData']);
+$router->get('/admin/scholarships/data', ['App\Controllers\ScholarshipController', 'scholarshipsData']);
+$router->get('/admin/institutions/data', ['App\Controllers\DashboardController', 'institutionsData']);
+$router->get('/admin/applications/data', ['App\Controllers\ApplicationController', 'applicationsData']);
+$router->get('/admin/documents/data', ['App\Controllers\DocumentController', 'documentsData']);
+$router->get('/admin/locations/countries/data', ['App\Controllers\AdminController', 'countriesData']);
+$router->get('/admin/locations/states/data', ['App\Controllers\AdminController', 'statesData']);
+$router->get('/admin/locations/cities/data', ['App\Controllers\AdminController', 'citiesData']);
+$router->get('/admin/academic/fields/data', ['App\Controllers\AdminController', 'fieldsData']);
+$router->get('/admin/academic/degrees/data', ['App\Controllers\AdminController', 'degreesData']);
+$router->get('/admin/academic/funding/data', ['App\Controllers\AdminController', 'fundingData']);
+$router->get('/admin/payments/data', ['App\Controllers\AdminController', 'paymentsData']);
+$router->get('/admin/subscriptions/data', ['App\Controllers\AdminController', 'subscriptionsData']);
+$router->get('/admin/audit-logs/data', ['App\Controllers\AdminController', 'auditLogsData']);
+

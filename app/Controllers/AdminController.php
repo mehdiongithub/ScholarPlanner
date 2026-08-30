@@ -16,6 +16,26 @@ class AdminController {
         $this->db = Database::connection();
     }
 
+    private function resolveId(string $id, bool $isAjax = false): int {
+        $raw = decode_id($id);
+        if ($raw === null) {
+            if ($isAjax || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Resource not found']);
+                exit();
+            }
+            http_response_code(404);
+            try {
+                view('errors.404');
+            } catch (\Exception $e) {
+                echo "<h1>404 Not Found</h1>";
+            }
+            exit();
+        }
+        return $raw;
+    }
+
     /**
      * Helper to write audit logs
      */
@@ -33,7 +53,7 @@ class AdminController {
         // Fetch dashboard statistics counts
         $totalUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor'")->fetchColumn();
         $verifiedUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND u.email_verified_at IS NOT NULL")->fetchColumn();
-        $pendingUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND (u.status = 'pending' OR u.email_verified_at IS NULL)")->fetchColumn();
+        $pendingUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND u.email_verified_at IS NULL")->fetchColumn();
         $suspendedUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND u.status = 'suspended'")->fetchColumn();
 
         $totalScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships")->fetchColumn();
@@ -48,8 +68,45 @@ class AdminController {
         $pendingInst = (int)$this->db->query("SELECT COUNT(*) FROM institutions WHERE status = 'pending'")->fetchColumn();
 
         $activeSubs = (int)$this->db->query("SELECT COUNT(*) FROM subscriptions WHERE status = 'active'")->fetchColumn();
-        $totalRevenue = (float)$this->db->query("SELECT SUM(amount) FROM payment_transactions WHERE status = 'paid'")->fetchColumn();
         $paymentIssues = (int)$this->db->query("SELECT COUNT(*) FROM payment_transactions WHERE status = 'failed'")->fetchColumn();
+
+        $revenueRows = $this->db->query("
+            SELECT currency, SUM(amount) as total 
+            FROM payment_transactions 
+            WHERE status = 'paid' 
+            GROUP BY currency
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        $revenueStrings = [];
+        foreach ($revenueRows as $row) {
+            $revenueStrings[] = htmlspecialchars($row['currency']) . ' ' . number_format($row['total'], 2);
+        }
+        $formattedRevenue = !empty($revenueStrings) ? implode(' | ', $revenueStrings) : 'USD 0.00';
+
+        $newStudentsThisMonth = (int)$this->db->query("
+            SELECT COUNT(*) 
+            FROM users u 
+            JOIN roles r ON u.role_id = r.id 
+            WHERE r.name = 'visitor' AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        ")->fetchColumn();
+
+        $newScholarshipsThisMonth = (int)$this->db->query("
+            SELECT COUNT(*) 
+            FROM scholarships 
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        ")->fetchColumn();
+
+        $newApplicationsThisMonth = (int)$this->db->query("
+            SELECT COUNT(*) 
+            FROM scholarship_applications 
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        ")->fetchColumn();
+
+        $newSubscriptionsThisMonth = (int)$this->db->query("
+            SELECT COUNT(*) 
+            FROM subscriptions 
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        ")->fetchColumn();
 
         // Fetch recent actions / audit logs
         $recentLogs = $this->db->query("
@@ -72,8 +129,7 @@ class AdminController {
         // Recent Students (10)
         $recentStudents = $this->db->query("
             SELECT u.*, 
-                   (SELECT COUNT(*) FROM education_records er WHERE er.user_id = u.id) as has_edu,
-                   (SELECT COUNT(*) FROM user_preferences up WHERE up.user_id = u.id) as has_pref
+                   (SELECT profile_completion_percentage FROM student_profiles sp WHERE sp.user_id = u.id) as completion_percentage
             FROM users u
             JOIN roles r ON u.role_id = r.id
             WHERE r.name = 'visitor'
@@ -107,8 +163,12 @@ class AdminController {
                 'pending_applications' => $pendingApps,
                 'pending_institutions' => $pendingInst,
                 'active_subscriptions' => $activeSubs,
-                'total_revenue' => $totalRevenue,
-                'payment_issues' => $paymentIssues
+                'formatted_revenue' => $formattedRevenue,
+                'payment_issues' => $paymentIssues,
+                'new_students_30d' => $newStudentsThisMonth,
+                'new_scholarships_30d' => $newScholarshipsThisMonth,
+                'new_applications_30d' => $newApplicationsThisMonth,
+                'new_subscriptions_30d' => $newSubscriptionsThisMonth
             ],
             'recent_logs' => $recentLogs,
             'recent_scholarships' => $recentScholarships,
@@ -208,8 +268,9 @@ class AdminController {
      * GET /admin/users/{id}
      * Show detailed user profile, preferences, education and matching info
      */
-    public function usersShow(int $id): void {
+    public function usersShow(string $id): void {
         Auth::requirePermission('users.view');
+        $id = $this->resolveId($id);
 
         // Fetch user basic
         $stmt = $this->db->prepare("
@@ -299,8 +360,9 @@ class AdminController {
     /**
      * GET /admin/users/{id}/edit
      */
-    public function usersEdit(int $id): void {
+    public function usersEdit(string $id): void {
         Auth::requirePermission('users.edit');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
@@ -321,13 +383,15 @@ class AdminController {
     /**
      * POST /admin/users/{id}/update
      */
-    public function usersUpdate(int $id): void {
+    public function usersUpdate(string $id): void {
         Auth::requirePermission('users.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/users/$id/edit"));
+            header("Location: " . url("/admin/users/$encId/edit"));
             exit();
         }
 
@@ -338,7 +402,7 @@ class AdminController {
 
         if ($email === '' || $firstName === '') {
             $_SESSION['admin_errors'] = 'Required fields missing.';
-            header("Location: " . url("/admin/users/$id/edit"));
+            header("Location: " . url("/admin/users/$encId/edit"));
             exit();
         }
 
@@ -347,7 +411,7 @@ class AdminController {
         $check->execute([$email, $id]);
         if ($check->fetch()) {
             $_SESSION['admin_errors'] = 'Email already registered.';
-            header("Location: " . url("/admin/users/$id/edit"));
+            header("Location: " . url("/admin/users/$encId/edit"));
             exit();
         }
 
@@ -366,14 +430,16 @@ class AdminController {
 
         $this->logAction('user_update', 'users', 'users', $id, ['email' => $email, 'status' => $status]);
         $_SESSION['admin_success'] = 'User account updated successfully.';
-        header("Location: " . url("/admin/users/$id"));
+        header("Location: " . url("/admin/users/$encId"));
+        exit();
     }
 
     /**
      * POST /admin/users/{id}/suspend
      */
-    public function usersSuspend(int $id): void {
+    public function usersSuspend(string $id): void {
         Auth::requirePermission('users.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
@@ -393,8 +459,9 @@ class AdminController {
     /**
      * POST /admin/users/{id}/activate
      */
-    public function usersActivate(int $id): void {
+    public function usersActivate(string $id): void {
         Auth::requirePermission('users.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
@@ -414,20 +481,22 @@ class AdminController {
     /**
      * POST /admin/users/{id}/password
      */
-    public function usersResetPassword(int $id): void {
+    public function usersResetPassword(string $id): void {
         Auth::requirePermission('users.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/users/$id"));
+            header("Location: " . url("/admin/users/$encId"));
             exit();
         }
 
         $pass = trim($_POST['password'] ?? '');
         if (strlen($pass) < 8) {
             $_SESSION['admin_errors'] = 'Password must be at least 8 characters long.';
-            header("Location: " . url("/admin/users/$id"));
+            header("Location: " . url("/admin/users/$encId"));
             exit();
         }
 
@@ -437,19 +506,21 @@ class AdminController {
 
         $this->logAction('user_password_reset', 'users', 'users', $id);
         $_SESSION['admin_success'] = 'Password changed successfully.';
-        header("Location: " . url("/admin/users/$id"));
+        header("Location: " . url("/admin/users/$encId"));
+        exit();
     }
 
     /**
      * POST /admin/users/{id}/delete
      */
-    public function usersDelete(int $id): void {
+    public function usersDelete(string $id): void {
         Auth::requirePermission('users.delete');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/users"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -458,8 +529,7 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('user_delete', 'users', 'users', $id);
-        $_SESSION['admin_success'] = 'User account deleted (deactivated) successfully.';
-        header("Location: " . url("/admin/users"));
+        echo json_encode(['success' => true, 'message' => 'User deleted successfully.']);
     }
 
     // ==========================================
@@ -567,11 +637,9 @@ class AdminController {
         header("Location: " . url("/admin/employees"));
     }
 
-    /**
-     * POST /admin/employees/{id}/update
-     */
-    public function employeesUpdate(int $id): void {
+    public function employeesUpdate(string $id): void {
         Auth::requirePermission('employees.manage');
+        $id = $this->resolveId($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
@@ -741,11 +809,9 @@ class AdminController {
         header("Location: " . url("/admin/locations/countries"));
     }
 
-    /**
-     * GET /admin/locations/countries/{id}/edit
-     */
-    public function countriesEdit(int $id): void {
+    public function countriesEdit(string $id): void {
         Auth::requirePermission('settings.view');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("SELECT * FROM countries WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
@@ -766,13 +832,15 @@ class AdminController {
     /**
      * POST /admin/locations/countries/{id}/update
      */
-    public function countriesUpdate(int $id): void {
+    public function countriesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/locations/countries/$id/edit"));
+            header("Location: " . url("/admin/locations/countries/$encId/edit"));
             exit();
         }
 
@@ -783,7 +851,7 @@ class AdminController {
 
         if ($name === '' || $code === '') {
             $_SESSION['admin_errors'] = 'Country Name and ISO Code are required.';
-            header("Location: " . url("/admin/locations/countries/$id/edit"));
+            header("Location: " . url("/admin/locations/countries/$encId/edit"));
             exit();
         }
 
@@ -803,18 +871,20 @@ class AdminController {
         $this->logAction('country_update', 'locations', 'countries', $id, ['name' => $name]);
         $_SESSION['admin_success'] = 'Country updated successfully.';
         header("Location: " . url("/admin/locations/countries"));
+        exit();
     }
 
     /**
      * POST /admin/locations/countries/{id}/delete
      */
-    public function countriesDelete(int $id): void {
+    public function countriesDelete(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/locations/countries"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -822,7 +892,14 @@ class AdminController {
         $stmtCheck = $this->db->prepare("SELECT COUNT(*) FROM states WHERE country_id = ?");
         $stmtCheck->execute([$id]);
         if ((int)$stmtCheck->fetchColumn() > 0) {
-            $_SESSION['admin_errors'] = 'Cannot delete country: Related states/provinces exist. Delete states first.';
+            $msg = 'Cannot delete country: Related states/provinces exist. Delete states first.';
+            if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => $msg]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/countries"));
             exit();
         }
@@ -831,6 +908,12 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('country_delete', 'locations', 'countries', $id);
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Country deleted successfully.']);
+            exit();
+        }
         $_SESSION['admin_success'] = 'Country deleted successfully.';
         header("Location: " . url("/admin/locations/countries"));
     }
@@ -890,11 +973,9 @@ class AdminController {
         header("Location: " . url("/admin/locations/states"));
     }
 
-    /**
-     * GET /admin/locations/states/{id}/edit
-     */
-    public function statesEdit(int $id): void {
+    public function statesEdit(string $id): void {
         Auth::requirePermission('settings.view');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("SELECT * FROM states WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
@@ -918,13 +999,15 @@ class AdminController {
     /**
      * POST /admin/locations/states/{id}/update
      */
-    public function statesUpdate(int $id): void {
+    public function statesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/locations/states/$id/edit"));
+            header("Location: " . url("/admin/locations/states/$encId/edit"));
             exit();
         }
 
@@ -933,7 +1016,7 @@ class AdminController {
 
         if ($name === '' || $countryId === 0) {
             $_SESSION['admin_errors'] = 'State Name and Country are required.';
-            header("Location: " . url("/admin/locations/states/$id/edit"));
+            header("Location: " . url("/admin/locations/states/$encId/edit"));
             exit();
         }
 
@@ -943,18 +1026,20 @@ class AdminController {
         $this->logAction('state_update', 'locations', 'states', $id, ['name' => $name, 'country_id' => $countryId]);
         $_SESSION['admin_success'] = 'State updated successfully.';
         header("Location: " . url("/admin/locations/states"));
+        exit();
     }
 
     /**
      * POST /admin/locations/states/{id}/delete
      */
-    public function statesDelete(int $id): void {
+    public function statesDelete(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/locations/states"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -962,7 +1047,14 @@ class AdminController {
         $stmtCheck = $this->db->prepare("SELECT COUNT(*) FROM cities WHERE state_id = ?");
         $stmtCheck->execute([$id]);
         if ((int)$stmtCheck->fetchColumn() > 0) {
-            $_SESSION['admin_errors'] = 'Cannot delete state: Related cities exist. Delete cities first.';
+            $msg = 'Cannot delete state: Related cities exist. Delete cities first.';
+            if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => $msg]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/states"));
             exit();
         }
@@ -971,6 +1063,12 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('state_delete', 'locations', 'states', $id);
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'State deleted successfully.']);
+            exit();
+        }
         $_SESSION['admin_success'] = 'State deleted successfully.';
         header("Location: " . url("/admin/locations/states"));
     }
@@ -1031,11 +1129,9 @@ class AdminController {
         header("Location: " . url("/admin/locations/cities"));
     }
 
-    /**
-     * GET /admin/locations/cities/{id}/edit
-     */
-    public function citiesEdit(int $id): void {
+    public function citiesEdit(string $id): void {
         Auth::requirePermission('settings.view');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("
             SELECT c.*, s.country_id 
@@ -1067,13 +1163,15 @@ class AdminController {
     /**
      * POST /admin/locations/cities/{id}/update
      */
-    public function citiesUpdate(int $id): void {
+    public function citiesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/locations/cities/$id/edit"));
+            header("Location: " . url("/admin/locations/cities/$encId/edit"));
             exit();
         }
 
@@ -1082,7 +1180,7 @@ class AdminController {
 
         if ($name === '' || $stateId === 0) {
             $_SESSION['admin_errors'] = 'City Name and State are required.';
-            header("Location: " . url("/admin/locations/cities/$id/edit"));
+            header("Location: " . url("/admin/locations/cities/$encId/edit"));
             exit();
         }
 
@@ -1092,18 +1190,20 @@ class AdminController {
         $this->logAction('city_update', 'locations', 'cities', $id, ['name' => $name, 'state_id' => $stateId]);
         $_SESSION['admin_success'] = 'City updated successfully.';
         header("Location: " . url("/admin/locations/cities"));
+        exit();
     }
 
     /**
      * POST /admin/locations/cities/{id}/delete
      */
-    public function citiesDelete(int $id): void {
+    public function citiesDelete(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/locations/cities"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -1111,6 +1211,12 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('city_delete', 'locations', 'cities', $id);
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'City deleted successfully.']);
+            exit();
+        }
         $_SESSION['admin_success'] = 'City deleted successfully.';
         header("Location: " . url("/admin/locations/cities"));
     }
@@ -1165,11 +1271,9 @@ class AdminController {
         header("Location: " . url("/admin/academic/fields"));
     }
 
-    /**
-     * GET /admin/academic/fields/{id}/edit
-     */
-    public function fieldsEdit(int $id): void {
+    public function fieldsEdit(string $id): void {
         Auth::requirePermission('settings.view');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("SELECT * FROM fields_of_study WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
@@ -1190,13 +1294,15 @@ class AdminController {
     /**
      * POST /admin/academic/fields/{id}/update
      */
-    public function fieldsUpdate(int $id): void {
+    public function fieldsUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/fields/$id/edit"));
+            header("Location: " . url("/admin/academic/fields/$encId/edit"));
             exit();
         }
 
@@ -1205,7 +1311,7 @@ class AdminController {
 
         if ($name === '') {
             $_SESSION['admin_errors'] = 'Field Name is required.';
-            header("Location: " . url("/admin/academic/fields/$id/edit"));
+            header("Location: " . url("/admin/academic/fields/$encId/edit"));
             exit();
         }
 
@@ -1215,18 +1321,20 @@ class AdminController {
         $this->logAction('field_update', 'academic', 'fields_of_study', $id, ['name' => $name]);
         $_SESSION['admin_success'] = 'Field of Study updated successfully.';
         header("Location: " . url("/admin/academic/fields"));
+        exit();
     }
 
     /**
      * POST /admin/academic/fields/{id}/delete
      */
-    public function fieldsDelete(int $id): void {
+    public function fieldsDelete(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/fields"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -1234,6 +1342,12 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('field_delete', 'academic', 'fields_of_study', $id);
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Field deleted successfully.']);
+            exit();
+        }
         $_SESSION['admin_success'] = 'Field of Study deleted successfully.';
         header("Location: " . url("/admin/academic/fields"));
     }
@@ -1286,11 +1400,9 @@ class AdminController {
         header("Location: " . url("/admin/academic/degrees"));
     }
 
-    /**
-     * GET /admin/academic/degrees/{id}/edit
-     */
-    public function degreesEdit(int $id): void {
+    public function degreesEdit(string $id): void {
         Auth::requirePermission('settings.view');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("SELECT * FROM degree_levels WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
@@ -1311,13 +1423,15 @@ class AdminController {
     /**
      * POST /admin/academic/degrees/{id}/update
      */
-    public function degreesUpdate(int $id): void {
+    public function degreesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/degrees/$id/edit"));
+            header("Location: " . url("/admin/academic/degrees/$encId/edit"));
             exit();
         }
 
@@ -1327,7 +1441,7 @@ class AdminController {
 
         if ($name === '') {
             $_SESSION['admin_errors'] = 'Degree Level Name is required.';
-            header("Location: " . url("/admin/academic/degrees/$id/edit"));
+            header("Location: " . url("/admin/academic/degrees/$encId/edit"));
             exit();
         }
 
@@ -1337,18 +1451,20 @@ class AdminController {
         $this->logAction('degree_update', 'academic', 'degree_levels', $id, ['name' => $name]);
         $_SESSION['admin_success'] = 'Degree Level updated successfully.';
         header("Location: " . url("/admin/academic/degrees"));
+        exit();
     }
 
     /**
      * POST /admin/academic/degrees/{id}/delete
      */
-    public function degreesDelete(int $id): void {
+    public function degreesDelete(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/degrees"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -1356,6 +1472,12 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('degree_delete', 'academic', 'degree_levels', $id);
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Degree Level deleted successfully.']);
+            exit();
+        }
         $_SESSION['admin_success'] = 'Degree Level deleted successfully.';
         header("Location: " . url("/admin/academic/degrees"));
     }
@@ -1407,11 +1529,9 @@ class AdminController {
         header("Location: " . url("/admin/academic/funding"));
     }
 
-    /**
-     * GET /admin/academic/funding/{id}/edit
-     */
-    public function fundingEdit(int $id): void {
+    public function fundingEdit(string $id): void {
         Auth::requirePermission('settings.view');
+        $id = $this->resolveId($id);
 
         $stmt = $this->db->prepare("SELECT * FROM funding_types WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
@@ -1432,13 +1552,15 @@ class AdminController {
     /**
      * POST /admin/academic/funding/{id}/update
      */
-    public function fundingUpdate(int $id): void {
+    public function fundingUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id);
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/funding/$id/edit"));
+            header("Location: " . url("/admin/academic/funding/$encId/edit"));
             exit();
         }
 
@@ -1447,7 +1569,7 @@ class AdminController {
 
         if ($name === '') {
             $_SESSION['admin_errors'] = 'Funding Type Name is required.';
-            header("Location: " . url("/admin/academic/funding/$id/edit"));
+            header("Location: " . url("/admin/academic/funding/$encId/edit"));
             exit();
         }
 
@@ -1457,18 +1579,20 @@ class AdminController {
         $this->logAction('funding_update', 'academic', 'funding_types', $id, ['name' => $name]);
         $_SESSION['admin_success'] = 'Funding Type updated successfully.';
         header("Location: " . url("/admin/academic/funding"));
+        exit();
     }
 
     /**
      * POST /admin/academic/funding/{id}/delete
      */
-    public function fundingDelete(int $id): void {
+    public function fundingDelete(string $id): void {
         Auth::requirePermission('settings.edit');
+        $id = $this->resolveId($id, true);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/funding"));
+            http_response_code(400);
+            echo json_encode(['error' => 'CSRF verification failed']);
             exit();
         }
 
@@ -1476,6 +1600,12 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('funding_delete', 'academic', 'funding_types', $id);
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'Funding Type deleted successfully.']);
+            exit();
+        }
         $_SESSION['admin_success'] = 'Funding Type deleted successfully.';
         header("Location: " . url("/admin/academic/funding"));
     }
@@ -1806,5 +1936,551 @@ class AdminController {
         $this->logAction('profile_update', 'profile', 'users', $user['id']);
         $_SESSION['admin_success'] = 'Profile updated successfully.';
         header("Location: " . url("/admin/profile"));
+    }
+
+    public function usersData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('users.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $customWhere = "role = 'visitor'";
+        $customParams = [];
+        if (!empty($_GET['status'])) {
+            $customWhere .= " AND status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        if (isset($_GET['email_verified']) && $_GET['email_verified'] !== '') {
+            $customWhere .= " AND is_email_verified = :is_email_verified";
+            $customParams['is_email_verified'] = (int)$_GET['email_verified'];
+        }
+        $columns = [
+            'id' => 'id',
+            'first_name' => 'first_name',
+            'last_name' => 'last_name',
+            'email' => 'email',
+            'phone' => 'phone',
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'is_email_verified' => 'is_email_verified'
+        ];
+        $searchableColumns = ['first_name', 'last_name', 'email', 'phone', 'status'];
+        $columnMapping = [
+            'first_name' => 'first_name',
+            'last_name' => 'last_name',
+            'email' => 'email',
+            'phone' => 'phone',
+            'status' => 'status',
+            'created_at' => 'created_at'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'users',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            [],
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function employeesData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('employees.manage')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $customWhere = "role IN ('admin', 'employee')";
+        $customParams = [];
+        if (!empty($_GET['role'])) {
+            $customWhere .= " AND role = :role";
+            $customParams['role'] = $_GET['role'];
+        }
+        if (!empty($_GET['status'])) {
+            $customWhere .= " AND status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        $columns = [
+            'id' => 'id',
+            'first_name' => 'first_name',
+            'last_name' => 'last_name',
+            'email' => 'email',
+            'role' => 'role',
+            'status' => 'status',
+            'created_at' => 'created_at'
+        ];
+        $searchableColumns = ['first_name', 'last_name', 'email', 'role', 'status'];
+        $columnMapping = [
+            'first_name' => 'first_name',
+            'last_name' => 'last_name',
+            'email' => 'email',
+            'role' => 'role',
+            'status' => 'status',
+            'created_at' => 'created_at'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'users',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            [],
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function countriesData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'id',
+            'name' => 'name',
+            'iso2' => 'iso2',
+            'iso3' => 'iso3',
+            'phone_code' => 'phone_code'
+        ];
+        $searchableColumns = ['name', 'iso2', 'iso3', 'phone_code'];
+        $columnMapping = [
+            'name' => 'name',
+            'iso2' => 'iso2',
+            'iso3' => 'iso3',
+            'phone_code' => 'phone_code'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'countries',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            [],
+            '',
+            [],
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function statesData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'states.id',
+            'name' => 'states.name',
+            'country_name' => 'countries.name'
+        ];
+        $joins = ['JOIN countries ON states.country_id = countries.id'];
+        $searchableColumns = ['states.name', 'countries.name'];
+        $columnMapping = [
+            'name' => 'states.name',
+            'country_name' => 'countries.name'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'states',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            '',
+            [],
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function citiesData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'cities.id',
+            'name' => 'cities.name',
+            'state_name' => 'states.name',
+            'country_name' => 'countries.name'
+        ];
+        $joins = [
+            'JOIN states ON cities.state_id = states.id',
+            'JOIN countries ON states.country_id = countries.id'
+        ];
+        $searchableColumns = ['cities.name', 'states.name', 'countries.name'];
+        $columnMapping = [
+            'name' => 'cities.name',
+            'state_name' => 'states.name',
+            'country_name' => 'countries.name'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'cities',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            '',
+            [],
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function fieldsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'id',
+            'name' => 'name',
+            'status' => 'status'
+        ];
+        $searchableColumns = ['name', 'status'];
+        $columnMapping = [
+            'name' => 'name',
+            'status' => 'status'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'academic_fields',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            [],
+            '',
+            [],
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function degreesData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'id',
+            'name' => 'name',
+            'status' => 'status'
+        ];
+        $searchableColumns = ['name', 'status'];
+        $columnMapping = [
+            'name' => 'name',
+            'status' => 'status'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'degree_levels',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            [],
+            '',
+            [],
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function fundingData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'id',
+            'name' => 'name',
+            'status' => 'status'
+        ];
+        $searchableColumns = ['name', 'status'];
+        $columnMapping = [
+            'name' => 'name',
+            'status' => 'status'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'funding_types',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            [],
+            '',
+            [],
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                unset($row['id']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function paymentsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        
+        $customWhere = "";
+        $customParams = [];
+        if (!empty($_GET['status'])) {
+            $customWhere = "payments.status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['gateway'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "payments.gateway = :gateway";
+            $customParams['gateway'] = $_GET['gateway'];
+        }
+        if (!empty($_GET['currency'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "payments.currency = :currency";
+            $customParams['currency'] = $_GET['currency'];
+        }
+
+        $columns = [
+            'id' => 'payments.id',
+            'transaction_id' => 'payments.transaction_id',
+            'gateway' => 'payments.gateway',
+            'amount' => 'payments.amount',
+            'currency' => 'payments.currency',
+            'status' => 'payments.status',
+            'created_at' => 'payments.created_at',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name'
+        ];
+        $joins = ['JOIN users ON payments.user_id = users.id'];
+        $searchableColumns = ['payments.transaction_id', 'payments.gateway', 'users.first_name', 'users.last_name'];
+        $columnMapping = [
+            'transaction_id' => 'payments.transaction_id',
+            'gateway' => 'payments.gateway',
+            'amount' => 'payments.amount',
+            'currency' => 'payments.currency',
+            'status' => 'payments.status',
+            'created_at' => 'payments.created_at'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'payments',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                $row['user_name'] = e($row['first_name'] . ' ' . $row['last_name']);
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function subscriptionsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        
+        $customWhere = "";
+        $customParams = [];
+        if (!empty($_GET['status'])) {
+            $customWhere = "subscriptions.status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+
+        $columns = [
+            'id' => 'subscriptions.id',
+            'plan_name' => 'subscriptions.plan_name',
+            'status' => 'subscriptions.status',
+            'starts_at' => 'subscriptions.starts_at',
+            'ends_at' => 'subscriptions.ends_at',
+            'created_at' => 'subscriptions.created_at',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name'
+        ];
+        $joins = ['JOIN users ON subscriptions.user_id = users.id'];
+        $searchableColumns = ['subscriptions.plan_name', 'users.first_name', 'users.last_name'];
+        $columnMapping = [
+            'plan_name' => 'subscriptions.plan_name',
+            'status' => 'subscriptions.status',
+            'starts_at' => 'subscriptions.starts_at',
+            'ends_at' => 'subscriptions.ends_at',
+            'created_at' => 'subscriptions.created_at'
+        ];
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'subscriptions',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                $row['user_name'] = e($row['first_name'] . ' ' . $row['last_name']);
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function auditLogsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        $columns = [
+            'id' => 'audit_logs.id',
+            'action' => 'audit_logs.action',
+            'module' => 'audit_logs.module',
+            'description' => 'audit_logs.description',
+            'resource_type' => 'audit_logs.resource_type',
+            'resource_id' => 'audit_logs.resource_id',
+            'ip_address' => 'audit_logs.ip_address',
+            'user_agent' => 'audit_logs.user_agent',
+            'created_at' => 'audit_logs.created_at',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'actor_email' => 'users.email'
+        ];
+        $joins = ['LEFT JOIN users ON audit_logs.user_id = users.id'];
+        $searchableColumns = ['audit_logs.action', 'audit_logs.module', 'audit_logs.description', 'users.first_name', 'users.last_name', 'users.email', 'audit_logs.ip_address'];
+        $columnMapping = [
+            'action' => 'audit_logs.action',
+            'module' => 'audit_logs.module',
+            'description' => 'audit_logs.description',
+            'created_at' => 'audit_logs.created_at'
+        ];
+        $extraWhere = '';
+        $extraParams = [];
+        $selectedModule = $_GET['module'] ?? '';
+        if ($selectedModule !== '') {
+            $extraWhere = 'audit_logs.module = :selected_module';
+            $extraParams = ['selected_module' => $selectedModule];
+        }
+
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'audit_logs',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $extraWhere,
+            $extraParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                $row['actor'] = $row['first_name'] ? e($row['first_name'] . ' ' . $row['last_name']) : 'System';
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
     }
 }

@@ -295,8 +295,13 @@ class ApplicationController {
      * GET /applications/{id}
      * Displays tracking details, documents checklist status, matching indicators and logs
      */
-    public function show(int $id): void {
+    public function show(string $id): void {
         Auth::requireAuth();
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid application ID.");
+        }
+        $id = $rawId;
         $userId = Auth::userId();
 
         $stmt = $this->db->prepare("
@@ -375,14 +380,20 @@ class ApplicationController {
      * POST /applications/{id}/update
      * Updates status, notes, references, and logs transitions
      */
-    public function update(int $id): void {
+    public function update(string $id): void {
         Auth::requireAuth();
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid application ID.");
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
         $userId = Auth::userId();
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['application_errors'] = ['csrf' => 'CSRF verification failed. Please try again.'];
-            header("Location: " . url('/applications/' . $id));
+            header("Location: " . url('/applications/' . $encId));
             $this->halt();
         }
 
@@ -480,7 +491,7 @@ class ApplicationController {
 
         if (!empty($errors)) {
             $_SESSION['application_errors'] = $errors;
-            header("Location: " . url('/applications/' . $id));
+            header("Location: " . url('/applications/' . $encId));
             $this->halt();
         }
 
@@ -530,7 +541,7 @@ class ApplicationController {
         }
 
         $_SESSION['application_success'] = 'Application tracker updated successfully.';
-        header("Location: " . url('/applications/' . $id));
+        header("Location: " . url('/applications/' . $encId));
         $this->halt();
     }
 
@@ -538,14 +549,20 @@ class ApplicationController {
      * POST /applications/{id}/delete
      * Removes application tracker record
      */
-    public function delete(int $id): void {
+    public function delete(string $id): void {
         Auth::requireAuth();
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid application ID.");
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
         $userId = Auth::userId();
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['application_errors'] = ['csrf' => 'CSRF verification failed. Please try again.'];
-            header("Location: " . url('/applications/' . $id));
+            header("Location: " . url('/applications/' . $encId));
             $this->halt();
         }
 
@@ -677,9 +694,14 @@ class ApplicationController {
      * GET /admin/applications/{id}
      * Admin view details review page (with user personal notes masked)
      */
-    public function adminShow(int $id): void {
+    public function adminShow(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('applications.view');
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid application ID.");
+        }
+        $id = $rawId;
 
         $stmt = $this->db->prepare("
             SELECT sa.*, u.first_name, u.last_name, u.email as user_email, s.title as scholarship_title, s.application_deadline, s.slug
@@ -738,14 +760,20 @@ class ApplicationController {
      * POST /admin/applications/{id}/status
      * Admin status review change updates and notification triggers
      */
-    public function adminUpdateStatus(int $id): void {
+    public function adminUpdateStatus(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('applications.review');
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            $this->dieWithError(404, "Invalid application ID.");
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_app_error'] = 'CSRF verification failed.';
-            header("Location: " . url('/admin/applications/' . $id));
+            header("Location: " . url('/admin/applications/' . $encId));
             $this->halt();
         }
 
@@ -773,7 +801,7 @@ class ApplicationController {
 
             if (!in_array($status, $this->allowedStatuses)) {
                 $_SESSION['admin_app_error'] = 'Invalid status selected.';
-                header("Location: " . url('/admin/applications/' . $id));
+                header("Location: " . url('/admin/applications/' . $encId));
                 $this->halt();
             }
 
@@ -846,5 +874,70 @@ class ApplicationController {
         $_SESSION['admin_app_success'] = 'Application status updated successfully.';
         header("Location: " . url('/admin/applications'));
         $this->halt();
+    }
+
+    public function applicationsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('scholarships.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+        $db = \App\Services\Database::connection();
+        
+        $customWhere = "";
+        $customParams = [];
+        
+        if (!empty($_GET['status'])) {
+            $customWhere = "scholarship_applications.status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['scholarship_id'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "scholarship_applications.scholarship_id = :scholarship_id";
+            $customParams['scholarship_id'] = $_GET['scholarship_id'];
+        }
+        
+        $columns = [
+            'id' => 'scholarship_applications.id',
+            'status' => 'scholarship_applications.status',
+            'created_at' => 'scholarship_applications.created_at',
+            'scholarship_title' => 'scholarships.title',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'user_email' => 'users.email',
+            'application_deadline' => 'scholarships.application_deadline'
+        ];
+        $joins = [
+            'JOIN scholarships ON scholarship_applications.scholarship_id = scholarships.id',
+            'JOIN users ON scholarship_applications.user_id = users.id'
+        ];
+        $searchableColumns = ['scholarships.title', 'scholarship_applications.status', 'users.first_name', 'users.last_name', 'users.email'];
+        $columnMapping = [
+            'status' => 'scholarship_applications.status',
+            'created_at' => 'scholarship_applications.created_at',
+            'scholarship_title' => 'scholarships.title'
+        ];
+        
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'scholarship_applications',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                $row['student_name'] = e($row['first_name'] . ' ' . $row['last_name']);
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
     }
 }

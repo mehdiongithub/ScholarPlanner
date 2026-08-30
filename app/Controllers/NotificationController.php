@@ -123,9 +123,17 @@ class NotificationController {
      * GET /admin/notifications/{id}
      * Inspect individual outbox logs
      */
-    public function show(int $id): void {
+    public function show(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('notifications.view');
+
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            http_response_code(404);
+            view('errors.404');
+            exit();
+        }
+        $id = $rawId;
 
         $stmt = $this->db->prepare("
             SELECT nl.*, u.first_name, u.last_name, u.email as user_email, s.title as scholarship_title 
@@ -150,9 +158,18 @@ class NotificationController {
      * POST /admin/notifications/{id}/retry
      * Force retry of failed queue messages
      */
-    public function retry(int $id): void {
+    public function retry(string $id): void {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('notifications.retry');
+
+        $rawId = decode_id($id);
+        if ($rawId === null) {
+            http_response_code(404);
+            view('errors.404');
+            exit();
+        }
+        $id = $rawId;
+        $encId = encode_id($id);
 
         // CSRF Guard
         $csrf = $_POST['csrf_token'] ?? null;
@@ -171,7 +188,7 @@ class NotificationController {
             $_SESSION['notification_error'] = "Could not retry the notification. Only failed or retrying notifications can be retried.";
         }
 
-        header("Location: " . url("/admin/notifications/$id"));
+        header("Location: " . url("/admin/notifications/$encId"));
         exit();
     }
 }

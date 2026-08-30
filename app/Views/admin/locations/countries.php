@@ -41,6 +41,23 @@
         color: var(--primary);
         border-bottom-color: var(--primary);
     }
+    .employees-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .employees-table th, .employees-table td {
+        padding: 14px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-slate-200);
+    }
+    .employees-table th {
+        background-color: var(--bg-slate-50);
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.8125rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
 </style>
 
 <div style="margin-bottom: 24px;">
@@ -50,9 +67,9 @@
 
 <!-- Navigation Tabs -->
 <div class="location-nav">
-    <a href="/admin/locations/countries" class="location-nav-link active">Countries</a>
-    <a href="/admin/locations/states" class="location-nav-link">States / Provinces</a>
-    <a href="/admin/locations/cities" class="location-nav-link">Cities</a>
+    <a href="<?= url('/admin/locations/countries') ?>" class="location-nav-link active">Countries</a>
+    <a href="<?= url('/admin/locations/states') ?>" class="location-nav-link">States / Provinces</a>
+    <a href="<?= url('/admin/locations/cities') ?>" class="location-nav-link">Cities</a>
 </div>
 
 <div class="location-layout">
@@ -60,7 +77,7 @@
     <div>
         <div class="form-card">
             <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add New Country</h2>
-            <form action="/admin/locations/countries" method="POST">
+            <form action="<?= url('/admin/locations/countries') ?>" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
                 
                 <div class="form-group">
@@ -92,7 +109,7 @@
     <div>
         <div class="data-table-card">
             <div style="overflow-x: auto;">
-                <table class="employees-table">
+                <table class="employees-table" id="countries-datatable" style="width:100%">
                     <thead>
                         <tr>
                             <th>Country Name</th>
@@ -103,32 +120,88 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($countries)): ?>
-                            <tr>
-                                <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px;">No countries registered in system.</td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($countries as $c): ?>
-                                <tr>
-                                    <td><strong><?= e($c['name']) ?></strong></td>
-                                    <td><code><?= e($c['iso_code']) ?></code></td>
-                                    <td><?= e($c['currency_code'] ?? '-') ?></td>
-                                    <td><?= e($c['dial_code'] ?? '-') ?></td>
-                                    <td>
-                                        <a href="/admin/locations/countries/<?= $c['id'] ?>/edit" class="action-link">Edit</a>
-                                        <form action="/admin/locations/countries/<?= $c['id'] ?>/delete" method="POST" onsubmit="return confirm('Delete this country? This will fail if states are mapped.');" style="display: inline;">
-                                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
-                                            <button type="submit" class="action-link danger" style="background: none; border: none; cursor: pointer; font-family: inherit;">Delete</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+$(document).ready(function() {
+    $('#countries-datatable').DataTable({
+        processing: true,
+        serverSide: true,
+        responsive: true,
+        ajax: {
+            url: '<?= url("/admin/countries/data") ?>',
+            type: 'GET'
+        },
+        columns: [
+            { 
+                data: 'name',
+                render: function(data, type, row) {
+                    return '<strong>' + data + '</strong>';
+                }
+            },
+            { 
+                data: 'iso_code',
+                render: function(data, type, row) {
+                    return '<code>' + data + '</code>';
+                }
+            },
+            { 
+                data: 'currency_code',
+                render: function(data, type, row) {
+                    return data ? data : '-';
+                }
+            },
+            { 
+                data: 'dial_code',
+                render: function(data, type, row) {
+                    return data ? data : '-';
+                }
+            },
+            {
+                data: null,
+                orderable: false,
+                render: function(data, type, row) {
+                    var editUrl = '<?= url("/admin/locations/countries") ?>' + '/' + row.record_id + '/edit';
+                    return '<a href="' + editUrl + '" class="action-link">Edit</a>' +
+                           '<a href="javascript:void(0)" onclick="deleteCountry(\'' + row.record_id + '\')" class="action-link danger">Delete</a>';
+                }
+            }
+        ]
+    });
+});
+
+function deleteCountry(recordId) {
+    if (!confirm('Are you sure you want to delete this country? This will fail if states are mapped.')) {
+        return;
+    }
+    const formData = new FormData();
+    formData.append('csrf_token', '<?= Security::csrfToken() ?>');
+
+    fetch('<?= url("/admin/locations/countries") ?>/' + recordId + '/delete', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            $('#countries-datatable').DataTable().ajax.reload(null, false);
+        } else {
+            alert(data.error || 'Failed to delete country.');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert('An error occurred during communication.');
+    });
+}
+</script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

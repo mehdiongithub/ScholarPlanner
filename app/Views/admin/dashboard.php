@@ -27,6 +27,11 @@
         gap: 20px;
         margin-bottom: 30px;
     }
+    @media (max-width: 480px) {
+        .dashboard-stats {
+            grid-template-columns: 1fr !important;
+        }
+    }
     .stat-box {
         background: #fff;
         border: 1px solid var(--border-slate-200);
@@ -64,6 +69,17 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+    .stat-trend {
+        font-size: 0.7rem;
+        font-weight: 600;
+        margin-top: 2px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+    }
+    .stat-trend.up {
+        color: #10b981;
     }
 
     /* Action Center */
@@ -187,6 +203,48 @@
     <p>Manage scholarships, students, applications and the ScholarMatch platform.</p>
 </div>
 
+<!-- Admin Quick Actions -->
+<div class="card" style="margin-bottom: 24px;">
+    <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin: 0 0 16px 0;">Quick Actions</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+        <?php if (\App\Services\Auth::hasPermission('scholarships.create')): ?>
+            <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary" style="width: auto; display: inline-flex; align-items: center; gap: 8px;">
+                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> Add Scholarship
+            </a>
+        <?php endif; ?>
+
+        <?php if (\App\Services\Auth::hasPermission('scholarships.view')): ?>
+            <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="award" style="width: 16px; height: 16px;"></i> Manage Scholarships
+            </a>
+        <?php endif; ?>
+
+        <?php if (\App\Services\Auth::hasPermission('users.view')): ?>
+            <a href="<?= url('/admin/users') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="users" style="width: 16px; height: 16px;"></i> Manage Students
+            </a>
+        <?php endif; ?>
+
+        <?php if (\App\Services\Auth::hasPermission('employees.manage')): ?>
+            <a href="<?= url('/admin/employees/create') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i> Add Employee
+            </a>
+        <?php endif; ?>
+
+        <?php if (\App\Services\Auth::currentUser()['role_name'] === 'admin'): ?>
+            <a href="<?= url('/admin/institutions') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="building-2" style="width: 16px; height: 16px;"></i> Review Institutions
+            </a>
+        <?php endif; ?>
+
+        <?php if (\App\Services\Auth::hasPermission('applications.view')): ?>
+            <a href="<?= url('/admin/applications') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="file-text" style="width: 16px; height: 16px;"></i> View Applications
+            </a>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- Primary KPIs Grid -->
 <div class="dashboard-stats">
     <div class="stat-box">
@@ -194,6 +252,7 @@
         <div class="stat-info">
             <div class="stat-value"><?= number_format($stats['total_scholarships']) ?></div>
             <div class="stat-label">Total Scholarships</div>
+            <div class="stat-trend up">+<?= $stats['new_scholarships_30d'] ?> this month</div>
         </div>
     </div>
     <div class="stat-box">
@@ -225,43 +284,53 @@
         <div class="stat-info">
             <div class="stat-value"><?= number_format($stats['total_users']) ?></div>
             <div class="stat-label">Total Students</div>
+            <div class="stat-trend up">+<?= $stats['new_students_30d'] ?> this month</div>
         </div>
     </div>
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #eff6ff; color: #2563eb;"><i data-lucide="check-circle"></i></div>
         <div class="stat-info">
             <div class="stat-value"><?= number_format($stats['verified_users']) ?></div>
-            <div class="stat-label">Verified Students</div>
+            <div class="stat-label">Email Verified</div>
         </div>
     </div>
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #fffbeb; color: #ea580c;"><i data-lucide="user-x"></i></div>
         <div class="stat-info">
             <div class="stat-value"><?= number_format($stats['pending_users']) ?></div>
-            <div class="stat-label">Pending Verify</div>
+            <div class="stat-label">Email Not Verified</div>
         </div>
     </div>
+    <div class="stat-box">
+        <div class="stat-icon" style="background-color: #fef2f2; color: #ef4444;"><i data-lucide="shield-alert"></i></div>
+        <div class="stat-info">
+            <div class="stat-value"><?= number_format($stats['suspended_users']) ?></div>
+            <div class="stat-label">Suspended</div>
+        </div>
+    </div>
+</div>
+
+<div class="dashboard-stats" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #faf5ff; color: #a855f7;"><i data-lucide="file-check"></i></div>
         <div class="stat-info">
             <div class="stat-value"><?= number_format($stats['total_applications']) ?></div>
             <div class="stat-label">Total Applications</div>
+            <div class="stat-trend up">+<?= $stats['new_applications_30d'] ?> this month</div>
         </div>
     </div>
-</div>
-
-<div class="dashboard-stats" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #ecfdf5; color: #047857;"><i data-lucide="credit-card"></i></div>
         <div class="stat-info">
             <div class="stat-value"><?= number_format($stats['active_subscriptions']) ?></div>
             <div class="stat-label">Active Subscriptions</div>
+            <div class="stat-trend up">+<?= $stats['new_subscriptions_30d'] ?> this month</div>
         </div>
     </div>
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #eff6ff; color: #1e40af;"><i data-lucide="dollar-sign"></i></div>
         <div class="stat-info">
-            <div class="stat-value">$<?= number_format($stats['total_revenue'], 2) ?></div>
+            <div class="stat-value"><?= e($stats['formatted_revenue']) ?></div>
             <div class="stat-label">Total Revenue Generated</div>
         </div>
     </div>
@@ -323,7 +392,7 @@
 
         <?php if ($stats['pending_scholarships'] == 0 && $stats['pending_institutions'] == 0 && $stats['pending_users'] == 0 && $stats['pending_applications'] == 0 && $stats['payment_issues'] == 0): ?>
             <div style="text-align: center; color: #166534; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 16px; font-weight: 600; font-size: 0.875rem;">
-                ✔ Everything matches and is completely processed! No actions required.
+                ✔ You're all caught up. No action is required.
             </div>
         <?php endif; ?>
     </div>
@@ -367,31 +436,93 @@
                 <table class="sch-table">
                     <thead>
                         <tr>
-                            <th>Scholarship</th>
+                            <th>Image</th>
+                            <th>Title</th>
                             <th>Provider</th>
                             <th>Country</th>
+                            <th>Degree Level</th>
                             <th>Deadline</th>
                             <th>Status</th>
+                            <th>Created Date</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($recent_scholarships)): ?>
                             <tr>
-                                <td colspan="6" style="text-align: center; color: #94a3b8; padding: 16px;">No scholarships found.</td>
+                                <td colspan="9" style="text-align: center; color: #94a3b8; padding: 24px;">
+                                    <div style="margin-bottom: 12px;">No scholarships have been added yet.</div>
+                                    <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary btn-sm" style="display: inline-block; width: auto;">Add Scholarship</a>
+                                </td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($recent_scholarships as $rs): ?>
+                                <?php 
+                                    $imgUrl = !empty($rs['cover_image']) ? asset($rs['cover_image']) : asset('assets/images/default-scholarship.svg');
+                                    
+                                    if (empty($rs['application_deadline'])) {
+                                        $deadlineText = 'Rolling';
+                                        $deadlineSub = '';
+                                        $deadlineColor = '#64748b';
+                                    } else {
+                                        $deadlineDate = strtotime($rs['application_deadline']);
+                                        $deadlineText = date('M d, Y', $deadlineDate);
+                                        $today = strtotime(date('Y-m-d'));
+                                        $diff = ($deadlineDate - $today) / 86400;
+                                        
+                                        if ($diff < 0) {
+                                            $deadlineSub = 'Expired';
+                                            $deadlineColor = '#ef4444';
+                                        } elseif ($diff == 0) {
+                                            $deadlineSub = 'Closing today';
+                                            $deadlineColor = '#ea580c';
+                                        } elseif ($diff == 1) {
+                                            $deadlineSub = '1 day left';
+                                            $deadlineColor = '#ea580c';
+                                        } elseif ($diff <= 7) {
+                                            $deadlineSub = $diff . ' days left';
+                                            $deadlineColor = '#ca8a04';
+                                        } else {
+                                            $deadlineSub = '';
+                                            $deadlineColor = '#64748b';
+                                        }
+                                    }
+
+                                    $statusClass = 'status-badge ';
+                                    $statusText = ucfirst(e($rs['status']));
+                                    if ($rs['status'] === 'published') {
+                                        if (!empty($rs['application_deadline']) && strtotime($rs['application_deadline']) < strtotime(date('Y-m-d'))) {
+                                            $statusClass .= 'suspended';
+                                            $statusText = 'Expired';
+                                        } else {
+                                            $statusClass .= 'active';
+                                        }
+                                    } elseif ($rs['status'] === 'draft') {
+                                        $statusClass .= 'pending';
+                                    } else {
+                                        $statusClass .= 'suspended';
+                                    }
+                                ?>
                                 <tr>
+                                    <td>
+                                        <img src="<?= $imgUrl ?>" alt="Cover" style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover;">
+                                    </td>
                                     <td>
                                         <strong><?= e($rs['title']) ?></strong>
                                     </td>
                                     <td><?= e($rs['provider_name']) ?></td>
-                                    <td><?= e($rs['country_name'] ?? 'Multiple') ?></td>
-                                    <td><?= $rs['application_deadline'] ? date('M d, Y', strtotime($rs['application_deadline'])) : 'Rolling' ?></td>
+                                    <td><?= e($rs['country_name'] ?? 'Global') ?></td>
+                                    <td><?= e($rs['study_level'] ?? 'N/A') ?></td>
                                     <td>
-                                        <span class="status-badge <?= $rs['status'] === 'published' ? 'active' : ($rs['status'] === 'draft' ? 'pending' : 'suspended') ?>"><?= e($rs['status']) ?></span>
+                                        <div><?= e($deadlineText) ?></div>
+                                        <?php if ($deadlineSub): ?>
+                                            <div style="font-size: 0.7rem; font-weight: 600; color: <?= $deadlineColor ?>;"><?= $deadlineSub ?></div>
+                                        <?php endif; ?>
                                     </td>
+                                    <td>
+                                        <span class="<?= $statusClass ?>"><?= $statusText ?></span>
+                                    </td>
+                                    <td style="color: #64748b;"><?= date('M d, Y', strtotime($rs['created_at'])) ?></td>
                                     <td>
                                         <a href="<?= url('/admin/scholarships/' . $rs['id'] . '/edit') ?>" class="action-link">Edit</a>
                                     </td>
@@ -434,11 +565,16 @@
                                         <span class="status-badge <?= $st['email_verified_at'] ? 'active' : 'suspended' ?>"><?= $st['email_verified_at'] ? 'Verified' : 'Pending' ?></span>
                                     </td>
                                     <td>
-                                        <?php if ($st['has_edu'] > 0 && $st['has_pref'] > 0): ?>
-                                            <span style="color: #16a34a; font-weight: 600;">Completed</span>
-                                        <?php else: ?>
-                                            <span style="color: #ea580c; font-weight: 500;">Incomplete</span>
-                                        <?php endif; ?>
+                                        <?php 
+                                            $pct = (int)($st['completion_percentage'] ?? 0);
+                                            $color = '#ea580c';
+                                            if ($pct >= 80) {
+                                                $color = '#16a34a';
+                                            } elseif ($pct >= 40) {
+                                                $color = '#ca8a04';
+                                            }
+                                        ?>
+                                        <span style="color: <?= $color ?>; font-weight: 600;"><?= $pct ?>%</span>
                                     </td>
                                     <td style="color: #64748b;"><?= date('M d, Y', strtotime($st['created_at'])) ?></td>
                                 </tr>
@@ -459,12 +595,19 @@
             </h2>
             <div style="display: flex; flex-direction: column; gap: 16px;">
                 <?php if (empty($recent_logs)): ?>
-                    <div style="text-align: center; color: #94a3b8; padding: 16px;">No records.</div>
+                    <div style="text-align: center; color: #94a3b8; padding: 16px;">No recent activity.</div>
                 <?php else: ?>
                     <?php foreach ($recent_logs as $log): ?>
+                        <?php
+                            $actor = trim(($log['first_name'] ?? '') . ' ' . ($log['last_name'] ?? ''));
+                            if (empty($actor)) {
+                                $actor = 'System';
+                            }
+                            $actionText = ucfirst(str_replace('_', ' ', $log['action']));
+                        ?>
                         <div style="border-bottom: 1px solid var(--border-slate-200); padding-bottom: 10px;">
-                            <div style="font-weight: 600; color: #334155; font-size: 0.8125rem;"><?= e($log['first_name'] . ' ' . $log['last_name']) ?></div>
-                            <div style="margin: 4px 0; font-size: 0.75rem;"><code style="background-color: var(--bg-slate-100); padding: 2px 4px; border-radius: 4px; color: #b91c1c;"><?= e($log['action']) ?></code> on <strong><?= e($log['module']) ?></strong></div>
+                            <div style="font-weight: 600; color: #334155; font-size: 0.8125rem;"><?= e($actor) ?></div>
+                            <div style="margin: 4px 0; font-size: 0.75rem;"><span style="background-color: var(--bg-slate-100); padding: 2px 6px; border-radius: 4px; color: #475569; font-weight: 500; border: 1px solid var(--border-slate-200);"><?= e($actionText) ?></span> on <strong><?= e(ucfirst($log['module'])) ?></strong></div>
                             <div style="font-size: 0.6875rem; color: #64748b;"><?= date('M d, Y H:i', strtotime($log['created_at'])) ?></div>
                         </div>
                     <?php endforeach; ?>

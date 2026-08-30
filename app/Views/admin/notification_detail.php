@@ -1,45 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inspect Notification #<?= (int)$log['id'] ?> | ScholarMatch</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
-        .dashboard-layout {
-            min-height: 100vh;
-            background: #f8fafc;
-            display: flex;
-            flex-direction: column;
-        }
-        .dashboard-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .page-content {
-            padding: 32px 24px;
-            max-width: 900px;
-            width: 100%;
-            margin: 0 auto;
-            box-sizing: border-box;
-        }
+<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
+
+<style>
         .btn-back {
             display: inline-flex;
             align-items: center;
@@ -153,21 +114,7 @@
         .btn-retry:hover {
             opacity: 0.9;
         }
-    </style>
-</head>
-<body>
-    <div class="dashboard-layout">
-        <header class="dashboard-header">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch Admin</span>
-            </a>
-            <div class="user-menu">
-                <a href="<?= url('/admin/notifications') ?>" class="btn-retry" style="background:none; border:1px solid var(--border); color:var(--text-700);">Back to Logs</a>
-            </div>
-        </header>
-
-        <main class="page-content">
+</style>
             <a href="<?= url('/admin/notifications') ?>" class="btn-back">
                 <i data-lucide="arrow-left" style="width:16px; height:16px;"></i>
                 <span>Back to Log Center</span>
@@ -269,7 +216,7 @@
                 <?php if (in_array($log['status'], ['failed', 'retrying'])): ?>
                     <div style="margin-top:32px; border-top:1px solid var(--border); padding-top:24px; display:flex; justify-content:flex-end;">
                         <form action="<?= url('/admin/notifications/' . $log['id'] . '/retry') ?>" method="POST" style="margin:0;">
-                            <input type="hidden" name="csrf_token" value="<?= Security::getCsrfToken() ?>">
+                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
                             <button type="submit" class="btn-retry">
                                 <i data-lucide="rotate-ccw" style="width:16px; height:16px;"></i>
                                 <span>Re-enqueue Notification</span>
@@ -278,10 +225,4 @@
                     </div>
                 <?php endif; ?>
             </div>
-        </main>
-    </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+<?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>
