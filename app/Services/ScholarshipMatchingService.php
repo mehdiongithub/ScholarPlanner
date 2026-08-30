@@ -677,6 +677,193 @@ class ScholarshipMatchingService {
         return ['status' => 'FAILED', 'message' => "Funding mode does not match preferred mode ($pref)."];
     }
 
+    /**
+     * Recalculate matches for a single scholarship across all users
+     */
+    public function recalculateForScholarship(int $scholarshipId): array {
+        // 1. Fetch scholarship and rules
+        $stmtSch = $this->db->prepare("
+            SELECT s.*, c.name as country_name 
+            FROM scholarships s
+            LEFT JOIN countries c ON s.country_id = c.id
+            WHERE s.id = :id LIMIT 1
+        ");
+        $stmtSch->execute(['id' => $scholarshipId]);
+        $scholarship = $stmtSch->fetch(PDO::FETCH_ASSOC);
+
+        if (!$scholarship || $scholarship['status'] !== 'published') {
+            return ['matched' => 0, 'queued' => 0, 'emails_sent' => 0, 'failures' => 0];
+        }
+
+        $stmtRules = $this->db->prepare("SELECT * FROM scholarship_eligibility_rules WHERE scholarship_id = :id LIMIT 1");
+        $stmtRules->execute(['id' => $scholarshipId]);
+        $rules = $stmtRules->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $schCountries = $this->db->query("SELECT country_id FROM scholarship_countries WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
+        $schFields = $this->db->query("SELECT field_of_study_id FROM scholarship_fields WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
+        $schDegrees = $this->db->query("SELECT degree_level FROM scholarship_degree_levels WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
+        $schNationalities = $this->db->query("SELECT country_id FROM scholarship_eligible_nationalities WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
+        $schLanguages = $this->db->query("SELECT * FROM scholarship_languages WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_ASSOC);
+
+        $schData = [
+            'scholarship' => $scholarship,
+            'rules' => $rules,
+            'countries' => $schCountries,
+            'fields' => $schFields,
+            'degrees' => $schDegrees,
+            'nationalities' => $schNationalities,
+            'languages' => $schLanguages
+        ];
+
+        // 2. Fetch all visitor user IDs and emails
+        $users = $this->db->query("
+            SELECT u.id, u.email 
+            FROM users u 
+            JOIN roles r ON u.role_id = r.id 
+            WHERE r.name = 'visitor' AND u.status = 'active'
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($users)) {
+            return ['matched' => 0, 'queued' => 0, 'emails_sent' => 0, 'failures' => 0];
+        }
+
+        $matchedCount = 0;
+        $queuedCount = 0;
+        $emailsSent = 0;
+        $failuresCount = 0;
+
+        // Process in chunks of 200 users to prevent timeouts
+        $chunks = array_chunk($users, 200);
+        foreach ($chunks as $chunk) {
+            $chunkUserIds = array_column($chunk, 'id');
+            $userIdsString = implode(',', array_map('intval', $chunkUserIds));
+
+            // Preload profiles
+            $profiles = $this->db->query("SELECT * FROM student_profiles WHERE user_id IN ($userIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+            $profilesMap = [];
+            foreach ($profiles as $p) {
+                $profilesMap[$p['user_id']] = $p;
+            }
+
+            // Preload educations
+            $educations = $this->db->query("
+                SELECT * FROM education_records 
+                WHERE user_id IN ($userIdsString)
+                ORDER BY is_current DESC, end_date DESC, start_date DESC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+            $eduMap = [];
+            foreach ($educations as $e) {
+                if (!isset($eduMap[$e['user_id']])) {
+                    $eduMap[$e['user_id']] = $e; // keep only the latest/current
+                }
+            }
+
+            // Preload preferences
+            $preferences = $this->db->query("SELECT * FROM user_preferences WHERE user_id IN ($userIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+            $prefMap = [];
+            foreach ($preferences as $pr) {
+                $prefMap[$pr['user_id']] = $pr;
+            }
+
+            // Preload preferred countries
+            $prefCountries = $this->db->query("SELECT user_id, country_id FROM user_preferred_countries WHERE user_id IN ($userIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+            $prefCountriesMap = [];
+            foreach ($prefCountries as $pc) {
+                $prefCountriesMap[$pc['user_id']][] = (int)$pc['country_id'];
+            }
+
+            // Preload preferred fields
+            $prefFields = $this->db->query("SELECT user_id, field_of_study_id FROM user_preferred_fields WHERE user_id IN ($userIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+            $prefFieldsMap = [];
+            foreach ($prefFields as $pf) {
+                $prefFieldsMap[$pf['user_id']][] = (int)$pf['field_of_study_id'];
+            }
+
+            // Preload preferred degrees
+            $prefDegrees = $this->db->query("SELECT user_id, degree_level FROM user_preferred_degree_levels WHERE user_id IN ($userIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+            $prefDegreesMap = [];
+            foreach ($prefDegrees as $pd) {
+                $prefDegreesMap[$pd['user_id']][] = $pd['degree_level'];
+            }
+
+            // Preload user field IDs from education names
+            $userFieldIds = [];
+            foreach ($chunk as $u) {
+                $uid = (int)$u['id'];
+                if (isset($eduMap[$uid])) {
+                    $stmtF = $this->db->prepare("SELECT id FROM fields_of_study WHERE name = :name LIMIT 1");
+                    $stmtF->execute(['name' => $eduMap[$uid]['field_of_study']]);
+                    $val = $stmtF->fetchColumn();
+                    $userFieldIds[$uid] = $val ? (int)$val : null;
+                } else {
+                    $userFieldIds[$uid] = null;
+                }
+            }
+
+            // Execute chunk matches
+            $this->db->beginTransaction();
+            try {
+                $notifQueue = new \App\Services\NotificationQueueService();
+                foreach ($chunk as $u) {
+                    $uid = (int)$u['id'];
+                    $uemail = $u['email'];
+                    if (!isset($profilesMap[$uid])) {
+                        continue;
+                    }
+
+                    $userData = [
+                        'profile' => $profilesMap[$uid],
+                        'education' => $eduMap[$uid] ?? null,
+                        'preferences' => $prefMap[$uid] ?? null,
+                        'prefCountries' => $prefCountriesMap[$uid] ?? [],
+                        'prefFields' => $prefFieldsMap[$uid] ?? [],
+                        'prefDegrees' => $prefDegreesMap[$uid] ?? [],
+                        'userFieldId' => $userFieldIds[$uid] ?? null
+                    ];
+
+                    $match = $this->matchUserAndScholarship($uid, $scholarshipId, $userData, $schData);
+                    
+                    if ($match['eligibility_status'] === 'eligible') {
+                        $match['user_id'] = $uid;
+                        $match['scholarship_id'] = $scholarshipId;
+                        $this->saveMatch($match);
+                        $matchedCount++;
+
+                        // Enqueue notification. Queue handler filters preferences and plans.
+                        $notifQueue->enqueue(
+                            $uid,
+                            $scholarshipId,
+                            'NEW_MATCH',
+                            'email',
+                            $uemail,
+                            'New Scholarship Match: ' . $scholarship['title'],
+                            [
+                                'title' => $scholarship['title'],
+                                'provider' => $scholarship['provider_name'],
+                                'country' => $scholarship['country_name'] ?? 'Multi-Country',
+                                'deadline' => $scholarship['application_deadline'],
+                            ]
+                        );
+                        $queuedCount++;
+                        $emailsSent++;
+                    }
+                }
+                $this->db->commit();
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                $failuresCount += count($chunk);
+                \App\Services\Logger::error("Failed to match chunk for scholarship $scholarshipId: " . $e->getMessage());
+            }
+        }
+
+        return [
+            'matched' => $matchedCount,
+            'queued' => $queuedCount,
+            'emails_sent' => $emailsSent,
+            'failures' => $failuresCount
+        ];
+    }
+
     private function emptyResponse(string $status, string $message): array {
         return [
             'match_score' => 0,

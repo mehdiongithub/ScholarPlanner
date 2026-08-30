@@ -1,214 +1,145 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Scholarship | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
-        .admin-layout {
-            min-height: 100vh;
-            background: #f8fafc;
-            display: flex;
-            flex-direction: column;
-        }
-        .admin-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .nav-link {
-            font-size: 0.875rem;
-            color: var(--text-600);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .nav-link:hover {
-            color: var(--primary);
-        }
-        .admin-content {
-            max-width: 900px;
-            width: 100%;
-            margin: 40px auto;
-            padding: 0 20px;
-            flex-grow: 1;
-        }
-        .card {
-            background: var(--bg-white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-2xl);
-            padding: clamp(20px, 4vw, 32px);
-            box-shadow: var(--shadow-sm);
-            margin-bottom: 32px;
-        }
-        .card-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--text-900);
-            margin-bottom: 24px;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 12px;
-        }
+<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
+
+<style>
+    .card {
+        background: var(--bg-white);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-2xl);
+        padding: clamp(20px, 4vw, 32px);
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 32px;
+    }
+    .card-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-900);
+        margin-bottom: 24px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 12px;
+    }
+    .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .form-group.full-width {
+        grid-column: span 2;
+    }
+    .form-label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-700);
+    }
+    .form-control {
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        width: 100%;
+        background: var(--bg-white);
+    }
+    .form-control:focus {
+        border-color: var(--primary);
+        outline: none;
+    }
+    .checkbox-group {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+        padding: 8px 0;
+    }
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+        color: var(--text-700);
+        cursor: pointer;
+    }
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        border-radius: var(--radius-lg);
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+    }
+    .btn-primary {
+        background: var(--primary);
+        color: var(--bg-white);
+    }
+    .btn-primary:hover {
+        background: var(--primary-dark);
+    }
+    .btn-secondary {
+        background: var(--bg-white);
+        color: var(--text-700);
+        border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+        background: #f1f5f9;
+    }
+    .btn-danger {
+        background: #ef4444;
+        color: var(--bg-white);
+    }
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+    .alert {
+        padding: 16px;
+        border-radius: var(--radius-lg);
+        margin-bottom: 24px;
+        font-size: 0.875rem;
+    }
+    .alert-danger {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+    .dynamic-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 16px;
+    }
+    .dynamic-table th, .dynamic-table td {
+        padding: 8px;
+        border: 1px solid var(--border);
+        text-align: left;
+    }
+    .dynamic-table th {
+        background: #f8fafc;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-600);
+        text-transform: uppercase;
+    }
+    @media (max-width: 768px) {
         .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+            grid-template-columns: 1fr;
         }
         .form-group.full-width {
-            grid-column: span 2;
+            grid-column: span 1;
         }
-        .form-label {
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--text-700);
-        }
-        .form-control {
-            padding: 10px 14px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            font-size: 0.875rem;
-            width: 100%;
-            background: var(--bg-white);
-        }
-        .form-control:focus {
-            border-color: var(--primary);
-            outline: none;
-        }
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-            padding: 8px 0;
-        }
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.875rem;
-            color: var(--text-700);
-            cursor: pointer;
-        }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            border-radius: var(--radius-lg);
-            text-decoration: none;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s;
-        }
-        .btn-primary {
-            background: var(--primary);
-            color: var(--bg-white);
-        }
-        .btn-primary:hover {
-            background: var(--primary-dark);
-        }
-        .btn-secondary {
-            background: var(--bg-white);
-            color: var(--text-700);
-            border: 1px solid var(--border);
-        }
-        .btn-secondary:hover {
-            background: #f1f5f9;
-        }
-        .btn-danger {
-            background: #ef4444;
-            color: var(--bg-white);
-        }
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-        .alert {
-            padding: 16px;
-            border-radius: var(--radius-lg);
-            margin-bottom: 24px;
-            font-size: 0.875rem;
-        }
-        .alert-danger {
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fca5a5;
-        }
-        .dynamic-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 16px;
-        }
-        .dynamic-table th, .dynamic-table td {
-            padding: 8px;
-            border: 1px solid var(--border);
-            text-align: left;
-        }
-        .dynamic-table th {
-            background: #f8fafc;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-600);
-            text-transform: uppercase;
-        }
-        @media (max-width: 768px) {
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-            .form-group.full-width {
-                grid-column: span 1;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="admin-layout">
-        <header class="admin-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch Admin</span>
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/admin/scholarships') ?>" class="nav-link">Scholarships</a>
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-            </div>
-        </header>
+    }
+</style>
 
-        <main class="admin-content">
-            <div style="margin-bottom:24px;">
-                <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary">
-                    <i data-lucide="arrow-left"></i>
-                    <span>Back to List</span>
-                </a>
-            </div>
+<div style="margin-bottom:24px;">
+    <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary">
+        <i data-lucide="arrow-left"></i>
+        <span>Back to List</span>
+    </a>
+</div>
 
             <?php
             $errors = $_SESSION['scholarship_errors'] ?? [];
@@ -232,7 +163,7 @@
                 </div>
             <?php endif; ?>
 
-            <form action="<?= url('/admin/scholarships') ?>" method="POST">
+            <form action="<?= url('/admin/scholarships') ?>" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
 
                 <!-- Section 1: Basic Information -->
@@ -243,6 +174,15 @@
                             <label class="form-label" for="title">Scholarship Title *</label>
                             <input type="text" id="title" name="title" class="form-control" placeholder="e.g. Erasmus Mundus Joint Master Degree" value="<?= e($old['title'] ?? '') ?>" required>
                             <?php if (!empty($errors['title'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['title']) ?></span><?php endif; ?>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label" for="cover_image">Scholarship Cover Image</label>
+                            <input type="file" id="cover_image" name="cover_image" class="form-control" accept="image/*" onchange="previewImage(event)">
+                            <?php if (!empty($errors['cover_image'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['cover_image']) ?></span><?php endif; ?>
+                            <div id="imagePreviewContainer" style="margin-top: 12px; position: relative; width: fit-content; display: none;">
+                                <img id="imagePreview" src="" style="max-width: 320px; max-height: 180px; border-radius: 8px; border: 1px solid var(--border-slate-200); object-fit: cover;">
+                                <button type="button" class="btn btn-danger btn-sm" style="position: absolute; top: 8px; right: 8px; width: auto; padding: 4px 8px;" onclick="removeSelectedImage()">Remove Image</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label class="form-label" for="provider_name">Provider / Organization *</label>
@@ -291,10 +231,9 @@
                         <div class="form-group">
                             <label class="form-label" for="funding_type">Funding Type</label>
                             <select id="funding_type" name="funding_type" class="form-control">
-                                <option value="Fully Funded" <?= ($old['funding_type'] ?? '') === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
-                                <option value="Partially Funded" <?= ($old['funding_type'] ?? '') === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
-                                <option value="Tuition Waiver" <?= ($old['funding_type'] ?? '') === 'Tuition Waiver' ? 'selected' : '' ?>>Tuition Waiver</option>
-                                <option value="Stipend" <?= ($old['funding_type'] ?? '') === 'Stipend' ? 'selected' : '' ?>>Stipend</option>
+                                <?php foreach ($fundings as $f): ?>
+                                    <option value="<?= e($f['name']) ?>" <?= ($old['funding_type'] ?? '') === $f['name'] ? 'selected' : '' ?>><?= e($f['name']) ?></option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                     </div>
@@ -306,10 +245,10 @@
                     <div class="form-group" style="margin-bottom: 20px;">
                         <label class="form-label">Target Degree Levels (Select all that apply)</label>
                         <div class="checkbox-group">
-                            <?php foreach (['Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Diploma', 'Certificate', 'Exchange'] as $lvl): ?>
+                            <?php foreach ($degrees as $d): ?>
                                 <label class="checkbox-label">
-                                    <input type="checkbox" name="preferred_degrees[]" value="<?= e($lvl) ?>" <?= in_array($lvl, $old['preferred_degrees'] ?? []) ? 'checked' : '' ?>>
-                                    <span><?= e($lvl) ?></span>
+                                    <input type="checkbox" name="preferred_degrees[]" value="<?= e($d['name']) ?>" <?= in_array($d['name'], $old['preferred_degrees'] ?? []) ? 'checked' : '' ?>>
+                                    <span><?= e($d['name']) ?></span>
                                 </label>
                             <?php endforeach; ?>
                         </div>
@@ -534,6 +473,25 @@
     <script>
         lucide.createIcons();
 
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('imagePreview');
+                    preview.src = e.target.result;
+                    document.getElementById('imagePreviewContainer').style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removeSelectedImage() {
+            const fileInput = document.getElementById('cover_image');
+            fileInput.value = '';
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+        }
+
         function addBenefitRow() {
             const tableBody = document.querySelector('#benefitsTable tbody');
             const row = document.createElement('tr');
@@ -576,5 +534,4 @@
             langIndex++;
         }
     </script>
-</body>
-</html>
+<?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

@@ -286,6 +286,17 @@
                 <div class="placeholder-list">
                     <div class="placeholder-item" style="border-style: solid; opacity: 1;">
                         <div>
+                            <div class="placeholder-item-title">Institution & University Manager</div>
+                            <div class="placeholder-item-desc">Configure, approve, and edit nationwide, regional, or state-specific educational institutions.</div>
+                        </div>
+                        <a href="<?= url('/admin/institutions') ?>" class="btn-logout" style="border-color: var(--primary); color: var(--primary);">
+                            <i data-lucide="graduation-cap" style="width:14px; height:14px;"></i>
+                            <span>Manage Institutions</span>
+                        </a>
+                    </div>
+
+                    <div class="placeholder-item" style="border-style: solid; opacity: 1;">
+                        <div>
                             <div class="placeholder-item-title">Notification & Queue Manager</div>
                             <div class="placeholder-item-desc">Monitor enqueued emails/WhatsApp notifications and manually retry failures.</div>
                         </div>

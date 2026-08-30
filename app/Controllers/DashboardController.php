@@ -53,7 +53,9 @@ class DashboardController {
 
         // Build query to select matches joined with scholarships
         $sql = "
-            SELECT m.*, s.title, s.provider_name, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name
+            SELECT m.*, s.title, s.provider_name, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name,
+                   (SELECT GROUP_CONCAT(sdl.degree_level SEPARATOR ', ') FROM scholarship_degree_levels sdl WHERE sdl.scholarship_id = s.id) as degree_level,
+                   (SELECT GROUP_CONCAT(fs.name SEPARATOR ', ') FROM scholarship_fields sf JOIN fields_of_study fs ON sf.field_of_study_id = fs.id WHERE sf.scholarship_id = s.id) as field_of_study
             FROM scholarship_matches m
             JOIN scholarships s ON m.scholarship_id = s.id
             LEFT JOIN countries c ON s.country_id = c.id
@@ -90,9 +92,9 @@ class DashboardController {
 
         // Decode JSON elements
         foreach ($matches as &$m) {
-            $m['matched_criteria'] = json_decode($m['matched_criteria'], true) ?: [];
-            $m['failed_criteria'] = json_decode($m['failed_criteria'], true) ?: [];
-            $m['missing_criteria'] = json_decode($m['missing_criteria'], true) ?: [];
+            $m['matched_criteria'] = json_decode((string)($m['matched_criteria'] ?? ''), true) ?: [];
+            $m['failed_criteria'] = json_decode((string)($m['failed_criteria'] ?? ''), true) ?: [];
+            $m['missing_criteria'] = json_decode((string)($m['missing_criteria'] ?? ''), true) ?: [];
         }
 
         // Apply Premium Matching feature gate limits
@@ -106,6 +108,97 @@ class DashboardController {
             $docReadiness = $readinessService->calculateGlobal($user['id']);
         }
 
+        // 4. Query statistics counts
+        $stmtMatchesCount = $db->prepare("
+            SELECT COUNT(*) FROM scholarship_matches m
+            JOIN scholarships s ON m.scholarship_id = s.id
+            WHERE m.user_id = :user_id AND s.status = 'published'
+        ");
+        $stmtMatchesCount->execute(['user_id' => $user['id']]);
+        $matchesCount = (int)$stmtMatchesCount->fetchColumn();
+
+        $stmtSavedCount = $db->prepare("
+            SELECT COUNT(*) FROM saved_scholarships ss
+            JOIN scholarships s ON ss.scholarship_id = s.id
+            WHERE ss.user_id = :user_id AND s.status = 'published'
+        ");
+        $stmtSavedCount->execute(['user_id' => $user['id']]);
+        $savedCount = (int)$stmtSavedCount->fetchColumn();
+
+        $stmtAppsCount = $db->prepare("
+            SELECT COUNT(*) FROM scholarship_applications sa
+            JOIN scholarships s ON sa.scholarship_id = s.id
+            WHERE sa.user_id = :user_id
+        ");
+        $stmtAppsCount->execute(['user_id' => $user['id']]);
+        $appsCount = (int)$stmtAppsCount->fetchColumn();
+
+        $stmtDeadlinesCount = $db->prepare("
+            SELECT COUNT(DISTINCT s.id)
+            FROM scholarships s
+            LEFT JOIN scholarship_matches m ON m.scholarship_id = s.id AND m.user_id = :user_id_m
+            LEFT JOIN saved_scholarships ss ON ss.scholarship_id = s.id AND ss.user_id = :user_id_s
+            WHERE (m.user_id IS NOT NULL OR ss.user_id IS NOT NULL)
+              AND s.status = 'published'
+              AND s.application_deadline >= CURDATE()
+        ");
+        $stmtDeadlinesCount->execute([
+            'user_id_m' => $user['id'],
+            'user_id_s' => $user['id']
+        ]);
+        $deadlinesCount = (int)$stmtDeadlinesCount->fetchColumn();
+
+        // 5. Query lists
+        $stmtDeadlines = $db->prepare("
+            SELECT DISTINCT s.id, s.title, s.application_deadline, s.slug, s.provider_name
+            FROM scholarships s
+            LEFT JOIN scholarship_matches m ON m.scholarship_id = s.id AND m.user_id = :user_id_m
+            LEFT JOIN saved_scholarships ss ON ss.scholarship_id = s.id AND ss.user_id = :user_id_s
+            WHERE (m.user_id IS NOT NULL OR ss.user_id IS NOT NULL)
+              AND s.status = 'published'
+              AND s.application_deadline >= CURDATE()
+            ORDER BY s.application_deadline ASC
+            LIMIT 5
+        ");
+        $stmtDeadlines->execute([
+            'user_id_m' => $user['id'],
+            'user_id_s' => $user['id']
+        ]);
+        $upcomingDeadlines = $stmtDeadlines->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmtSaved = $db->prepare("
+            SELECT ss.*, s.id as scholarship_id, s.title, s.provider_name, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name,
+                   (SELECT GROUP_CONCAT(sdl.degree_level SEPARATOR ', ') FROM scholarship_degree_levels sdl WHERE sdl.scholarship_id = s.id) as degree_level,
+                   (SELECT GROUP_CONCAT(fs.name SEPARATOR ', ') FROM scholarship_fields sf JOIN fields_of_study fs ON sf.field_of_study_id = fs.id WHERE sf.scholarship_id = s.id) as field_of_study
+            FROM saved_scholarships ss
+            JOIN scholarships s ON ss.scholarship_id = s.id
+            LEFT JOIN countries c ON s.country_id = c.id
+            WHERE ss.user_id = :user_id AND s.status = 'published'
+            ORDER BY ss.created_at DESC
+            LIMIT 5
+        ");
+        $stmtSaved->execute(['user_id' => $user['id']]);
+        $savedScholarships = $stmtSaved->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmtApps = $db->prepare("
+            SELECT sa.*, s.title, s.provider_name, s.application_deadline, s.slug, s.funding_type
+            FROM scholarship_applications sa
+            JOIN scholarships s ON sa.scholarship_id = s.id
+            WHERE sa.user_id = :user_id
+            ORDER BY sa.created_at DESC
+            LIMIT 5
+        ");
+        $stmtApps->execute(['user_id' => $user['id']]);
+        $recentApplications = $stmtApps->fetchAll(PDO::FETCH_ASSOC);
+
+        // Map bookmarks status
+        $stmtSavedIds = $db->prepare("SELECT scholarship_id FROM saved_scholarships WHERE user_id = :uid");
+        $stmtSavedIds->execute(['uid' => $user['id']]);
+        $savedIds = $stmtSavedIds->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        foreach ($matches as &$m) {
+            $m['is_saved'] = in_array((int)$m['scholarship_id'], $savedIds);
+        }
+
         view('auth.dashboard', [
             'user' => $user,
             'completion' => $completion,
@@ -117,7 +210,15 @@ class DashboardController {
                 'plan_name' => 'None (Free Guest)',
                 'status' => 'inactive',
                 'ends_at' => null
-            ]
+            ],
+            'savedCount' => $savedCount,
+            'appsCount' => $appsCount,
+            'deadlinesCount' => $deadlinesCount,
+            'matchesCount' => $matchesCount,
+            'upcomingDeadlines' => $upcomingDeadlines,
+            'savedScholarships' => $savedScholarships,
+            'recentApplications' => $recentApplications,
+            'csrf_token' => \App\Helpers\Security::csrfToken()
         ]);
     }
 
@@ -267,5 +368,310 @@ class DashboardController {
             'pending_reviews' => $pendingReviews,
             'assigned_tasks' => $tasksCount
         ]);
+    }
+
+    private function redirect(string $url): void {
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            throw new \RuntimeException("Redirect to " . $url);
+        }
+        header("Location: " . $url);
+        exit();
+    }
+
+    /**
+     * GET /admin/institutions
+     */
+    public function adminInstitutionsIndex(): void {
+        Auth::requireRole('admin');
+        $db = Database::connection();
+
+        $stmt = $db->query("
+            SELECT i.*, c.name as country_name, s.name as state_name, ci.name as city_name
+            FROM institutions i
+            LEFT JOIN countries c ON i.country_id = c.id
+            LEFT JOIN states s ON i.state_id = s.id
+            LEFT JOIN cities ci ON i.city_id = ci.id
+            ORDER BY i.id DESC
+        ");
+        $institutions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        view('admin.institutions.index', [
+            'institutions' => $institutions
+        ]);
+    }
+
+    /**
+     * GET /admin/institutions/create
+     */
+    public function adminInstitutionsCreate(): void {
+        Auth::requireRole('admin');
+        $db = Database::connection();
+
+        $countries = $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+        view('admin.institutions.create', [
+            'countries' => $countries
+        ]);
+    }
+
+    /**
+     * POST /admin/institutions
+     */
+    public function adminInstitutionsStore(): void {
+        Auth::requireRole('admin');
+        
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!\App\Services\Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirect(url('/admin/institutions/create'));
+        }
+
+        $db = Database::connection();
+
+        $name = trim($_POST['name'] ?? '');
+        $type = trim($_POST['institution_type'] ?? '');
+        $countryId = !empty($_POST['country_id']) ? (int)$_POST['country_id'] : null;
+        $coverageType = trim($_POST['coverage_type'] ?? 'state');
+        $status = trim($_POST['status'] ?? 'approved');
+        $cityId = !empty($_POST['city_id']) ? (int)$_POST['city_id'] : null;
+
+        $errors = [];
+        if (empty($name)) $errors['name'] = 'Name is required.';
+        if (empty($type)) $errors['institution_type'] = 'Institution type is required.';
+        if ($countryId === null) $errors['country_id'] = 'Country is required.';
+
+        $states = $_POST['states'] ?? [];
+        if (!is_array($states)) {
+            $states = [$states];
+        }
+        $states = array_filter(array_map('intval', $states));
+
+        if ($coverageType === 'state') {
+            if (count($states) !== 1) {
+                $errors['states'] = 'Exactly one state is required for State Specific coverage.';
+            }
+        } elseif ($coverageType === 'multi_state') {
+            if (count($states) < 1) {
+                $errors['states'] = 'At least one state is required for Multiple States coverage.';
+            }
+        }
+
+        if (!empty($errors)) {
+            $_SESSION['admin_errors'] = $errors;
+            $this->redirect(url('/admin/institutions/create'));
+        }
+
+        // The primary state_id in institutions table (for single state)
+        $primaryStateId = ($coverageType === 'state' && !empty($states)) ? $states[0] : null;
+
+        try {
+            $db->beginTransaction();
+
+            $stmt = $db->prepare("
+                INSERT INTO institutions (name, institution_type, country_id, state_id, city_id, coverage_type, status, created_at, updated_at)
+                VALUES (:name, :type, :country_id, :state_id, :city_id, :coverage_type, :status, NOW(), NOW())
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'type' => $type,
+                'country_id' => $countryId,
+                'state_id' => $primaryStateId,
+                'city_id' => $cityId,
+                'coverage_type' => $coverageType,
+                'status' => $status
+            ]);
+            $instId = $db->lastInsertId();
+
+            // Insert relations if not national
+            if ($coverageType !== 'national') {
+                $stmtRel = $db->prepare("INSERT INTO institution_states (institution_id, state_id) VALUES (:inst_id, :state_id)");
+                foreach ($states as $sId) {
+                    $stmtRel->execute([
+                        'inst_id' => $instId,
+                        'state_id' => $sId
+                    ]);
+                }
+            }
+
+            $db->commit();
+            $_SESSION['admin_success'] = 'Institution created successfully.';
+            $this->redirect(url('/admin/institutions'));
+        } catch (\Exception $e) {
+            $db->rollBack();
+            $_SESSION['admin_errors'] = ['db' => 'Failed to save institution: ' . $e->getMessage()];
+            $this->redirect(url('/admin/institutions/create'));
+        }
+    }
+
+    /**
+     * GET /admin/institutions/{id}/edit
+     */
+    public function adminInstitutionsEdit(string $id): void {
+        Auth::requireRole('admin');
+        $db = Database::connection();
+
+        $instId = (int)$id;
+        $stmt = $db->prepare("SELECT * FROM institutions WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $instId]);
+        $institution = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$institution) {
+            http_response_code(404);
+            echo "Institution not found.";
+            exit();
+        }
+
+        $countries = $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch current states for this institution
+        $stmtStates = $db->prepare("SELECT state_id FROM institution_states WHERE institution_id = :id");
+        $stmtStates->execute(['id' => $instId]);
+        $selectedStates = $stmtStates->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+        $states = [];
+        if (!empty($institution['country_id'])) {
+            $stmtStatesList = $db->prepare("SELECT id, name FROM states WHERE country_id = :cid ORDER BY name ASC");
+            $stmtStatesList->execute(['cid' => $institution['country_id']]);
+            $states = $stmtStatesList->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        $cities = [];
+        if (!empty($institution['state_id'])) {
+            $stmtCitiesList = $db->prepare("SELECT id, name FROM cities WHERE state_id = :sid ORDER BY name ASC");
+            $stmtCitiesList->execute(['sid' => $institution['state_id']]);
+            $cities = $stmtCitiesList->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        view('admin.institutions.edit', [
+            'institution' => $institution,
+            'countries' => $countries,
+            'selectedStates' => $selectedStates,
+            'states' => $states,
+            'cities' => $cities
+        ]);
+    }
+
+    /**
+     * POST /admin/institutions/{id}/update
+     */
+    public function adminInstitutionsUpdate(string $id): void {
+        Auth::requireRole('admin');
+        
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!\App\Services\Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirect(url("/admin/institutions/{$id}/edit"));
+        }
+
+        $db = Database::connection();
+        $instId = (int)$id;
+
+        $name = trim($_POST['name'] ?? '');
+        $type = trim($_POST['institution_type'] ?? '');
+        $countryId = !empty($_POST['country_id']) ? (int)$_POST['country_id'] : null;
+        $coverageType = trim($_POST['coverage_type'] ?? 'state');
+        $status = trim($_POST['status'] ?? 'approved');
+        $cityId = !empty($_POST['city_id']) ? (int)$_POST['city_id'] : null;
+
+        $errors = [];
+        if (empty($name)) $errors['name'] = 'Name is required.';
+        if (empty($type)) $errors['institution_type'] = 'Institution type is required.';
+        if ($countryId === null) $errors['country_id'] = 'Country is required.';
+
+        $states = $_POST['states'] ?? [];
+        if (!is_array($states)) {
+            $states = [$states];
+        }
+        $states = array_filter(array_map('intval', $states));
+
+        if ($coverageType === 'state') {
+            if (count($states) !== 1) {
+                $errors['states'] = 'Exactly one state is required for State Specific coverage.';
+            }
+        } elseif ($coverageType === 'multi_state') {
+            if (count($states) < 1) {
+                $errors['states'] = 'At least one state is required for Multiple States coverage.';
+            }
+        }
+
+        if (!empty($errors)) {
+            $_SESSION['admin_errors'] = $errors;
+            $this->redirect(url("/admin/institutions/{$id}/edit"));
+        }
+
+        // The primary state_id in institutions table (for single state)
+        $primaryStateId = ($coverageType === 'state' && !empty($states)) ? $states[0] : null;
+
+        try {
+            $db->beginTransaction();
+
+            $stmt = $db->prepare("
+                UPDATE institutions 
+                SET name = :name, 
+                    institution_type = :type, 
+                    country_id = :country_id, 
+                    state_id = :state_id, 
+                    city_id = :city_id, 
+                    coverage_type = :coverage_type, 
+                    status = :status,
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'type' => $type,
+                'country_id' => $countryId,
+                'state_id' => $primaryStateId,
+                'city_id' => $cityId,
+                'coverage_type' => $coverageType,
+                'status' => $status,
+                'id' => $instId
+            ]);
+
+            // Sync relations
+            $db->prepare("DELETE FROM institution_states WHERE institution_id = :id")->execute(['id' => $instId]);
+            if ($coverageType !== 'national') {
+                $stmtRel = $db->prepare("INSERT INTO institution_states (institution_id, state_id) VALUES (:inst_id, :state_id)");
+                foreach ($states as $sId) {
+                    $stmtRel->execute([
+                        'inst_id' => $instId,
+                        'state_id' => $sId
+                    ]);
+                }
+            }
+
+            $db->commit();
+            $_SESSION['admin_success'] = 'Institution updated successfully.';
+            $this->redirect(url('/admin/institutions'));
+        } catch (\Exception $e) {
+            $db->rollBack();
+            $_SESSION['admin_errors'] = ['db' => 'Failed to update institution: ' . $e->getMessage()];
+            $this->redirect(url("/admin/institutions/{$id}/edit"));
+        }
+    }
+
+    /**
+     * POST /admin/institutions/{id}/delete
+     */
+    public function adminInstitutionsDelete(string $id): void {
+        Auth::requireRole('admin');
+        
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!\App\Services\Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
+            $this->redirect(url('/admin/institutions'));
+        }
+
+        $db = Database::connection();
+        $instId = (int)$id;
+
+        try {
+            $db->prepare("DELETE FROM institutions WHERE id = :id")->execute(['id' => $instId]);
+            $_SESSION['admin_success'] = 'Institution deleted successfully.';
+        } catch (\Exception $e) {
+            $_SESSION['admin_errors'] = ['db' => 'Failed to delete institution: ' . $e->getMessage()];
+        }
+        
+        $this->redirect(url('/admin/institutions'));
     }
 }

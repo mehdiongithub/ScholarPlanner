@@ -56,22 +56,22 @@ class PlatformOperationsTest {
 
         // 2. Create users
         $this->db->exec("
-            INSERT INTO users (email, password_hash, first_name, last_name, role_id)
-            VALUES ('ops-admin@example.com', 'hash', 'Ops', 'Admin', {$adminRoleId})
+            INSERT INTO users (email, password_hash, first_name, last_name, role_id, status)
+            VALUES ('ops-admin@example.com', 'hash', 'Ops', 'Admin', {$adminRoleId}, 'active')
         ");
         $this->adminId = (int)$this->db->lastInsertId();
         $this->cleanUpUserIds[] = $this->adminId;
 
         $this->db->exec("
-            INSERT INTO users (email, password_hash, first_name, last_name, role_id)
-            VALUES ('ops-staff@example.com', 'hash', 'Ops', 'Staff', {$employeeRoleId})
+            INSERT INTO users (email, password_hash, first_name, last_name, role_id, status)
+            VALUES ('ops-staff@example.com', 'hash', 'Ops', 'Staff', {$employeeRoleId}, 'active')
         ");
         $this->employeeId = (int)$this->db->lastInsertId();
         $this->cleanUpUserIds[] = $this->employeeId;
 
         $this->db->exec("
-            INSERT INTO users (email, password_hash, first_name, last_name, role_id)
-            VALUES ('ops-student@example.com', 'hash', 'Ops', 'Student', {$visitorRoleId})
+            INSERT INTO users (email, password_hash, first_name, last_name, role_id, status)
+            VALUES ('ops-student@example.com', 'hash', 'Ops', 'Student', {$visitorRoleId}, 'active')
         ");
         $this->studentId = (int)$this->db->lastInsertId();
         $this->cleanUpUserIds[] = $this->studentId;

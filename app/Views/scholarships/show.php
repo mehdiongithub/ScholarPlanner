@@ -364,6 +364,15 @@
         </header>
 
         <main class="page-content">
+            <!-- Cover Image Section -->
+            <div style="margin-bottom: 24px; border-radius: var(--radius-2xl); overflow: hidden; height: clamp(200px, 30vw, 320px); border: 1px solid var(--border); box-shadow: var(--shadow-sm); position: relative; background: #fff;">
+                <?php if (!empty($scholarship['cover_image'])): ?>
+                    <img src="<?= e(url($scholarship['cover_image'])) ?>" style="width: 100%; height: 100%; object-fit: cover;" alt="<?= e($scholarship['title']) ?>">
+                <?php else: ?>
+                    <img src="<?= e(url('/assets/images/default-scholarship.svg')) ?>" style="width: 100%; height: 100%; object-fit: cover;" alt="Default Scholarship Image">
+                <?php endif; ?>
+            </div>
+
             <!-- Header Banner -->
             <div class="banner-card">
                 <div class="banner-info">

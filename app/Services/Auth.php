@@ -51,6 +51,31 @@ class Auth {
             throw new Exception("Your account has been suspended. Please contact support.");
         }
 
+        // Allow pending users to authenticate so they can complete email verification
+        if ($user['status'] === 'pending') {
+            Security::startSession();
+            if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                session_regenerate_id(true); // Prevent session fixation
+            }
+
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['role_name'] = $user['role_name'];
+            $_SESSION['user_name'] = $user['first_name'] . ' ' . $user['last_name'];
+            $_SESSION['user_email'] = $user['email'];
+
+            // Update login metrics
+            $upd = $db->prepare("UPDATE users SET last_login_at = NOW(), last_login_ip = :ip WHERE id = :id");
+            $upd->execute(['ip' => $ip, 'id' => $user['id']]);
+
+            // Clean previous failed attempts
+            $del = $db->prepare("DELETE FROM login_attempts WHERE email = :email OR ip_address = :ip");
+            $del->execute(['email' => $email, 'ip' => $ip]);
+
+            self::logAudit($user['id'], 'login_pending_verify', 'auth', 'users', $user['id'], $ip);
+            self::$currentUser = $user;
+            return true;
+        }
+
         // Check if user is active
         if ($user['status'] !== 'active') {
             self::logAudit($user['id'], 'login_inactive_blocked', 'auth', 'users', $user['id'], $ip);
@@ -405,6 +430,20 @@ class Auth {
             $redirectUrl = url('/login');
             header("Location: $redirectUrl");
             exit();
+        }
+
+        // Redirect pending/unverified users to email verification
+        $user = self::currentUser();
+        if ($user && $user['status'] === 'pending') {
+            $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+            if (strpos($currentPath, '/verify-email') === false && strpos($currentPath, '/logout') === false) {
+                if (defined('TESTING_MODE') && TESTING_MODE) {
+                    throw new \RuntimeException("Redirect to verify-email");
+                }
+                $verifyUrl = url('/verify-email');
+                header("Location: $verifyUrl");
+                exit();
+            }
         }
     }
 

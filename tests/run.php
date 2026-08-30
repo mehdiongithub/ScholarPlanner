@@ -13,6 +13,7 @@ require_once __DIR__ . '/Step1FinalAuditTest.php';
 require_once __DIR__ . '/DatabaseMigrationTest.php';
 require_once __DIR__ . '/AuthenticationTest.php';
 require_once __DIR__ . '/ProfileTest.php';
+require_once __DIR__ . '/UniversityCoverageTest.php';
 require_once __DIR__ . '/ScholarshipTest.php';
 require_once __DIR__ . '/ScholarshipMatchingTest.php';
 require_once __DIR__ . '/NotificationTest.php';
@@ -59,6 +60,10 @@ try {
     // 7. Applicant Profile & Preferences Verification
     $profileTest = new ProfileTest();
     $profileTest->run();
+
+    // 7.5. University Coverage state-specific + nationwide query rules
+    $coverageTest = new UniversityCoverageTest();
+    $coverageTest->run();
     
     // 8. Scholarship Database & Management Verification
     $scholarshipTest = new ScholarshipTest();

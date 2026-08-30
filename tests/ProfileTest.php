@@ -31,6 +31,7 @@ class ProfileTest {
             $this->testIdorAndAccessBarriers();
             $this->testLengthAndTypeValidations();
             $this->testAjaxEndpointsSecurity();
+            $this->testStep2WizardConstraints();
 
             echo "ProfileTest PASSED.\n\n";
         } finally {
@@ -43,7 +44,9 @@ class ProfileTest {
      */
     private function cleanTestData(): void {
         $this->db->exec("DELETE FROM users WHERE email LIKE 'test_profile_%@scholarmatch.test'");
+        $this->db->exec("DELETE FROM institutions WHERE name LIKE 'Wizard Pending University%'");
     }
+
 
     /**
      * 1. Assert dynamic age calculation from DOB
@@ -374,4 +377,145 @@ class ProfileTest {
 
         echo "✔ AJAX endpoints authorization checks verified.\n";
     }
+
+    /**
+     * 10. Assert dynamic pending institution mapping and preferred fields constraint checks
+     */
+    private function testStep2WizardConstraints(): void {
+        $visitorRoleId = $this->db->query("SELECT id FROM roles WHERE name = 'visitor'")->fetchColumn();
+        
+        // Create user
+        $email = 'test_profile_wizard@scholarmatch.test';
+        $stmt = $this->db->prepare("
+            INSERT INTO users (role_id, first_name, last_name, email, phone, password_hash, status) 
+            VALUES (:role_id, 'Wizard', 'User', :email, '+923007777779', 'hash', 'active')
+        ");
+        $stmt->execute(['role_id' => $visitorRoleId, 'email' => $email]);
+        $userId = $this->db->lastInsertId();
+
+        // Create empty student profile
+        $this->db->prepare("INSERT INTO student_profiles (user_id) VALUES (:uid)")->execute(['uid' => $userId]);
+
+        // Simulate logged-in user
+        $_SESSION['user_id'] = $userId;
+        $_SESSION['role_name'] = 'visitor';
+
+        // 1. Simulate POSTing a custom institution
+        $countryId = $this->db->query("SELECT id FROM countries WHERE iso2 = 'PK' LIMIT 1")->fetchColumn();
+        $stateId = $this->db->query("SELECT id FROM states WHERE country_id = {$countryId} LIMIT 1")->fetchColumn();
+        $cityId = $this->db->query("SELECT id FROM cities WHERE state_id = {$stateId} LIMIT 1")->fetchColumn();
+
+
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'institution_select' => 'other',
+            'custom_institution_name' => 'Wizard Pending University',
+            'degree_level' => 'Bachelor\'s',
+            'degree_title' => 'BS',
+            'field_of_study' => 'CS',
+            'country_id' => $countryId,
+            'state_id' => $stateId,
+            'city_id' => $cityId,
+            'graduation_status' => 'graduated',
+            'passing_year' => 2024,
+            'cgpa' => 3.5,
+            'cgpa_scale' => 4.0
+        ];
+
+
+
+        $controller = new \App\Controllers\ProfileController();
+        try {
+            $controller->addEducation();
+        } catch (\RuntimeException $e) {
+            // Expected redirect halt
+        }
+
+
+
+        // Verify the institution was added with status pending
+        $inst = $this->db->query("SELECT * FROM institutions WHERE name = 'Wizard Pending University' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if (!$inst || $inst['status'] !== 'pending') {
+            throw new \Exception("Step 2 Onboarding Error: Custom institution was not created with pending status.");
+        }
+
+        // Verify the education record links the pending institution ID
+        $edu = $this->db->query("SELECT * FROM education_records WHERE user_id = {$userId} LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if (!$edu || (int)$edu['institution_id'] !== (int)$inst['id']) {
+            throw new \Exception("Step 2 Onboarding Error: Education record was not associated with pending institution ID.");
+        }
+
+        // 2. Validate Preferred Fields Selection Constraint (max 3)
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'preferred_fields' => [1, 2, 3, 4], // 4 fields
+            'preferred_countries' => [1],
+            'preferred_degrees' => ['Bachelor\'s']
+        ];
+        
+        try {
+            $controller->updatePreferences();
+            throw new \Exception("Step 3 Error: Accepted preferred fields count exceeding 3.");
+        } catch (\RuntimeException $e) {
+            // Expected redirection/halt because of validation error
+            $errors = $_SESSION['profile_errors'] ?? [];
+            if (!isset($errors['preferences']) || strpos($errors['preferences'], 'up to 3 fields') === false) {
+                throw new \Exception("Step 3 Error: Exceeding fields validation message missing in session.");
+            }
+        }
+
+        // 3. Test saving Address & Postal Code in student_profiles
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'first_name' => 'John',
+            'last_name' => 'Doe',
+            'email' => 'test_profile_john@scholarmatch.test',
+            'phone' => '+12345678901',
+            'date_of_birth' => '2000-01-01',
+            'gender' => 'male',
+            'address' => '123 Antigravity Way',
+            'postal_code' => '94043'
+        ];
+        try {
+            $controller->update();
+        } catch (\RuntimeException $e) {
+            // Expected redirect
+        }
+        $profile = $this->db->query("SELECT * FROM student_profiles WHERE user_id = {$userId} LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if (!$profile || $profile['address'] !== '123 Antigravity Way' || $profile['postal_code'] !== '94043') {
+            throw new \Exception("Step 1 Onboarding Error: Address or Postal Code was not saved to student_profiles.");
+        }
+
+        // 4. Test saving current_semester and passing_year in education_records
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'institution_select' => 'other',
+            'custom_institution_name' => 'Wizard Semester College',
+            'degree_level' => 'Bachelor\'s',
+            'degree_title' => 'BS CS',
+            'field_of_study' => 'Computer Science',
+            'country_id' => $countryId,
+            'state_id' => $stateId,
+            'city_id' => $cityId,
+            'graduation_status' => 'ongoing',
+            'institution_type' => 'university',
+            'current_semester' => '7',
+            'passing_year' => 2027,
+            'cgpa' => 3.8,
+            'cgpa_scale' => 4.0
+        ];
+        try {
+            $controller->addEducation();
+        } catch (\RuntimeException $e) {
+            // Expected redirect
+        }
+        $edu2 = $this->db->query("SELECT * FROM education_records WHERE user_id = {$userId} AND degree_title = 'BS CS' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if (!$edu2 || $edu2['current_semester'] !== '7' || (int)$edu2['passing_year'] !== 2027) {
+            throw new \Exception("Step 2 Onboarding Error: current_semester or passing_year was not saved to education_records.");
+        }
+
+        echo "✔ Step 2 Wizard constraints & pending institutions verified.\n";
+    }
 }
+
+

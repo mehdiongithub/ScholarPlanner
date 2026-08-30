@@ -239,47 +239,6 @@
 
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="phone" class="form-label">Mobile Number</label>
-                        <input type="tel" id="phone" name="phone" class="form-input" required placeholder="+923001234567"
-                               value="<?= e($old['phone'] ?? '') ?>" autocomplete="tel">
-                        <?php if (!empty($errors['phone'])): ?>
-                            <span style="font-size: 0.75rem; color: #b91c1c; margin-top: 4px; display: block;">
-                                <?= e($errors['phone']) ?>
-                            </span>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="whatsapp_phone" class="form-label">WhatsApp Number (Optional)</label>
-                        <input type="tel" id="whatsapp_phone" name="whatsapp_phone" class="form-input" placeholder="+923001234567"
-                               value="<?= e($old['whatsapp_phone'] ?? '') ?>">
-                        <?php if (!empty($errors['whatsapp_phone'])): ?>
-                            <span style="font-size: 0.75rem; color: #b91c1c; margin-top: 4px; display: block;">
-                                <?= e($errors['whatsapp_phone']) ?>
-                            </span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="country_id" class="form-label">Select Country of Residence</label>
-                    <select id="country_id" name="country_id" class="form-input" style="height: auto;" required>
-                        <option value="">-- Choose Country --</option>
-                        <?php foreach ($countries as $c): ?>
-                            <option value="<?= e($c['id']) ?>" <?= isset($old['country_id']) && $old['country_id'] == $c['id'] ? 'selected' : '' ?>>
-                                <?= e($c['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <?php if (!empty($errors['country_id'])): ?>
-                        <span style="font-size: 0.75rem; color: #b91c1c; margin-top: 4px; display: block;">
-                            <?= e($errors['country_id']) ?>
-                        </span>
-                    <?php endif; ?>
-                </div>
-
-                <div class="form-grid">
-                    <div class="form-group">
                         <label for="password" class="form-label">Password</label>
                         <input type="password" id="password" name="password" class="form-input" required 
                                autocomplete="new-password">
@@ -304,10 +263,15 @@
 
                 <div class="form-group">
                     <label class="checkbox-label">
-                        <input type="checkbox" name="whatsapp_opt_in" class="checkbox-input" value="1"
-                               <?= isset($old['whatsapp_opt_in']) ? 'checked' : '' ?>>
-                        <span>Opt-in to receive instant scholarship matches and alert notifications via WhatsApp.</span>
+                        <input type="checkbox" name="terms" class="checkbox-input" value="1"
+                               <?= isset($old['terms']) ? 'checked' : '' ?>>
+                        <span>I agree to the Terms & Conditions and Privacy Policy.</span>
                     </label>
+                    <?php if (!empty($errors['terms'])): ?>
+                        <span style="font-size: 0.75rem; color: #b91c1c; margin-top: 4px; display: block;">
+                            <?= e($errors['terms']) ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
 
                 <button type="submit" class="btn-submit">Sign Up</button>

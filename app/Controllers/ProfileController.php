@@ -52,14 +52,16 @@ class ProfileController {
 
         // 3. Fetch education records
         $stmtEdu = $db->prepare("
-            SELECT er.*, c.name as country_name 
+            SELECT er.*, c.name as country_name, inst.institution_type
             FROM education_records er
             LEFT JOIN countries c ON er.country_id = c.id
+            LEFT JOIN institutions inst ON er.institution_id = inst.id
             WHERE er.user_id = :user_id 
             ORDER BY er.start_date DESC
         ");
         $stmtEdu->execute(['user_id' => $userId]);
         $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
+
 
         // 4. Fetch preferred countries
         $stmtPrefCountries = $db->prepare("
@@ -136,12 +138,17 @@ class ProfileController {
         $stmtUser = $db->prepare("
             SELECT u.id, u.first_name, u.last_name, u.email, u.phone,
                    p.date_of_birth, p.gender, p.bio, p.profile_completion_percentage,
-                   p.nationality_country_id, p.residence_country_id, p.residence_state_id, p.city_id
+                   p.nationality_country_id, p.residence_country_id, p.residence_state_id, p.city_id,
+                   p.preferred_funding_type, p.preferred_start_year,
+                   p.ielts_score, p.toefl_score, p.pte_score, p.duolingo_score,
+                   p.address, p.postal_code
             FROM users u
             LEFT JOIN student_profiles p ON u.id = p.user_id
             WHERE u.id = :user_id
             LIMIT 1
         ");
+
+
         $stmtUser->execute(['user_id' => $userId]);
         $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
 
@@ -166,9 +173,17 @@ class ProfileController {
         }
 
         // 4. Fetch education records
-        $stmtEdu = $db->prepare("SELECT * FROM education_records WHERE user_id = :user_id ORDER BY start_date DESC");
+        $stmtEdu = $db->prepare("
+            SELECT er.*, c.name as country_name, inst.institution_type
+            FROM education_records er
+            LEFT JOIN countries c ON er.country_id = c.id
+            LEFT JOIN institutions inst ON er.institution_id = inst.id
+            WHERE er.user_id = :user_id 
+            ORDER BY er.start_date DESC
+        ");
         $stmtEdu->execute(['user_id' => $userId]);
         $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
+
 
         // 5. Fetch selected preferences
         $prefCountries = $db->query("SELECT country_id FROM user_preferred_countries WHERE user_id = $userId")->fetchAll(PDO::FETCH_COLUMN);
@@ -232,10 +247,19 @@ class ProfileController {
         $residenceStateId = !empty($_POST['residence_state_id']) ? (int)$_POST['residence_state_id'] : null;
         $cityId = !empty($_POST['city_id']) ? (int)$_POST['city_id'] : null;
         $bio = trim($_POST['bio'] ?? '');
+        $address = trim($_POST['address'] ?? '');
+        $postalCode = trim($_POST['postal_code'] ?? '');
 
         // Validation
         $errors = [];
+        if (strlen($address) > 255) {
+            $errors['address'] = 'Address must not exceed 255 characters.';
+        }
+        if (strlen($postalCode) > 20) {
+            $errors['postal_code'] = 'Postal Code must not exceed 20 characters.';
+        }
         if (empty($firstName)) {
+
             $errors['first_name'] = 'First name is required.';
         } elseif (strlen($firstName) > 50) {
             $errors['first_name'] = 'First name must not exceed 50 characters.';
@@ -318,7 +342,8 @@ class ProfileController {
                 UPDATE student_profiles 
                 SET date_of_birth = :dob, gender = :gender, 
                     nationality_country_id = :nat_id, residence_country_id = :res_id, 
-                    residence_state_id = :state_id, city_id = :city_id, bio = :bio, updated_at = NOW() 
+                    residence_state_id = :state_id, city_id = :city_id, bio = :bio, 
+                    address = :address, postal_code = :postal_code, updated_at = NOW() 
                 WHERE user_id = :user_id
             ");
             $stmtProfile->execute([
@@ -329,15 +354,27 @@ class ProfileController {
                 'state_id' => $residenceStateId,
                 'city_id' => $cityId,
                 'bio' => $bio ?: null,
+                'address' => $address ?: null,
+                'postal_code' => $postalCode ?: null,
                 'user_id' => $userId
             ]);
 
+
             $db->commit();
-            ProfileCompletionService::calculate($userId);
+            $completion = ProfileCompletionService::calculate($userId);
             $this->invalidateMatches($userId);
+
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Profile updated successfully.', 'completion' => $completion]);
+                $this->halt("AJAX success response");
+            }
+
 
             header("Location: " . url('/profile/edit?success=Profile updated successfully.'));
             $this->halt("Redirect profile update success");
+
 
         } catch (Exception $e) {
             $db->rollBack();
@@ -361,11 +398,14 @@ class ProfileController {
         }
 
         // Whitelisted inputs
-        $institutionName = trim($_POST['institution_name'] ?? '');
+        $institutionSelect = $_POST['institution_select'] ?? null;
+        $customInstName = trim($_POST['custom_institution_name'] ?? '');
         $degreeLevel = trim($_POST['degree_level'] ?? '');
         $degreeTitle = trim($_POST['degree_title'] ?? '');
         $fieldOfStudy = trim($_POST['field_of_study'] ?? '');
         $countryId = !empty($_POST['country_id']) ? (int)$_POST['country_id'] : null;
+        $stateId = !empty($_POST['state_id']) ? (int)$_POST['state_id'] : null;
+        $cityId = !empty($_POST['city_id']) ? (int)$_POST['city_id'] : null;
         $startDate = trim($_POST['start_date'] ?? '');
         $endDate = trim($_POST['end_date'] ?? '');
         $graduationStatus = trim($_POST['graduation_status'] ?? 'graduated');
@@ -374,16 +414,132 @@ class ProfileController {
         $percentage = !empty($_POST['percentage']) ? (float)$_POST['percentage'] : null;
         $resultStatus = trim($_POST['result_status'] ?? 'declared');
         $isCurrent = isset($_POST['is_current']) ? 1 : 0;
+        $institutionType = trim($_POST['institution_type'] ?? 'university');
+        $currentSemester = !empty($_POST['current_semester']) ? trim($_POST['current_semester']) : null;
+        $passingYear = !empty($_POST['passing_year']) ? (int)$_POST['passing_year'] : null;
 
-        // Validation
-        $errors = $this->validateEducation($institutionName, $degreeLevel, $degreeTitle, $fieldOfStudy, $cgpa, $cgpaScale, $percentage, $startDate, $endDate);
+        if (in_array($institutionType, ['school', 'college', 'other'])) {
+            $institutionSelect = 'other';
+            $degreeTitle = $degreeLevel ?: 'N/A';
+            $fieldOfStudy = 'General';
+        }
+
+        $institutionId = null;
+        $institutionName = '';
+        $errors = [];
+
+
+        // Conditional validations for semester and passing year
+        if ($graduationStatus === 'ongoing' && $institutionType === 'university') {
+            if (empty($currentSemester)) {
+                $errors['current_semester'] = 'Current semester is required.';
+            }
+        }
+        if ($institutionType === 'university' && ($graduationStatus === 'graduated' || $graduationStatus === 'ongoing')) {
+            if (empty($passingYear)) {
+                $errors['passing_year'] = 'Graduation / Passing Year is required.';
+            } elseif ($passingYear < (int)date('Y') - 100 || $passingYear > (int)date('Y') + 10) {
+                $errors['passing_year'] = 'Please enter a valid passing year.';
+            }
+        }
+
+        if ($institutionSelect !== null && $institutionSelect !== '') {
+            if ($institutionSelect === 'other') {
+                $institutionName = $customInstName;
+                if (empty($institutionName)) {
+                    $errors['custom_institution_name'] = 'Custom institution name is required.';
+                }
+                if (in_array($institutionType, ['university', 'school', 'college', 'other'])) {
+                    if ($countryId === null || $countryId <= 0) {
+                        $errors['edu_country_id'] = 'Institution country is required.';
+                    }
+                    if ($stateId === null || $stateId <= 0) {
+                        $errors['edu_state_id'] = 'Institution state is required.';
+                    }
+                }
+            } else {
+                $institutionId = (int)$institutionSelect;
+                $stmtName = $db->prepare("SELECT name FROM institutions WHERE id = :id LIMIT 1");
+                $stmtName->execute(['id' => $institutionId]);
+                $institutionName = $stmtName->fetchColumn() ?: '';
+            }
+        } else {
+            $institutionName = trim($_POST['institution_name'] ?? '');
+        }
+
+        // Standard validation
+        $errors = array_merge($errors, $this->validateEducation($institutionName, $degreeLevel, $degreeTitle, $fieldOfStudy, $cgpa, $cgpaScale, $percentage, $startDate, $endDate));
 
         if (!empty($errors)) {
             $this->redirectBackWithErrors($errors);
         }
 
+
         try {
             $db->beginTransaction();
+
+            // Resolve/Create Pending Institution if needed
+            if ($institutionSelect === 'other') {
+                $type = trim($_POST['institution_type'] ?? '');
+                if (empty($type)) {
+                    if ($degreeLevel === 'High School') {
+                        $type = 'school';
+                    } elseif (in_array($degreeLevel, ['Intermediate / College', 'Diploma', 'Associate Degree'])) {
+                        $type = 'college';
+                    } else {
+                        $type = 'university';
+                    }
+                }
+
+
+                $stmtExist = $db->prepare("
+                    SELECT id FROM institutions 
+                    WHERE LOWER(name) = :name 
+                      AND institution_type = :type 
+                      AND (country_id = :country OR (country_id IS NULL AND :country2 IS NULL))
+                      AND (state_id = :state OR (state_id IS NULL AND :state2 IS NULL))
+                    LIMIT 1
+                ");
+                $stmtExist->execute([
+                    'name' => strtolower($institutionName),
+                    'type' => $type,
+                    'country' => $countryId,
+                    'country2' => $countryId,
+                    'state' => $stateId,
+                    'state2' => $stateId
+                ]);
+                $existingInstId = $stmtExist->fetchColumn();
+
+                if ($existingInstId) {
+                    $institutionId = (int)$existingInstId;
+                } else {
+                    $stmtNew = $db->prepare("
+                        INSERT INTO institutions (name, institution_type, country_id, state_id, city_id, coverage_type, status, created_by, created_at, updated_at) 
+                        VALUES (:name, :type, :country_id, :state_id, :city_id, 'state', 'pending', :created_by, NOW(), NOW())
+                    ");
+                    $stmtNew->execute([
+                        'name' => $institutionName,
+                        'type' => $type,
+                        'country_id' => $countryId,
+                        'state_id' => $stateId,
+                        'city_id' => $cityId,
+                        'created_by' => $userId
+                    ]);
+
+                    $institutionId = (int)$db->lastInsertId();
+
+                    if ($stateId !== null) {
+                        $stmtInstState = $db->prepare("
+                            INSERT IGNORE INTO institution_states (institution_id, state_id) 
+                            VALUES (:inst_id, :state_id)
+                        ");
+                        $stmtInstState->execute([
+                            'inst_id' => $institutionId,
+                            'state_id' => $stateId
+                        ]);
+                    }
+                }
+            }
 
             // Enforce single current check
             if ($isCurrent === 1) {
@@ -392,14 +548,17 @@ class ProfileController {
 
             $stmt = $db->prepare("
                 INSERT INTO education_records 
-                (user_id, institution_name, degree_level, degree_title, field_of_study, country_id, 
-                 start_date, end_date, graduation_status, cgpa, cgpa_scale, percentage, result_status, is_current, created_at, updated_at) 
+                (user_id, institution_id, institution_name, degree_level, degree_title, field_of_study, country_id, 
+                 start_date, end_date, graduation_status, cgpa, cgpa_scale, percentage, result_status, is_current, 
+                 current_semester, passing_year, created_at, updated_at) 
                 VALUES 
-                (:uid, :inst, :lvl, :title, :field, :country, :start, :end, :status, :cgpa, :scale, :pct, :res_status, :is_curr, NOW(), NOW())
+                (:uid, :inst_id, :inst, :lvl, :title, :field, :country, :start, :end, :status, :cgpa, :scale, :pct, :res_status, :is_curr, 
+                 :semester, :passing_yr, NOW(), NOW())
             ");
 
             $stmt->execute([
                 'uid' => $userId,
+                'inst_id' => $institutionId,
                 'inst' => $institutionName,
                 'lvl' => $degreeLevel,
                 'title' => $degreeTitle,
@@ -412,14 +571,46 @@ class ProfileController {
                 'scale' => $cgpaScale,
                 'pct' => $percentage,
                 'res_status' => $resultStatus,
-                'is_curr' => $isCurrent
+                'is_curr' => $isCurrent,
+                'semester' => $currentSemester,
+                'passing_yr' => $passingYear
             ]);
 
+
             $db->commit();
-            ProfileCompletionService::calculate($userId);
+            $completion = ProfileCompletionService::calculate($userId);
             $this->invalidateMatches($userId);
 
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+            if ($isAjax) {
+                // Fetch updated education records
+                $stmtEdu = $db->prepare("
+                    SELECT er.*, c.name as country_name, inst.institution_type
+                    FROM education_records er
+                    LEFT JOIN countries c ON er.country_id = c.id
+                    LEFT JOIN institutions inst ON er.institution_id = inst.id
+                    WHERE er.user_id = :user_id 
+                    ORDER BY er.start_date DESC
+                ");
+                $stmtEdu->execute(['user_id' => $userId]);
+
+                $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true, 
+                    'message' => 'Education record added successfully.',
+                    'education' => $education,
+                    'completion' => $completion
+                ]);
+                $this->halt("AJAX success response");
+            }
+
+
             header("Location: " . url('/profile/edit?success=Education record added successfully.'));
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                return;
+            }
             exit();
 
         } catch (Exception $e) {
@@ -428,6 +619,7 @@ class ProfileController {
             $this->redirectBackWithErrors(['education' => 'An error occurred while saving your education history. Please try again.']);
         }
     }
+
 
     /**
      * POST /profile/education/update
@@ -456,11 +648,14 @@ class ProfileController {
         }
 
         // Whitelisted inputs
-        $institutionName = trim($_POST['institution_name'] ?? '');
+        $institutionSelect = $_POST['institution_select'] ?? null;
+        $customInstName = trim($_POST['custom_institution_name'] ?? '');
         $degreeLevel = trim($_POST['degree_level'] ?? '');
         $degreeTitle = trim($_POST['degree_title'] ?? '');
         $fieldOfStudy = trim($_POST['field_of_study'] ?? '');
         $countryId = !empty($_POST['country_id']) ? (int)$_POST['country_id'] : null;
+        $stateId = !empty($_POST['state_id']) ? (int)$_POST['state_id'] : null;
+        $cityId = !empty($_POST['city_id']) ? (int)$_POST['city_id'] : null;
         $startDate = trim($_POST['start_date'] ?? '');
         $endDate = trim($_POST['end_date'] ?? '');
         $graduationStatus = trim($_POST['graduation_status'] ?? 'graduated');
@@ -469,16 +664,133 @@ class ProfileController {
         $percentage = !empty($_POST['percentage']) ? (float)$_POST['percentage'] : null;
         $resultStatus = trim($_POST['result_status'] ?? 'declared');
         $isCurrent = isset($_POST['is_current']) ? 1 : 0;
+        $institutionType = trim($_POST['institution_type'] ?? 'university');
+        $currentSemester = !empty($_POST['current_semester']) ? trim($_POST['current_semester']) : null;
+        $passingYear = !empty($_POST['passing_year']) ? (int)$_POST['passing_year'] : null;
 
-        // Validation
-        $errors = $this->validateEducation($institutionName, $degreeLevel, $degreeTitle, $fieldOfStudy, $cgpa, $cgpaScale, $percentage, $startDate, $endDate);
+        if (in_array($institutionType, ['school', 'college', 'other'])) {
+            $institutionSelect = 'other';
+            $degreeTitle = $degreeLevel ?: 'N/A';
+            $fieldOfStudy = 'General';
+        }
+
+        $institutionId = null;
+        $institutionName = '';
+        $errors = [];
+
+
+        // Conditional validations for semester and passing year
+        if ($graduationStatus === 'ongoing' && $institutionType === 'university') {
+            if (empty($currentSemester)) {
+                $errors['current_semester'] = 'Current semester is required.';
+            }
+        }
+        if ($institutionType === 'university' && ($graduationStatus === 'graduated' || $graduationStatus === 'ongoing')) {
+            if (empty($passingYear)) {
+                $errors['passing_year'] = 'Graduation / Passing Year is required.';
+            } elseif ($passingYear < (int)date('Y') - 100 || $passingYear > (int)date('Y') + 10) {
+                $errors['passing_year'] = 'Please enter a valid passing year.';
+            }
+        }
+
+        if ($institutionSelect !== null && $institutionSelect !== '') {
+            if ($institutionSelect === 'other') {
+                $institutionName = $customInstName;
+                if (empty($institutionName)) {
+                    $errors['custom_institution_name'] = 'Custom institution name is required.';
+                }
+                if (in_array($institutionType, ['university', 'school', 'college', 'other'])) {
+                    if ($countryId === null || $countryId <= 0) {
+                        $errors['edu_country_id'] = 'Institution country is required.';
+                    }
+                    if ($stateId === null || $stateId <= 0) {
+                        $errors['edu_state_id'] = 'Institution state is required.';
+                    }
+                }
+            } else {
+                $institutionId = (int)$institutionSelect;
+                $stmtName = $db->prepare("SELECT name FROM institutions WHERE id = :id LIMIT 1");
+                $stmtName->execute(['id' => $institutionId]);
+                $institutionName = $stmtName->fetchColumn() ?: '';
+            }
+        } else {
+            $institutionName = trim($_POST['institution_name'] ?? '');
+        }
+
+        // Standard validation
+        $errors = array_merge($errors, $this->validateEducation($institutionName, $degreeLevel, $degreeTitle, $fieldOfStudy, $cgpa, $cgpaScale, $percentage, $startDate, $endDate));
 
         if (!empty($errors)) {
             $this->redirectBackWithErrors($errors);
         }
 
+
         try {
             $db->beginTransaction();
+
+            // Resolve/Create Pending Institution if needed
+            if ($institutionSelect === 'other') {
+                $type = trim($_POST['institution_type'] ?? '');
+                if (empty($type)) {
+                    if ($degreeLevel === 'High School') {
+                        $type = 'school';
+                    } elseif (in_array($degreeLevel, ['Intermediate / College', 'Diploma', 'Associate Degree'])) {
+                        $type = 'college';
+                    } else {
+                        $type = 'university';
+                    }
+                }
+
+
+
+                $stmtExist = $db->prepare("
+                    SELECT id FROM institutions 
+                    WHERE LOWER(name) = :name 
+                      AND institution_type = :type 
+                      AND (country_id = :country OR (country_id IS NULL AND :country2 IS NULL))
+                      AND (state_id = :state OR (state_id IS NULL AND :state2 IS NULL))
+                    LIMIT 1
+                ");
+                $stmtExist->execute([
+                    'name' => strtolower($institutionName),
+                    'type' => $type,
+                    'country' => $countryId,
+                    'country2' => $countryId,
+                    'state' => $stateId,
+                    'state2' => $stateId
+                ]);
+                $existingInstId = $stmtExist->fetchColumn();
+
+                if ($existingInstId) {
+                    $institutionId = (int)$existingInstId;
+                } else {
+                    $stmtNew = $db->prepare("
+                        INSERT INTO institutions (name, institution_type, country_id, state_id, city_id, coverage_type, status, created_by, created_at, updated_at) 
+                        VALUES (:name, :type, :country_id, :state_id, :city_id, 'state', 'pending', :created_by, NOW(), NOW())
+                    ");
+                    $stmtNew->execute([
+                        'name' => $institutionName,
+                        'type' => $type,
+                        'country_id' => $countryId,
+                        'state_id' => $stateId,
+                        'city_id' => $cityId,
+                        'created_by' => $userId
+                    ]);
+
+                    $institutionId = (int)$db->lastInsertId();
+
+                    if ($stateId !== null) {
+                        $stmtInstState = $db->prepare("
+                            INSERT IGNORE INTO institution_states (institution_id, state_id) 
+                            VALUES (:inst_id, :state_id)
+                        ");
+                        $stmtInstState->execute([
+                            'inst_id' => $institutionId,
+                            'state_id' => $stateId
+                        ]);
+                    }
+                }
+            }
 
             // Enforce single current check
             if ($isCurrent === 1) {
@@ -487,13 +799,15 @@ class ProfileController {
 
             $stmt = $db->prepare("
                 UPDATE education_records 
-                SET institution_name = :inst, degree_level = :lvl, degree_title = :title, field_of_study = :field, 
+                SET institution_id = :inst_id, institution_name = :inst, degree_level = :lvl, degree_title = :title, field_of_study = :field, 
                     country_id = :country, start_date = :start, end_date = :end, graduation_status = :status, 
-                    cgpa = :cgpa, cgpa_scale = :scale, percentage = :pct, result_status = :res_status, is_current = :is_curr, updated_at = NOW() 
+                    cgpa = :cgpa, cgpa_scale = :scale, percentage = :pct, result_status = :res_status, is_current = :is_curr, 
+                    current_semester = :semester, passing_year = :passing_yr, updated_at = NOW() 
                 WHERE id = :id AND user_id = :uid
             ");
 
             $stmt->execute([
+                'inst_id' => $institutionId,
                 'inst' => $institutionName,
                 'lvl' => $degreeLevel,
                 'title' => $degreeTitle,
@@ -507,15 +821,47 @@ class ProfileController {
                 'pct' => $percentage,
                 'res_status' => $resultStatus,
                 'is_curr' => $isCurrent,
+                'semester' => $currentSemester,
+                'passing_yr' => $passingYear,
                 'id' => $id,
                 'uid' => $userId
             ]);
 
+
             $db->commit();
-            ProfileCompletionService::calculate($userId);
+            $completion = ProfileCompletionService::calculate($userId);
             $this->invalidateMatches($userId);
 
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+            if ($isAjax) {
+                // Fetch updated education records
+                $stmtEdu = $db->prepare("
+                    SELECT er.*, c.name as country_name, inst.institution_type
+                    FROM education_records er
+                    LEFT JOIN countries c ON er.country_id = c.id
+                    LEFT JOIN institutions inst ON er.institution_id = inst.id
+                    WHERE er.user_id = :user_id 
+                    ORDER BY er.start_date DESC
+                ");
+                $stmtEdu->execute(['user_id' => $userId]);
+
+                $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true, 
+                    'message' => 'Education record updated successfully.',
+                    'education' => $education,
+                    'completion' => $completion
+                ]);
+                $this->halt("AJAX success response");
+            }
+
+
             header("Location: " . url('/profile/edit?success=Education record updated successfully.'));
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                return;
+            }
             exit();
 
         } catch (Exception $e) {
@@ -524,6 +870,7 @@ class ProfileController {
             $this->redirectBackWithErrors(['education' => 'An error occurred while saving your education history. Please try again.']);
         }
     }
+
 
     /**
      * POST /profile/education/delete
@@ -555,11 +902,41 @@ class ProfileController {
             $stmt = $db->prepare("DELETE FROM education_records WHERE id = :id AND user_id = :uid");
             $stmt->execute(['id' => $id, 'uid' => $userId]);
 
-            ProfileCompletionService::calculate($userId);
+            $completion = ProfileCompletionService::calculate($userId);
             $this->invalidateMatches($userId);
 
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+            if ($isAjax) {
+                // Fetch updated education records
+                $stmtEdu = $db->prepare("
+                    SELECT er.*, c.name as country_name, inst.institution_type
+                    FROM education_records er
+                    LEFT JOIN countries c ON er.country_id = c.id
+                    LEFT JOIN institutions inst ON er.institution_id = inst.id
+                    WHERE er.user_id = :user_id 
+                    ORDER BY er.start_date DESC
+                ");
+                $stmtEdu->execute(['user_id' => $userId]);
+
+                $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true, 
+                    'message' => 'Education record deleted successfully.',
+                    'education' => $education,
+                    'completion' => $completion
+                ]);
+                $this->halt("AJAX success response");
+            }
+
+
             header("Location: " . url('/profile/edit?success=Education record deleted successfully.'));
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                return;
+            }
             exit();
+
 
         } catch (Exception $e) {
             \App\Services\Logger::error("Failed to delete education $id for user $userId: " . $e->getMessage());
@@ -592,26 +969,31 @@ class ProfileController {
         $prefFields = array_unique(array_filter(array_map('intval', $prefFields)));
         $prefDegrees = array_unique(array_filter(array_map('trim', $prefDegrees)));
 
+        // Server-side validation of preferred fields (max 3)
+        if (count($prefFields) > 3) {
+            $this->redirectBackWithErrors(['preferences' => 'You can select up to 3 fields of study.']);
+        }
+
         // Validate degree levels
-        $allowedDegrees = ['High School', 'Diploma', 'Associate Degree', 'Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral'];
+        $allowedDegrees = ['High School', 'Intermediate / College', 'Diploma', 'Associate Degree', 'Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Certification', 'Vocational', 'Other'];
         foreach ($prefDegrees as $lvl) {
             if (!in_array($lvl, $allowedDegrees)) {
                 $this->redirectBackWithErrors(['preferences' => 'Invalid target degree level selection.']);
             }
         }
 
-        // Alerts triggers
-        $alerts = [
-            'whatsapp_alerts' => isset($_POST['whatsapp_alerts']) ? 1 : 0,
-            'email_alerts' => isset($_POST['email_alerts']) ? 1 : 0,
-            'daily_alerts' => isset($_POST['daily_alerts']) ? 1 : 0,
-            'weekly_digest' => isset($_POST['weekly_digest']) ? 1 : 0,
-            'deadline_reminders' => isset($_POST['deadline_reminders']) ? 1 : 0,
-            'new_scholarship_alerts' => isset($_POST['new_scholarship_alerts']) ? 1 : 0,
-            'matching_scholarship_alerts' => isset($_POST['matching_scholarship_alerts']) ? 1 : 0
-        ];
+
+        // Sanitize and extract student profile preferences & language scores
+        $prefFunding = trim($_POST['preferred_funding_type'] ?? '');
+        $prefStartYear = !empty($_POST['preferred_start_year']) ? (int)$_POST['preferred_start_year'] : null;
+
+        $ielts = !empty($_POST['ielts_score']) ? (float)$_POST['ielts_score'] : null;
+        $toefl = !empty($_POST['toefl_score']) ? (int)$_POST['toefl_score'] : null;
+        $pte = !empty($_POST['pte_score']) ? (int)$_POST['pte_score'] : null;
+        $duolingo = !empty($_POST['duolingo_score']) ? (int)$_POST['duolingo_score'] : null;
 
         try {
+
             $db->beginTransaction();
 
             // 1. Preferred Countries (Pivot Update)
@@ -641,25 +1023,41 @@ class ProfileController {
                 }
             }
 
-            // 4. Alerts Options Mapping
-            $db->prepare("DELETE FROM notification_preferences WHERE user_id = :uid")->execute(['uid' => $userId]);
-            $stmtNotify = $db->prepare("
-                INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at) 
-                VALUES (:uid, :type, :email, :whatsapp, NOW(), NOW())
+            // 4. Update student profile details (funding, year, scores)
+            $stmtProf = $db->prepare("
+                UPDATE student_profiles 
+                SET preferred_funding_type = :funding,
+                    preferred_start_year = :start_year,
+                    ielts_score = :ielts,
+                    toefl_score = :toefl,
+                    pte_score = :pte,
+                    duolingo_score = :duolingo,
+                    updated_at = NOW()
+                WHERE user_id = :uid
             ");
+            $stmtProf->execute([
+                'funding' => $prefFunding ?: null,
+                'start_year' => $prefStartYear,
+                'ielts' => $ielts,
+                'toefl' => $toefl,
+                'pte' => $pte,
+                'duolingo' => $duolingo,
+                'uid' => $userId
+            ]);
 
-            foreach ($alerts as $type => $enabled) {
-                $stmtNotify->execute([
-                    'uid' => $userId,
-                    'type' => $type,
-                    'email' => $enabled,
-                    'whatsapp' => $enabled
-                ]);
-            }
+
+
 
             $db->commit();
             ProfileCompletionService::calculate($userId);
             $this->invalidateMatches($userId);
+
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Preferences updated successfully.']);
+                $this->halt("AJAX success response");
+            }
 
             header("Location: " . url('/profile/edit?success=Preferences updated successfully.'));
             exit();
@@ -670,6 +1068,7 @@ class ProfileController {
             $this->redirectBackWithErrors(['preferences' => 'An error occurred while saving your preferences. Please try again.']);
         }
     }
+
 
     /**
      * AJAX Endpoint: States Lookup
@@ -737,7 +1136,106 @@ class ProfileController {
         }
     }
 
+    /**
+     * AJAX Endpoint: Institutions Lookup by Type and Location
+     */
+    public function getInstitutions(): void {
+        if (!Auth::isAuthenticated() && !Auth::checkRememberMe()) {
+            http_response_code(401);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Unauthorized access. Please log in.']);
+            exit();
+        }
+
+        header('Content-Type: application/json');
+        
+        $type = trim($_GET['type'] ?? 'university');
+        $countryId = !empty($_GET['country_id']) ? (int)$_GET['country_id'] : null;
+        $stateId = !empty($_GET['state_id']) ? (int)$_GET['state_id'] : null;
+        $cityId = !empty($_GET['city_id']) ? (int)$_GET['city_id'] : null;
+        $search = trim($_GET['search'] ?? '');
+
+        if (!in_array($type, ['school', 'college', 'university', 'other'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid institution type.']);
+            exit();
+        }
+
+        try {
+            $db = Database::connection();
+            
+            if ($type === 'university' && $countryId !== null && $stateId !== null) {
+                $query = "SELECT DISTINCT i.id, i.name 
+                          FROM institutions i 
+                          WHERE i.institution_type = 'university' 
+                            AND i.status = 'approved' 
+                            AND i.country_id = :country_id 
+                            AND (
+                                i.coverage_type = 'national'
+                                OR EXISTS (
+                                    SELECT 1 
+                                    FROM institution_states ist 
+                                    WHERE ist.institution_id = i.id 
+                                      AND ist.state_id = :state_id
+                                )
+                            )";
+                $params = [
+                    'country_id' => $countryId,
+                    'state_id' => $stateId
+                ];
+
+                if ($cityId !== null) {
+                    $query .= " AND (i.city_id = :city_id OR i.coverage_type IN ('national', 'multi_state'))";
+                    $params['city_id'] = $cityId;
+                }
+
+                if ($search !== '') {
+                    $query .= " AND i.name LIKE :search";
+                    $params['search'] = '%' . $search . '%';
+                }
+
+                $query .= " ORDER BY i.name ASC LIMIT 100";
+            } else {
+                $query = "SELECT id, name FROM institutions WHERE institution_type = :type AND status = 'approved'";
+                $params = ['type' => $type];
+
+                if ($countryId !== null) {
+                    $query .= " AND country_id = :country_id";
+                    $params['country_id'] = $countryId;
+                }
+
+                if ($stateId !== null) {
+                    $query .= " AND state_id = :state_id";
+                    $params['state_id'] = $stateId;
+                }
+
+                if ($cityId !== null) {
+                    $query .= " AND city_id = :city_id";
+                    $params['city_id'] = $cityId;
+                }
+
+                if ($search !== '') {
+                    $query .= " AND name LIKE :search";
+                    $params['search'] = '%' . $search . '%';
+                }
+
+                $query .= " ORDER BY name ASC LIMIT 100";
+            }
+
+            $stmt = $db->prepare($query);
+            $stmt->execute($params);
+            echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+            exit();
+        } catch (Exception $e) {
+            \App\Services\Logger::error("Failed to load institutions: " . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(['error' => 'Internal server error occurred.']);
+            exit();
+        }
+    }
+
     // Helper functions
+
     private function halt(string $message = 'Halt execution'): void {
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new \RuntimeException($message);
@@ -746,10 +1244,17 @@ class ProfileController {
     }
 
     private function redirectBackWithErrors(array $errors): void {
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'errors' => $errors]);
+            $this->halt("AJAX errors response");
+        }
         $_SESSION['profile_errors'] = $errors;
         header("Location: " . url('/profile/edit'));
         $this->halt("Redirect back with errors");
     }
+
 
     private function validateEducation(string $institution, string $level, string $title, string $field, ?float $cgpa, ?float $scale, ?float $pct, string $start, string $end): array {
         $errors = [];
@@ -773,10 +1278,11 @@ class ProfileController {
             $errors['field_of_study'] = 'Field of study must not exceed 100 characters.';
         }
 
-        $allowedLevels = ['High School', 'Diploma', 'Associate Degree', 'Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral'];
+        $allowedLevels = ['High School', 'Intermediate / College', 'Diploma', 'Associate Degree', 'Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Certification', 'Vocational', 'Other'];
         if (!empty($level) && !in_array($level, $allowedLevels)) {
             $errors['degree_level'] = 'Invalid degree level selected.';
         }
+
 
         if ($cgpa !== null) {
             if ($cgpa < 0 || ($scale !== null && $cgpa > $scale)) {
@@ -806,4 +1312,60 @@ class ProfileController {
         $stmt = $db->prepare("DELETE FROM scholarship_matches WHERE user_id = :user_id");
         $stmt->execute(['user_id' => $userId]);
     }
+
+    /**
+     * Display profile creation placeholder page (Compatibility Redirect)
+     */
+    public function complete(): void {
+        Auth::requireAuth();
+        header("Location: " . url('/profile/edit'));
+        $this->halt("Redirect to profile edit");
+    }
+
+    /**
+     * POST /profile/complete
+     * Finalize profile, recalculate completeness, and redirect to dashboard
+     */
+    public function completeWizard(): void {
+        Auth::requireAuth();
+        $userId = Auth::userId();
+        
+        // CSRF Check
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.']);
+        }
+
+        // Recalculate completeness
+        $db = Database::connection();
+        $stmtCheckPrefs = $db->prepare("SELECT COUNT(*) FROM notification_preferences WHERE user_id = :uid");
+        $stmtCheckPrefs->execute(['uid' => $userId]);
+        $hasPrefs = (int)$stmtCheckPrefs->fetchColumn() > 0;
+
+        if (!$hasPrefs) {
+            $db->prepare("
+                INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at)
+                VALUES (:uid, 'email_alerts', 1, 0, NOW(), NOW())
+            ")->execute(['uid' => $userId]);
+        }
+
+        ProfileCompletionService::calculate($userId);
+        $this->invalidateMatches($userId);
+
+
+        // Success toast session
+        $_SESSION['dashboard_success'] = "Profile completed successfully!";
+
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'redirect_url' => url('/dashboard')]);
+            $this->halt("AJAX complete success");
+        }
+
+        header("Location: " . url('/dashboard'));
+        $this->halt("Redirect to dashboard");
+    }
 }
+
+

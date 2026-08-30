@@ -31,6 +31,62 @@ class ScholarshipController {
         return trim($clean);
     }
 
+    private function handleImageUpload(): ?string {
+        if (!isset($_FILES['cover_image']) || $_FILES['cover_image']['error'] === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+
+        $file = $_FILES['cover_image'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            throw new Exception("File upload failed with error code: " . $file['error']);
+        }
+
+        // Validate size (max 5MB)
+        if ($file['size'] > 5 * 1024 * 1024) {
+            throw new Exception("File size exceeds maximum limit of 5MB.");
+        }
+
+        // Validate extension
+        $filename = $file['name'];
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $allowedExts = ['jpg', 'jpeg', 'png', 'webp'];
+        if (!in_array($ext, $allowedExts)) {
+            throw new Exception("Only JPG, JPEG, PNG, and WEBP formats are allowed.");
+        }
+
+        // Verify MIME type
+        $tmpPath = $file['tmp_name'];
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = finfo_file($finfo, $tmpPath);
+        finfo_close($finfo);
+
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!in_array($mime, $allowedMimes)) {
+            throw new Exception("Invalid file content type.");
+        }
+
+        // Protect against double extension
+        if (substr_count($filename, '.') > 1) {
+            throw new Exception("Malicious file upload attempt detected (double extension).");
+        }
+
+        // Create storage directory if it doesn't exist
+        $uploadDir = ROOT_PATH . '/storage/uploads/scholarships/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        // Generate safe unique filename
+        $safeName = 'sch_' . bin2hex(random_bytes(16)) . '.' . $ext;
+        $destPath = $uploadDir . $safeName;
+
+        if (!move_uploaded_file($tmpPath, $destPath)) {
+            throw new Exception("Failed to store uploaded cover image.");
+        }
+
+        return '/storage/uploads/scholarships/' . $safeName;
+    }
+
     /**
      * Helper to generate a unique slug
      */
@@ -212,11 +268,17 @@ class ScholarshipController {
         $documents = $db->query("SELECT id, name FROM documents ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
         $categories = $db->query("SELECT id, name FROM scholarship_categories ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
+        // Fetch lookups from database
+        $degrees = $db->query("SELECT * FROM degree_levels WHERE status = 'active' ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $fundings = $db->query("SELECT * FROM funding_types WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+
         view('admin.scholarships.create', [
             'countries' => $countries,
             'fields' => $fields,
             'documents' => $documents,
             'categories' => $categories,
+            'degrees' => $degrees,
+            'fundings' => $fundings,
             'csrf_token' => Security::csrfToken(),
             'errors' => [],
             'old' => []
@@ -361,6 +423,13 @@ class ScholarshipController {
             $errors['duplicate'] = 'A scholarship with the same title, provider, and application URL already exists.';
         }
 
+        $coverImage = null;
+        try {
+            $coverImage = $this->handleImageUpload();
+        } catch (Exception $ex) {
+            $errors['cover_image'] = $ex->getMessage();
+        }
+
         if (!empty($errors)) {
             $this->redirectBackWithErrors($errors, $_POST);
         }
@@ -377,12 +446,12 @@ class ScholarshipController {
                     title, slug, provider_name, provider_type, description, short_description, 
                     official_website, official_application_url, country_id, study_level, funding_type, 
                     application_type, status, verification_status, application_open_date, application_deadline, 
-                    is_featured, quality_status, recurring_interval, created_by, updated_by, created_at, updated_at
+                    cover_image, is_featured, quality_status, recurring_interval, created_by, updated_by, created_at, updated_at
                 ) VALUES (
                     :title, :slug, :provider_name, :provider_type, :description, :short_description, 
                     :official_website, :official_application_url, :country_id, :study_level, :funding_type, 
                     :application_type, 'draft', 'unverified', :open_date, :deadline_date, 
-                    :is_featured, :quality_status, :recurring_interval, :created_by, :updated_by, NOW(), NOW()
+                    :cover_image, :is_featured, :quality_status, :recurring_interval, :created_by, :updated_by, NOW(), NOW()
                 )
             ");
 
@@ -401,6 +470,7 @@ class ScholarshipController {
                 'application_type' => $applicationType ?: null,
                 'open_date' => $openDate ?: null,
                 'deadline_date' => $deadlineDate ?: null,
+                'cover_image' => $coverImage,
                 'is_featured' => $isFeatured,
                 'quality_status' => $qualityStatus,
                 'recurring_interval' => $recurringInterval,
@@ -598,8 +668,9 @@ class ScholarshipController {
         // Fetch languages
         $languages = $db->query("SELECT * FROM scholarship_languages WHERE scholarship_id = $id")->fetchAll(PDO::FETCH_ASSOC);
 
-        // Fetch source details
-        $source = $db->query("SELECT * FROM scholarship_sources WHERE scholarship_id = $id")->fetch(PDO::FETCH_ASSOC) ?: [];
+        // Fetch lookups from database
+        $degrees = $db->query("SELECT * FROM degree_levels WHERE status = 'active' ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $fundings = $db->query("SELECT * FROM funding_types WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
         view('admin.scholarships.edit', [
             'scholarship' => $scholarship,
@@ -616,6 +687,8 @@ class ScholarshipController {
             'benefits' => $benefits,
             'languages' => $languages,
             'source' => $source,
+            'degrees' => $degrees,
+            'fundings' => $fundings,
             'csrf_token' => Security::csrfToken(),
             'errors' => []
         ]);
@@ -632,7 +705,7 @@ class ScholarshipController {
         $db = Database::connection();
 
         // Verify exists
-        $stmtExist = $db->prepare("SELECT id, title, slug FROM scholarships WHERE id = :id");
+        $stmtExist = $db->prepare("SELECT id, title, slug, cover_image FROM scholarships WHERE id = :id");
         $stmtExist->execute(['id' => $id]);
         $oldRecord = $stmtExist->fetch();
         if (!$oldRecord) {
@@ -769,6 +842,20 @@ class ScholarshipController {
             $errors['duplicate'] = 'A scholarship with the same title, provider, and application URL already exists.';
         }
 
+        $coverImage = $oldRecord['cover_image'] ?? null;
+        if (isset($_POST['remove_cover_image']) && $_POST['remove_cover_image'] == '1') {
+            $coverImage = null;
+        }
+
+        try {
+            $newUploadedImage = $this->handleImageUpload();
+            if ($newUploadedImage !== null) {
+                $coverImage = $newUploadedImage;
+            }
+        } catch (Exception $ex) {
+            $errors['cover_image'] = $ex->getMessage();
+        }
+
         if (!empty($errors)) {
             $this->redirectBackWithErrors($errors, $_POST);
         }
@@ -791,7 +878,7 @@ class ScholarshipController {
                     official_application_url = :official_application_url, country_id = :country_id, study_level = :study_level, 
                     funding_type = :funding_type, application_type = :application_type, application_open_date = :open_date, 
                     application_deadline = :deadline_date, is_featured = :is_featured, quality_status = :quality_status, 
-                    recurring_interval = :recurring_interval, updated_by = :updated_by, updated_at = NOW() 
+                    recurring_interval = :recurring_interval, cover_image = :cover_image, updated_by = :updated_by, updated_at = NOW() 
                 WHERE id = :id
             ");
 
@@ -810,6 +897,7 @@ class ScholarshipController {
                 'application_type' => $applicationType ?: null,
                 'open_date' => $openDate ?: null,
                 'deadline_date' => $deadlineDate ?: null,
+                'cover_image' => $coverImage,
                 'is_featured' => $isFeatured,
                 'quality_status' => $qualityStatus,
                 'recurring_interval' => $recurringInterval,
@@ -1083,10 +1171,15 @@ class ScholarshipController {
                 'id' => $id
             ]);
 
+            // Execute matching on publish
+            $matchingService = new \App\Services\ScholarshipMatchingService();
+            $matchStats = $matchingService->recalculateForScholarship($id);
+
             \App\Services\CacheService::clear();
             $this->logAudit('published', $id);
 
-            header("Location: " . url('/admin/scholarships?success=Scholarship published successfully.'));
+            $msg = 'Scholarship published successfully. Recalculated matches for ' . $matchStats['matched'] . ' students.';
+            header("Location: " . url('/admin/scholarships?success=' . urlencode($msg)));
             exit();
         } catch (Exception $e) {
             Logger::error("Failed to publish scholarship $id: " . $e->getMessage());
@@ -1123,6 +1216,199 @@ class ScholarshipController {
         } catch (Exception $e) {
             Logger::error("Failed to archive scholarship $id: " . $e->getMessage());
             header("Location: " . url('/admin/scholarships?error=Failed to archive scholarship.'));
+            exit();
+        }
+    }
+
+    /**
+     * POST /admin/scholarships/{id}/unpublish
+     */
+    public function unpublish(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        Auth::requirePermission('scholarships.publish');
+
+        $id = (int)$id;
+        $db = Database::connection();
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            header("Location: " . url('/admin/scholarships?error=CSRF validation failed.'));
+            exit();
+        }
+
+        try {
+            $stmt = $db->prepare("UPDATE scholarships SET status = 'draft', updated_at = NOW() WHERE id = :id");
+            $stmt->execute(['id' => $id]);
+
+            // Clean up matches
+            $stmtMatches = $db->prepare("DELETE FROM scholarship_matches WHERE scholarship_id = :id");
+            $stmtMatches->execute(['id' => $id]);
+
+            \App\Services\CacheService::clear();
+            $this->logAudit('unpublished', $id);
+
+            header("Location: " . url('/admin/scholarships?success=Scholarship unpublished and set to draft.'));
+            exit();
+        } catch (Exception $e) {
+            Logger::error("Failed to unpublish scholarship $id: " . $e->getMessage());
+            header("Location: " . url('/admin/scholarships?error=Failed to unpublish scholarship.'));
+            exit();
+        }
+    }
+
+    /**
+     * POST /admin/scholarships/{id}/duplicate
+     */
+    public function duplicate(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        Auth::requirePermission('scholarships.create');
+
+        $id = (int)$id;
+        $db = Database::connection();
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            header("Location: " . url('/admin/scholarships?error=CSRF validation failed.'));
+            exit();
+        }
+
+        $db->beginTransaction();
+        try {
+            // Fetch original
+            $stmt = $db->prepare("SELECT * FROM scholarships WHERE id = :id");
+            $stmt->execute(['id' => $id]);
+            $sch = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$sch) {
+                $db->rollBack();
+                header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+                exit();
+            }
+
+            // Create new title and slug
+            $newTitle = 'Copy of ' . $sch['title'];
+            $newSlug = $this->generateSlug($newTitle);
+
+            // Insert duplicated scholarship row (Draft status)
+            $stmtInsert = $db->prepare("
+                INSERT INTO scholarships (
+                    title, slug, description, short_description, provider_name, provider_type, country_id, state_id, city_id,
+                    funding_type, tuition_coverage, living_stipend, travel_allowance, accommodation,
+                    other_benefits, application_deadline, deadline_type, official_application_url,
+                    application_url, cover_image, is_featured, status, verification_status,
+                    created_at, updated_at
+                ) VALUES (
+                    :title, :slug, :description, :short_description, :provider_name, :provider_type, :country_id, :state_id, :city_id,
+                    :funding_type, :tuition_coverage, :living_stipend, :travel_allowance, :accommodation,
+                    :other_benefits, :application_deadline, :deadline_type, :official_application_url,
+                    :application_url, :cover_image, 0, 'draft', 'pending',
+                    NOW(), NOW()
+                )
+            ");
+            $stmtInsert->execute([
+                'title' => $newTitle,
+                'slug' => $newSlug,
+                'description' => $sch['description'],
+                'short_description' => $sch['short_description'],
+                'provider_name' => $sch['provider_name'],
+                'provider_type' => $sch['provider_type'],
+                'country_id' => $sch['country_id'],
+                'state_id' => $sch['state_id'],
+                'city_id' => $sch['city_id'],
+                'funding_type' => $sch['funding_type'],
+                'tuition_coverage' => $sch['tuition_coverage'],
+                'living_stipend' => $sch['living_stipend'],
+                'travel_allowance' => $sch['travel_allowance'],
+                'accommodation' => $sch['accommodation'],
+                'other_benefits' => $sch['other_benefits'],
+                'application_deadline' => $sch['application_deadline'],
+                'deadline_type' => $sch['deadline_type'],
+                'official_application_url' => $sch['official_application_url'],
+                'application_url' => $sch['application_url'],
+                'cover_image' => $sch['cover_image']
+            ]);
+
+            $newId = (int)$db->lastInsertId();
+
+            // Duplicate eligibility rules
+            $stmtRules = $db->prepare("SELECT * FROM scholarship_eligibility_rules WHERE scholarship_id = :id");
+            $stmtRules->execute(['id' => $id]);
+            $rules = $stmtRules->fetch(PDO::FETCH_ASSOC);
+            if ($rules) {
+                $stmtInsertRules = $db->prepare("
+                    INSERT INTO scholarship_eligibility_rules (
+                        scholarship_id, min_cgpa, cgpa_scale, min_percentage, min_age, max_age,
+                        gender_requirement, created_at, updated_at
+                    ) VALUES (
+                        :scholarship_id, :min_cgpa, :cgpa_scale, :min_percentage, :min_age, :max_age,
+                        :gender_requirement, NOW(), NOW()
+                    )
+                ");
+                $stmtInsertRules->execute([
+                    'scholarship_id' => $newId,
+                    'min_cgpa' => $rules['min_cgpa'],
+                    'cgpa_scale' => $rules['cgpa_scale'],
+                    'min_percentage' => $rules['min_percentage'],
+                    'min_age' => $rules['min_age'],
+                    'max_age' => $rules['max_age'],
+                    'gender_requirement' => $rules['gender_requirement']
+                ]);
+            }
+
+            // Duplicate sources
+            $stmtSource = $db->prepare("SELECT * FROM scholarship_sources WHERE scholarship_id = :id");
+            $stmtSource->execute(['id' => $id]);
+            $source = $stmtSource->fetch(PDO::FETCH_ASSOC);
+            if ($source) {
+                $stmtInsertSource = $db->prepare("
+                    INSERT INTO scholarship_sources (
+                        scholarship_id, source_type, source_name, source_url, verified_by,
+                        verification_notes, created_at, updated_at
+                    ) VALUES (
+                        :scholarship_id, :source_type, :source_name, :source_url, :verified_by,
+                        :verification_notes, NOW(), NOW()
+                    )
+                ");
+                $stmtInsertSource->execute([
+                    'scholarship_id' => $newId,
+                    'source_type' => $source['source_type'],
+                    'source_name' => $source['source_name'],
+                    'source_url' => $source['source_url'],
+                    'verified_by' => Auth::userId(),
+                    'verification_notes' => 'Duplicated from scholarship #' . $id
+                ]);
+            }
+
+            // Duplicate host countries
+            $db->exec("INSERT INTO scholarship_countries (scholarship_id, country_id) 
+                       SELECT $newId, country_id FROM scholarship_countries WHERE scholarship_id = $id");
+
+            // Duplicate fields of study
+            $db->exec("INSERT INTO scholarship_fields (scholarship_id, field_of_study_id) 
+                       SELECT $newId, field_of_study_id FROM scholarship_fields WHERE scholarship_id = $id");
+
+            // Duplicate degree levels
+            $db->exec("INSERT INTO scholarship_degree_levels (scholarship_id, degree_level) 
+                       SELECT $newId, degree_level FROM scholarship_degree_levels WHERE scholarship_id = $id");
+
+            // Duplicate nationalities
+            $db->exec("INSERT INTO scholarship_eligible_nationalities (scholarship_id, country_id) 
+                       SELECT $newId, country_id FROM scholarship_eligible_nationalities WHERE scholarship_id = $id");
+
+            // Duplicate languages
+            $db->exec("INSERT INTO scholarship_languages (scholarship_id, language_name, min_score, created_at) 
+                       SELECT $newId, language_name, min_score, NOW() FROM scholarship_languages WHERE scholarship_id = $id");
+
+            $db->commit();
+            \App\Services\CacheService::clear();
+            $this->logAudit('duplicated', $newId);
+
+            header("Location: " . url("/admin/scholarships?success=Scholarship duplicated successfully as a new draft."));
+            exit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            Logger::error("Failed to duplicate scholarship $id: " . $e->getMessage());
+            header("Location: " . url('/admin/scholarships?error=Failed to duplicate scholarship.'));
             exit();
         }
     }
@@ -1646,8 +1932,16 @@ class ScholarshipController {
             exit();
         }
 
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['discovery_errors'] = ['csrf' => 'CSRF verification failed.'];
             $this->redirectBackToDiscovery();
         }
@@ -1666,6 +1960,12 @@ class ScholarshipController {
         $stmtCount->execute(['uid' => Auth::userId()]);
         $savedCount = (int)$stmtCount->fetchColumn();
         if ($savedCount >= $limit) {
+            if ($isAjax) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Upgrade to Premium to save more than 10 scholarships.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['discovery_errors'] = ['save' => 'Upgrade to Premium to save more than 10 scholarships.'];
             $this->redirectBackToDiscovery();
         }
@@ -1674,6 +1974,12 @@ class ScholarshipController {
         $stmt = $db->prepare("SELECT id FROM scholarships WHERE id = :id AND status = 'published' LIMIT 1");
         $stmt->execute(['id' => $id]);
         if (!$stmt->fetch()) {
+            if ($isAjax) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'error' => 'Scholarship not found.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $this->abort404();
         }
 
@@ -1697,7 +2003,19 @@ class ScholarshipController {
             $db->commit();
         } catch (Exception $e) {
             $db->rollBack();
+            if ($isAjax) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Internal Server Error: ' . $e->getMessage()]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             throw $e;
+        }
+
+        if ($isAjax) {
+            echo json_encode(['success' => true, 'message' => 'Scholarship bookmarked successfully.']);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
         }
 
         $_SESSION['discovery_success'] = 'Scholarship bookmarked successfully.';
@@ -1716,8 +2034,16 @@ class ScholarshipController {
             exit();
         }
 
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['discovery_errors'] = ['csrf' => 'CSRF verification failed.'];
             $this->redirectBackToDiscovery();
         }
@@ -1735,7 +2061,19 @@ class ScholarshipController {
             $db->commit();
         } catch (Exception $e) {
             $db->rollBack();
+            if ($isAjax) {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => 'Internal Server Error: ' . $e->getMessage()]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             throw $e;
+        }
+
+        if ($isAjax) {
+            echo json_encode(['success' => true, 'message' => 'Scholarship removed from bookmarks.']);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
         }
 
         $_SESSION['discovery_success'] = 'Scholarship removed from bookmarks.';

@@ -22,6 +22,7 @@ class AuthenticationTest {
 
         try {
             $this->testRegistrationFlow();
+            $this->testEmailVerificationFlow();
             $this->testDuplicateValidation();
             $this->testPasswordPolicy();
             $this->testLoginThrottling();
@@ -393,4 +394,155 @@ class AuthenticationTest {
 
         echo "✔ XSS output escaping helpers passed.\n";
     }
+
+    /**
+     * 12. Assert registration, 6-digit OTP codes, resend and verification gating transitions
+     */
+    private function testEmailVerificationFlow(): void {
+        $visitorRoleId = $this->db->query("SELECT id FROM roles WHERE name = 'visitor'")->fetchColumn();
+        $_SERVER['REQUEST_URI'] = '/verify-email';
+
+        // 1. Simulate POST parameters for registration
+        $email = 'test_otp@scholarmatch.test';
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'first_name' => 'John',
+            'last_name' => 'Doe',
+            'email' => $email,
+            'password' => 'Pass1234!',
+            'confirm_password' => 'Pass1234!',
+            'terms' => '1'
+        ];
+
+        $controller = new \App\Controllers\AuthController();
+        try {
+            $controller->register();
+            throw new \Exception("Email Verification Error: Registration did not trigger redirect/halt.");
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'Redirect to verify-email') {
+                throw $e;
+            }
+        }
+
+        // Assert user exists with pending status
+        $user = $this->db->query("SELECT * FROM users WHERE email = '{$email}'")->fetch();
+        if (!$user || $user['status'] !== 'pending') {
+            throw new \Exception("Email Verification Error: User was not registered in pending status.");
+        }
+
+        // Assert blank profile & preference rows exist
+        $profileCount = $this->db->query("SELECT COUNT(*) FROM student_profiles WHERE user_id = {$user['id']}")->fetchColumn();
+        if ((int)$profileCount !== 1) {
+            throw new \Exception("Email Verification Error: Student profile placeholder was not mapped.");
+        }
+
+        // Assert verification token exists in DB
+        $token = $this->db->query("SELECT * FROM email_verification_tokens WHERE user_id = {$user['id']} AND used_at IS NULL LIMIT 1")->fetch();
+        if (!$token) {
+            throw new \Exception("Email Verification Error: Verification token was not created.");
+        }
+
+        // Fetch captured raw OTP code
+        $otp = \App\Controllers\AuthController::$lastGeneratedCode;
+        if (empty($otp) || strlen($otp) !== 6) {
+            throw new \Exception("Email Verification Error: Verification OTP code was not captured or is invalid.");
+        }
+
+        // 2. Test verifyEmail with incorrect code
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'code' => '000000'
+        ];
+        $controller->verifyEmail();
+        // User status must still be pending
+        $status = $this->db->query("SELECT status FROM users WHERE id = {$user['id']}")->fetchColumn();
+        if ($status !== 'pending') {
+            throw new \Exception("Email Verification Error: User status changed on incorrect OTP.");
+        }
+
+        // 3. Test resend cooldown
+        $_SESSION['last_resend_time'] = time() - 30; // 30 seconds ago
+        $_POST = [
+            'csrf_token' => Security::csrfToken()
+        ];
+        $tokenCountBefore = (int)$this->db->query("SELECT COUNT(*) FROM email_verification_tokens WHERE user_id = {$user['id']}")->fetchColumn();
+        $controller->resendVerifyEmail();
+        $tokenCountAfter = (int)$this->db->query("SELECT COUNT(*) FROM email_verification_tokens WHERE user_id = {$user['id']}")->fetchColumn();
+        if ($tokenCountAfter !== $tokenCountBefore) {
+            throw new \Exception("Email Verification Error: Allowed resending code during cooldown.");
+        }
+
+        // 4. Test resend success
+        $_SESSION['last_resend_time'] = time() - 65; // over 60 seconds
+        try {
+            $controller->resendVerifyEmail();
+            throw new \Exception("Email Verification Error: Resend did not trigger redirect/halt.");
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'Redirect to verify-email') {
+                throw $e;
+            }
+        }
+        $newOtp = \App\Controllers\AuthController::$lastGeneratedCode;
+        if ($newOtp === $otp) {
+            throw new \Exception("Email Verification Error: New OTP is same as old OTP.");
+        }
+
+        // 5. Test verifyEmail with correct code
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'code' => $newOtp
+        ];
+        try {
+            $controller->verifyEmail();
+            throw new \Exception("Email Verification Error: Verification did not redirect/halt to profile edit.");
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'Redirect to profile edit') {
+                throw $e;
+            }
+        }
+
+
+        // Check user active and verified
+        $verifiedUser = $this->db->query("SELECT * FROM users WHERE id = {$user['id']}")->fetch();
+        if ($verifiedUser['status'] !== 'active' || is_null($verifiedUser['email_verified_at'])) {
+            throw new \Exception("Email Verification Error: User not marked active/verified on successful OTP.");
+        }
+
+        // 6. Verify that unverified pending users are gated when accessing protected paths
+        $stmt = $this->db->prepare("
+            INSERT INTO users (role_id, first_name, last_name, email, password_hash, status) 
+            VALUES (:role_id, 'Pending', 'User', 'test_pending_gate@scholarmatch.test', 'hash', 'pending')
+        ");
+        $stmt->execute(['role_id' => $visitorRoleId]);
+        $pendingId = $this->db->lastInsertId();
+
+        // Simulate logged in pending user session
+        $_SESSION['user_id'] = $pendingId;
+        $_SESSION['role_name'] = 'visitor';
+        $_SESSION['user_email'] = 'test_pending_gate@scholarmatch.test';
+        $_SERVER['REQUEST_URI'] = '/dashboard';
+
+        // Clear current user singleton cache in Auth
+        $ref = new ReflectionClass('App\Services\Auth');
+        $prop = $ref->getProperty('currentUser');
+        $prop->setAccessible(true);
+        $prop->setValue(null, null);
+
+        // RequireAuth should block/redirect them to verify-email
+        try {
+            Auth::requireAuth();
+            throw new \Exception("Email Verification Error: Auth::requireAuth() did not block pending user.");
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'Redirect to verify-email') {
+                throw $e;
+            }
+        }
+
+        // Clean session and auth states
+        $_SESSION = [];
+        $prop->setValue(null, null);
+
+        echo "✔ Email verification code generation, verification and gating passed.\n";
+    }
 }
+

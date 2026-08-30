@@ -52,13 +52,19 @@ class EmailNotificationService {
             mkdir($logDir, 0777, true);
         }
 
+        // Redact raw 6-digit codes in non-testing log entries
+        $loggedBody = $body;
+        if (!defined('TESTING_MODE') || !TESTING_MODE) {
+            $loggedBody = preg_replace('/\b[0-9]{6}\b/', '[REDACTED]', $body);
+        }
+
         $logEntry = sprintf(
             "[%s]%s TO: %s | SUBJECT: %s\nBODY:\n%s\n----------------------------------------\n",
             date('Y-m-d H:i:s'),
             $prefix ? " [$prefix]" : "",
             $to,
             $subject,
-            $body
+            $loggedBody
         );
 
         file_put_contents($this->logPath, $logEntry, FILE_APPEND);

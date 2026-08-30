@@ -1,436 +1,252 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Scholarships | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
-        .admin-layout {
-            min-height: 100vh;
-            background: #f8fafc;
-            display: flex;
-            flex-direction: column;
-        }
-        .admin-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .nav-link {
-            font-size: 0.875rem;
-            color: var(--text-600);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .nav-link:hover {
-            color: var(--primary);
-        }
-        .admin-content {
-            max-width: 1200px;
-            width: 100%;
-            margin: 40px auto;
-            padding: 0 20px;
-            flex-grow: 1;
-        }
-        .header-section {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        .page-title {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--text-900);
-        }
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            border-radius: var(--radius-lg);
-            text-decoration: none;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s;
-        }
-        .btn-primary {
-            background: var(--primary);
-            color: var(--bg-white);
-        }
-        .btn-primary:hover {
-            background: var(--primary-dark, #1d4ed8);
-        }
-        .btn-secondary {
-            background: var(--bg-white);
-            color: var(--text-700);
-            border: 1px solid var(--border);
-        }
-        .btn-secondary:hover {
-            background: #f1f5f9;
-        }
-        .btn-danger {
-            background: #ef4444;
-            color: var(--bg-white);
-        }
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 0.75rem;
-            border-radius: var(--radius-md);
-        }
-        .alert {
-            padding: 16px;
-            border-radius: var(--radius-lg);
-            margin-bottom: 24px;
-            font-size: 0.875rem;
-        }
-        .alert-success {
-            background: #ecfdf5;
-            color: #065f46;
-            border: 1px solid #a7f3d0;
-        }
-        .alert-danger {
-            background: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fca5a5;
-        }
-        .filter-card {
-            background: var(--bg-white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-xl);
-            padding: 24px;
-            box-shadow: var(--shadow-sm);
-            margin-bottom: 24px;
-        }
-        .filter-form {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            align-items: flex-end;
-        }
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .form-label {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-600);
-            text-transform: uppercase;
-        }
-        .form-control {
-            padding: 10px 14px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            font-size: 0.875rem;
-            width: 100%;
-        }
-        .table-responsive {
-            background: var(--bg-white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-2xl);
-            box-shadow: var(--shadow-sm);
-            overflow-x: auto;
-            margin-bottom: 24px;
-            -webkit-overflow-scrolling: touch;
-        }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-            font-size: 0.875rem;
-        }
-        .table th, .table td {
-            padding: 16px 24px;
-            border-bottom: 1px solid var(--border);
-        }
-        .table th {
-            background: #f8fafc;
-            font-weight: 600;
-            color: var(--text-600);
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            white-space: nowrap;
-        }
-        .table tr:last-child td {
-            border-bottom: none;
-        }
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 8px;
-            font-size: 0.75rem;
-            font-weight: 500;
-            border-radius: var(--radius-full);
-            text-transform: capitalize;
-        }
-        .badge-draft { background: #f1f5f9; color: #475569; }
-        .badge-pending { background: #fef3c7; color: #d97706; }
-        .badge-published { background: #d1fae5; color: #065f46; }
-        .badge-archived { background: #e2e8f0; color: #64748b; }
-        .badge-verified { background: #e0f2fe; color: #0369a1; }
-        .badge-unverified { background: #ffedd5; color: #c2410c; }
-        .actions-cell {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .actions-cell form {
-            display: inline;
-        }
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-            margin-top: 16px;
-        }
-        .pagination-links {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .pagination-btn {
-            padding: 8px 12px;
-            border: 1px solid var(--border);
-            background: var(--bg-white);
-            color: var(--text-700);
-            font-size: 0.875rem;
-            text-decoration: none;
-            border-radius: var(--radius-md);
-        }
-        .pagination-btn.active {
-            background: var(--primary);
-            color: var(--bg-white);
-            border-color: var(--primary);
-        }
-        .pagination-btn.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-        @media (max-width: 768px) {
-            .table th, .table td {
-                padding: 12px 16px;
-            }
-            .filter-form {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="admin-layout">
-        <header class="admin-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch Admin</span>
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                <a href="<?= url('/profile') ?>" class="nav-link">Profile</a>
-                <form action="<?= url('/logout') ?>" method="POST" style="display:inline;">
-                    <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
-                    <button type="submit" class="nav-link" style="background:none; border:none; cursor:pointer; font-weight:500;">Log Out</button>
-                </form>
-            </div>
-        </header>
+<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
-        <main class="admin-content">
-            <?php if (!empty($_GET['success'])): ?>
-                <div class="alert alert-success" role="alert">
-                    <?= e($_GET['success']) ?>
-                </div>
-            <?php endif; ?>
-            <?php if (!empty($_GET['error'])): ?>
-                <div class="alert alert-danger" role="alert">
-                    <?= e($_GET['error']) ?>
-                </div>
-            <?php endif; ?>
+<style>
+    .filter-card {
+        background: #fff;
+        border: 1px solid var(--border-slate-200);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+    }
+    .filter-form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        align-items: end;
+    }
+    .data-table-card {
+        background: #fff;
+        border: 1px solid var(--border-slate-200);
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .sch-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+    }
+    .sch-table th, .sch-table td {
+        padding: 12px 14px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-slate-200);
+    }
+    .sch-table th {
+        background-color: var(--bg-slate-50);
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.8125rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .sch-table tbody tr:hover {
+        background-color: #fafafb;
+    }
+    .thumb-img {
+        width: 60px;
+        height: 38px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid var(--border-slate-200);
+        background-color: #f8fafc;
+    }
+    
+    /* Pagination */
+    .pagination-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 24px;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .pagination-links {
+        display: flex;
+        gap: 6px;
+    }
+    .page-link {
+        padding: 8px 14px;
+        background-color: #fff;
+        border: 1px solid var(--border-slate-200);
+        border-radius: 6px;
+        color: #334155;
+        text-decoration: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+    .page-link:hover {
+        background-color: var(--bg-slate-50);
+        border-color: #cbd5e1;
+    }
+    .page-link.active {
+        background-color: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+    }
+    .page-link.disabled {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+</style>
 
-            <div class="header-section">
-                <h1 class="page-title">Manage Scholarships</h1>
-                <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary">
-                    <i data-lucide="plus"></i>
-                    <span>Add Scholarship</span>
-                </a>
-            </div>
-
-            <!-- Filters Section -->
-            <div class="filter-card">
-                <form method="GET" class="filter-form">
-                    <div class="form-group">
-                        <label class="form-label" for="search">Search</label>
-                        <input type="text" id="search" name="search" class="form-control" placeholder="Title, provider, etc." value="<?= e($search) ?>">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="country_id">Country</label>
-                        <select id="country_id" name="country_id" class="form-control">
-                            <option value="">All Countries</option>
-                            <?php foreach ($countries as $c): ?>
-                                <option value="<?= e($c['id']) ?>" <?= $countryId === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="funding_type">Funding</label>
-                        <select id="funding_type" name="funding_type" class="form-control">
-                            <option value="">All Types</option>
-                            <option value="Fully Funded" <?= $funding === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
-                            <option value="Partially Funded" <?= $funding === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
-                            <option value="Tuition Waiver" <?= $funding === 'Tuition Waiver' ? 'selected' : '' ?>>Tuition Waiver</option>
-                            <option value="Stipend" <?= $funding === 'Stipend' ? 'selected' : '' ?>>Stipend</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label" for="status">Status</label>
-                        <select id="status" name="status" class="form-control">
-                            <option value="">All Statuses</option>
-                            <option value="draft" <?= $status === 'draft' ? 'selected' : '' ?>>Draft</option>
-                            <option value="pending_review" <?= $status === 'pending_review' ? 'selected' : '' ?>>Pending Review</option>
-                            <option value="published" <?= $status === 'published' ? 'selected' : '' ?>>Published</option>
-                            <option value="archived" <?= $status === 'archived' ? 'selected' : '' ?>>Archived</option>
-                        </select>
-                    </div>
-                    <div>
-                        <button type="submit" class="btn btn-primary" style="width:100%;">
-                            <i data-lucide="filter"></i>
-                            <span>Filter</span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Table Section -->
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>Provider</th>
-                            <th>Country</th>
-                            <th>Funding</th>
-                            <th>Status</th>
-                            <th>Verification</th>
-                            <th>Deadline</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($scholarships)): ?>
-                            <tr>
-                                <td colspan="8" style="text-align:center; color:var(--text-500); padding:32px;">
-                                    No scholarships found matching criteria.
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($scholarships as $s): ?>
-                                <tr>
-                                    <td>
-                                        <div style="font-weight:600; color:var(--text-900);"><?= e($s['title']) ?></div>
-                                        <div style="font-size:0.75rem; color:var(--text-500); margin-top:2px;">Slug: <?= e($s['slug']) ?></div>
-                                    </td>
-                                    <td><?= e($s['provider_name']) ?></td>
-                                    <td><?= e($s['country_name'] ?? 'Multi-Country') ?></td>
-                                    <td><?= e($s['funding_type']) ?></td>
-                                    <td>
-                                        <span class="badge badge-<?= e($s['status']) ?>"><?= e($s['status']) ?></span>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-<?= e($s['verification_status']) ?>"><?= e($s['verification_status']) ?></span>
-                                    </td>
-                                    <td>
-                                        <?= $s['application_deadline'] ? e(date('M d, Y', strtotime($s['application_deadline']))) : '<span style="color:#94a3b8;">None</span>' ?>
-                                    </td>
-                                    <td>
-                                        <div class="actions-cell">
-                                            <a href="<?= url('/admin/scholarships/' . $s['id'] . '/edit') ?>" class="btn btn-secondary btn-sm" title="Edit">
-                                                <i data-lucide="edit-2" style="width:14px; height:14px;"></i>
-                                            </a>
-                                            <?php if ($s['status'] !== 'published'): ?>
-                                                <form action="<?= url('/admin/scholarships/' . $s['id'] . '/publish') ?>" method="POST">
-                                                    <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
-                                                    <button type="submit" class="btn btn-primary btn-sm" style="background:#059669;" title="Publish">
-                                                        <i data-lucide="globe" style="width:14px; height:14px;"></i>
-                                                    </button>
-                                                </form>
-                                            <?php endif; ?>
-                                            <?php if ($s['status'] === 'published'): ?>
-                                                <form action="<?= url('/admin/scholarships/' . $s['id'] . '/archive') ?>" method="POST">
-                                                    <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
-                                                    <button type="submit" class="btn btn-secondary btn-sm" style="color:#64748b;" title="Archive">
-                                                        <i data-lucide="archive" style="width:14px; height:14px;"></i>
-                                                    </button>
-                                                </form>
-                                            <?php endif; ?>
-                                            <form action="<?= url('/admin/scholarships/' . $s['id'] . '/delete') ?>" method="POST" onsubmit="return confirm('Are you sure you want to delete this scholarship?');">
-                                                <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
-                                                <button type="submit" class="btn btn-danger btn-sm" title="Delete">
-                                                    <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Pagination Section -->
-            <?php if ($totalPages > 1): ?>
-                <div class="pagination">
-                    <span style="font-size:0.875rem; color:var(--text-600);">Showing page <?= e($page) ?> of <?= e($totalPages) ?> (Total: <?= e($totalCount) ?>)</span>
-                    <div class="pagination-links">
-                        <a href="?page=<?= e($page - 1) ?>&search=<?= e($search) ?>&country_id=<?= e($countryId) ?>&funding_type=<?= e($funding) ?>&status=<?= e($status) ?>" class="pagination-btn <?= $page <= 1 ? 'disabled' : '' ?>">Previous</a>
-                        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                            <a href="?page=<?= e($i) ?>&search=<?= e($search) ?>&country_id=<?= e($countryId) ?>&funding_type=<?= e($funding) ?>&status=<?= e($status) ?>" class="pagination-btn <?= $page === $i ? 'active' : '' ?>"><?= e($i) ?></a>
-                        <?php endfor; ?>
-                        <a href="?page=<?= e($page + 1) ?>&search=<?= e($search) ?>&country_id=<?= e($countryId) ?>&funding_type=<?= e($funding) ?>&status=<?= e($status) ?>" class="pagination-btn <?= $page >= $totalPages ? 'disabled' : '' ?>">Next</a>
-                    </div>
-                </div>
-            <?php endif; ?>
-        </main>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Scholarship Registry</h1>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage eligibility rules, cover media, publishing pipelines, and match triggers.</p>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+    <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary">
+        <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+        <span>Add Scholarship</span>
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="filter-card">
+    <form method="GET" class="filter-form">
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Search</label>
+            <input type="text" name="search" class="form-control" placeholder="Search by title, provider..." value="<?= e($search) ?>">
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Country</label>
+            <select name="country_id" class="form-control">
+                <option value="">All Countries</option>
+                <?php foreach ($countries as $c): ?>
+                    <option value="<?= e($c['id']) ?>" <?= $countryId === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Funding</label>
+            <select name="funding_type" class="form-control">
+                <option value="">All Funding</option>
+                <option value="Fully Funded" <?= $funding === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
+                <option value="Partially Funded" <?= $funding === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
+                <option value="Tuition waiver" <?= $funding === 'Tuition waiver' ? 'selected' : '' ?>>Tuition Waiver</option>
+                <option value="Stipend" <?= $funding === 'Stipend' ? 'selected' : '' ?>>Stipend</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Status</label>
+            <select name="status" class="form-control">
+                <option value="">All Statuses</option>
+                <option value="draft" <?= $status === 'draft' ? 'selected' : '' ?>>Draft</option>
+                <option value="pending_review" <?= $status === 'pending_review' ? 'selected' : '' ?>>Pending Review</option>
+                <option value="published" <?= $status === 'published' ? 'selected' : '' ?>>Published</option>
+                <option value="archived" <?= $status === 'archived' ? 'selected' : '' ?>>Archived</option>
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+            <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary" style="padding: 10px 14px;" title="Clear Filters">Clear</a>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 18px; flex-grow: 1;">Filter</button>
+        </div>
+    </form>
+</div>
+
+<!-- Table Card -->
+<div class="data-table-card">
+    <div style="overflow-x: auto;">
+        <table class="sch-table">
+            <thead>
+                <tr>
+                    <th>Image</th>
+                    <th>Scholarship Details</th>
+                    <th>Provider</th>
+                    <th>Country</th>
+                    <th>Funding</th>
+                    <th>Status</th>
+                    <th>Deadline</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($scholarships)): ?>
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: #94a3b8; padding: 32px;">No scholarship records found.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($scholarships as $s): ?>
+                        <tr>
+                            <td>
+                                <?php if ($s['cover_image']): ?>
+                                    <img src="<?= e(url($s['cover_image'])) ?>" class="thumb-img" alt="Cover">
+                                <?php else: ?>
+                                    <img src="<?= e(url('/assets/images/default-scholarship.svg')) ?>" class="thumb-img" alt="Default">
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <strong><?= e($s['title']) ?></strong>
+                                <div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">Slug: <code><?= e($s['slug']) ?></code></div>
+                            </td>
+                            <td><?= e($s['provider_name']) ?></td>
+                            <td><?= e($s['country_name'] ?? 'Multi-Country') ?></td>
+                            <td><?= e($s['funding_type']) ?></td>
+                            <td>
+                                <span class="status-badge <?= $s['status'] === 'published' ? 'active' : ($s['status'] === 'draft' ? 'pending' : 'suspended') ?>"><?= e($s['status']) ?></span>
+                            </td>
+                            <td>
+                                <?= $s['application_deadline'] ? date('M d, Y', strtotime($s['application_deadline'])) : '<span style="color: #94a3b8;">Rolling</span>' ?>
+                            </td>
+                            <td>
+                                <div style="display: flex; gap: 6px;">
+                                    <a href="<?= url('/scholarships/' . $s['slug']) ?>" target="_blank" class="action-link" title="Preview/View Public Page">View</a>
+                                    <a href="<?= url('/admin/scholarships/' . $s['id'] . '/edit') ?>" class="action-link" style="color: var(--primary);" title="Edit Content & Eligibility">Edit</a>
+                                    
+                                    <form action="<?= url('/admin/scholarships/' . $s['id'] . '/duplicate') ?>" method="POST" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                                        <button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #7c3aed;">Duplicate</button>
+                                    </form>
+
+                                    <?php if ($s['status'] !== 'published'): ?>
+                                        <form action="<?= url('/admin/scholarships/' . $s['id'] . '/publish') ?>" method="POST" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                                            <button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #16a34a;">Publish</button>
+                                        </form>
+                                    <?php else: ?>
+                                        <form action="<?= url('/admin/scholarships/' . $s['id'] . '/unpublish') ?>" method="POST" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                                            <button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #ca8a04;">Unpublish</button>
+                                        </form>
+                                    <?php endif; ?>
+
+                                    <?php if ($s['status'] !== 'archived'): ?>
+                                        <form action="<?= url('/admin/scholarships/' . $s['id'] . '/archive') ?>" method="POST" style="display:inline;">
+                                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                                            <button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #64748b;">Archive</button>
+                                        </form>
+                                    <?php endif; ?>
+
+                                    <form action="<?= url('/admin/scholarships/' . $s['id'] . '/delete') ?>" method="POST" onsubmit="return confirm('Are you sure you want to permanently delete this scholarship?');" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                                        <button type="submit" class="action-link danger" style="background:none; border:none; cursor:pointer; font-family:inherit;">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <?php if ($totalPages > 1): ?>
+        <div class="pagination-bar">
+            <span style="font-size: 0.8125rem; color: #64748b;">Showing page <?= $page ?> of <?= $totalPages ?> (Total: <?= $totalCount ?> records)</span>
+            <div class="pagination-links">
+                <a href="?search=<?= urlencode($search) ?>&country_id=<?= urlencode($countryId) ?>&funding_type=<?= urlencode($funding) ?>&status=<?= urlencode($status) ?>&page=<?= $page - 1 ?>" class="page-link <?= $page <= 1 ? 'disabled' : '' ?>">&larr; Previous</a>
+                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                    <a href="?search=<?= urlencode($search) ?>&country_id=<?= urlencode($countryId) ?>&funding_type=<?= urlencode($funding) ?>&status=<?= urlencode($status) ?>&page=<?= $i ?>" class="page-link <?= $page === $i ? 'active' : '' ?>"><?= $i ?></a>
+                <?php endfor; ?>
+                <a href="?search=<?= urlencode($search) ?>&country_id=<?= urlencode($countryId) ?>&funding_type=<?= urlencode($funding) ?>&status=<?= urlencode($status) ?>&page=<?= $page + 1 ?>" class="page-link <?= $page >= $totalPages ? 'disabled' : '' ?>">Next &rarr;</a>
+            </div>
+        </div>
+    <?php endif; ?>
+</div>
+
+<?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

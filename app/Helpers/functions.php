@@ -84,3 +84,19 @@ if (!function_exists('url')) {
         return '/' . ltrim($path, '/');
     }
 }
+
+if (!function_exists('active_route')) {
+    /**
+     * Check if current URI matches a path prefix for sidebar active state toggles.
+     */
+    function active_route(string $path): bool {
+        $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+        if ($uri !== '/') {
+            $uri = rtrim($uri, '/');
+        }
+        if ($path === '/admin') {
+            return $uri === '/admin';
+        }
+        return strpos($uri, $path) === 0;
+    }
+}
