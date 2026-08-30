@@ -44,21 +44,6 @@
     } catch (e) {
         console.error("Alerts auto-fade error:", e);
     }
-
-    // Initialize Select2 globally on all forms and filters, excluding DataTables length menus
-    try {
-        if (typeof $ !== 'undefined') {
-            $(document).ready(function() {
-                if (typeof $.fn.select2 !== 'undefined') {
-                    $('select').not('.dataTables_length select, [name$="_length"], .dt-input').select2({
-                        width: '100%'
-                    });
-                }
-            });
-        }
-    } catch (e) {
-        console.error("Global Select2 error:", e);
-    }
 </script>
 </body>
 </html>

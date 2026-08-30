@@ -8,287 +8,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
+    <link rel="stylesheet" href="<?= asset('assets/css/admin.css') ?>">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <style>
-        :root {
-            --sidebar-width: 260px;
-            --header-height: 70px;
-            --primary: #2563eb;
-            --primary-dark: #1d4ed8;
-            --bg-slate-50: #f8fafc;
-            --bg-slate-100: #f1f5f9;
-            --bg-slate-800: #1e293b;
-            --border-slate-200: #e2e8f0;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-slate-50);
-            color: #334155;
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden;
-        }
-
-        /* Layout Structure */
-        .admin-layout {
-            display: flex;
-            min-height: 100vh;
-            position: relative;
-        }
-
-        /* Left Sidebar */
-        .admin-sidebar {
-            width: var(--sidebar-width);
-            background-color: var(--bg-slate-800);
-            color: #f8fafc;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            z-index: 1000;
-            transition: transform 0.3s ease;
-            overflow-y: auto;
-            border-right: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .sidebar-brand {
-            padding: 24px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #fff;
-            text-decoration: none;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .sidebar-brand i {
-            color: #3b82f6;
-        }
-
-        .sidebar-menu {
-            flex-grow: 1;
-            padding: 20px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .menu-label {
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #64748b;
-            padding: 12px 12px 6px 12px;
-            font-weight: 600;
-        }
-
-        .menu-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 12px;
-            color: #cbd5e1;
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 0.875rem;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-
-        .menu-item:hover {
-            background-color: rgba(255, 255, 255, 0.05);
-            color: #fff;
-        }
-
-        .menu-item.active {
-            background-color: var(--primary);
-            color: #fff;
-        }
-
-        .menu-item i {
-            width: 18px;
-            height: 18px;
-        }
-
-        /* Main Content Wrapper */
-        .admin-main {
-            flex-grow: 1;
-            margin-left: var(--sidebar-width);
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            width: calc(100% - var(--sidebar-width));
-            transition: margin-left 0.3s ease, width 0.3s ease;
-        }
-
-        /* Top Navigation Header */
-        .admin-header {
-            height: var(--header-height);
-            background-color: #fff;
-            border-bottom: 1px solid var(--border-slate-200);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 24px;
-            position: sticky;
-            top: 0;
-            z-index: 900;
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .mobile-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: #475569;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 6px;
-        }
-
-        .mobile-toggle:hover {
-            background-color: var(--bg-slate-100);
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .user-profile-btn {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            text-decoration: none;
-            color: #1e293b;
-            font-weight: 600;
-            font-size: 0.875rem;
-        }
-
-        .avatar-circle {
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            background-color: #3b82f6;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.9375rem;
-        }
-
-        .logout-form {
-            display: inline;
-        }
-
-        .logout-btn {
-            background: none;
-            border: 1px solid var(--border-slate-200);
-            color: #ef4444;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 0.8125rem;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
-        }
-
-        .logout-btn:hover {
-            background-color: #fef2f2;
-            border-color: #fca5a5;
-        }
-
-        /* Dynamic Content Area */
-        .admin-content {
-            padding: 32px 24px;
-            flex-grow: 1;
-            max-width: 1200px;
-            width: 100%;
-            box-sizing: border-box;
-            margin: 0 auto;
-        }
-
-        /* Responsive Overlay */
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(15, 23, 42, 0.4);
-            backdrop-filter: blur(2px);
-            z-index: 950;
-        }
-
-        /* Alerts and Layout Blocks */
-        .admin-alert {
-            padding: 14px 18px;
-            border-radius: 10px;
-            margin-bottom: 24px;
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .admin-alert-success {
-            background-color: #f0fdf4;
-            color: #166534;
-            border: 1px solid #bbf7d0;
-        }
-
-        .admin-alert-error {
-            background-color: #fef2f2;
-            color: #991b1b;
-            border: 1px solid #fca5a5;
-        }
-
-        /* Mobile Breakpoints */
-        @media (max-width: 991px) {
-            .admin-sidebar {
-                transform: translateX(-100%);
-            }
-
-            .admin-sidebar.open {
-                transform: translateX(0);
-            }
-
-            .admin-main {
-                margin-left: 0;
-                width: 100%;
-            }
-
-            .mobile-toggle {
-                display: block;
-            }
-
-            .sidebar-overlay.open {
-                display: block;
-            }
-        }
-    </style>
+    <script src="<?= asset('assets/js/main.js') ?>"></script>
 </head>
 <body>
 
@@ -433,7 +161,7 @@
                 [
                     'type' => 'link',
                     'label' => 'Matching Statistics',
-                    'icon' => 'bar-chart-2',
+                    'icon' => 'chart-bar',
                     'url' => '/admin/matching/stats',
                     'active_prefix' => '/admin/matching/stats'
                 ],
@@ -575,7 +303,7 @@
             <!-- Messages alerts -->
             <?php if (!empty($_SESSION['admin_success'])): ?>
                 <div class="admin-alert admin-alert-success">
-                    <i data-lucide="check-circle-2"></i>
+                    <i data-lucide="circle-check"></i>
                     <span><?= e($_SESSION['admin_success']) ?></span>
                 </div>
                 <?php unset($_SESSION['admin_success']); ?>

@@ -49,7 +49,7 @@ function getDaysLeftText(string $deadlineDate): array {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
     <style>
         :root {
             --primary: #1e40af;
@@ -2069,7 +2069,7 @@ function getDaysLeftText(string $deadlineDate): array {
             <!-- Success state (hidden by default) -->
             <div class="checkout-success" id="checkoutSuccess">
                 <div class="checkout-success-icon">
-                    <i data-lucide="check-circle-2"></i>
+                    <i data-lucide="circle-check"></i>
                 </div>
                 <h2>Payment Instructions Sent</h2>
                 <p>Follow the instructions sent to your WhatsApp number to complete the payment. Your WhatsApp alerts will be activated once payment is confirmed.</p>
@@ -2231,19 +2231,19 @@ function getDaysLeftText(string $deadlineDate): array {
         <div class="modal-body">
             <div class="modal-features">
                 <div class="modal-feature">
-                    <i data-lucide="check-circle-2"></i>
+                    <i data-lucide="circle-check"></i>
                     Instant WhatsApp notifications for new matches
                 </div>
                 <div class="modal-feature">
-                    <i data-lucide="check-circle-2"></i>
+                    <i data-lucide="circle-check"></i>
                     Deadline reminders before closing dates
                 </div>
                 <div class="modal-feature">
-                    <i data-lucide="check-circle-2"></i>
+                    <i data-lucide="circle-check"></i>
                     Email alerts included at no extra cost
                 </div>
                 <div class="modal-feature">
-                    <i data-lucide="check-circle-2"></i>
+                    <i data-lucide="circle-check"></i>
                     Daily matching updates
                 </div>
             </div>

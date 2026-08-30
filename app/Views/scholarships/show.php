@@ -42,7 +42,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
     <style>
         .page-layout {
@@ -491,7 +491,7 @@
                             <ul class="list-unstyled">
                                 <?php foreach ($benefits as $b): ?>
                                     <li class="list-item-checklist">
-                                        <i data-lucide="check-circle-2"></i>
+                                        <i data-lucide="circle-check"></i>
                                         <span>
                                             <strong><?= e($b['benefit_type']) ?></strong>: <?= e($b['title']) ?>
                                             <?php if ($b['amount'] !== null): ?>

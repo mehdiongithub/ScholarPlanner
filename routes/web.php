@@ -205,6 +205,18 @@ $router->get('/admin/matching/stats', ['App\Controllers\AdminController', 'match
 $router->get('/admin/settings', ['App\Controllers\AdminController', 'settings']);
 $router->post('/admin/settings', ['App\Controllers\AdminController', 'settingsUpdate']);
 
+// Admin Referral Management Routes
+$router->get('/admin/referrals', ['App\Controllers\AdminController', 'referralsIndex']);
+$router->post('/admin/referrals', ['App\Controllers\AdminController', 'referralsStore']);
+$router->post('/admin/referrals/{id}/delete', ['App\Controllers\AdminController', 'referralsDelete']);
+$router->get('/admin/referrals/data', ['App\Controllers\AdminController', 'referralsData']);
+
+// Partner Dashboard Routes
+$router->get('/referral-partner', ['App\Controllers\ReferralPartnerController', 'index']);
+$router->get('/referral-partner/students', ['App\Controllers\ReferralPartnerController', 'students']);
+$router->get('/referral-partner/profile', ['App\Controllers\ReferralPartnerController', 'profile']);
+$router->post('/referral-partner/profile', ['App\Controllers\ReferralPartnerController', 'profileUpdate']);
+
 $router->get('/admin/audit-logs', ['App\Controllers\AdminController', 'auditLogs']);
 $router->get('/admin/profile', ['App\Controllers\AdminController', 'profile']);
 $router->post('/admin/profile', ['App\Controllers\AdminController', 'profileUpdate']);

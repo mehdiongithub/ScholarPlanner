@@ -1,82 +1,5 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
-<style>
-    .filter-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 24px;
-    }
-    .filter-form {
-        display: grid;
-        grid-template-columns: 2fr 1fr 1fr 1fr auto;
-        gap: 16px;
-        align-items: end;
-    }
-    @media (max-width: 768px) {
-        .filter-form {
-            grid-template-columns: 1fr;
-        }
-    }
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-    .users-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 20px;
-    }
-    .users-table th, .users-table td {
-        padding: 14px 16px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .users-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .users-table tbody tr:hover {
-        background-color: #fafafb;
-    }
-    .action-link {
-        color: var(--primary);
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 0.8125rem;
-        margin-right: 12px;
-    }
-    .action-link:hover {
-        text-decoration: underline;
-    }
-    .action-link.danger {
-        color: #ef4444;
-    }
-
-    /* Badge styles */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 8px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-    }
-    .status-badge.active { background-color: #dcfce7; color: #15803d; }
-    .status-badge.pending { background-color: #fef3c7; color: #d97706; }
-    .status-badge.suspended { background-color: #fee2e2; color: #b91c1c; }
-    .status-badge.deleted { background-color: #f1f5f9; color: #64748b; }
-</style>
-
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
     <div>
         <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Students & Platform Visitors</h1>
@@ -155,10 +78,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = $('#users-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    var table = ScholarMatchDataTable('#users-datatable', {
         ajax: {
             url: '<?= url("/admin/users/data") ?>',
             type: 'GET',

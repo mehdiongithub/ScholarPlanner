@@ -1,65 +1,5 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
-<style>
-    .location-layout {
-        display: grid;
-        grid-template-columns: 1fr 2fr;
-        gap: 30px;
-    }
-    @media (max-width: 991px) {
-        .location-layout {
-            grid-template-columns: 1fr;
-        }
-    }
-    .form-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-    }
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-    }
-    .location-nav {
-        display: flex;
-        gap: 8px;
-        border-bottom: 1px solid var(--border-slate-200);
-        margin-bottom: 24px;
-    }
-    .location-nav-link {
-        padding: 12px 20px;
-        font-weight: 600;
-        text-decoration: none;
-        color: #64748b;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -1px;
-    }
-    .location-nav-link.active {
-        color: var(--primary);
-        border-bottom-color: var(--primary);
-    }
-    .employees-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .employees-table th, .employees-table td {
-        padding: 14px 16px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .employees-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-</style>
-
 <div style="margin-bottom: 24px;">
     <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Location Management</h1>
     <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage Geographic Countries, States/Provinces, and Cities lookups.</p>
@@ -81,16 +21,16 @@
                 <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
                 
                 <div class="form-group">
-                    <label class="form-label" for="name">State / Province Name</label>
+                    <label class="form-label" for="name">State Name</label>
                     <input type="text" name="name" id="name" class="form-control" placeholder="e.g. Punjab" required>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label" for="country_id">Parent Country</label>
                     <select name="country_id" id="country_id" class="form-control" required>
-                        <option value="">-- Choose Country --</option>
+                        <option value="">-- Select Country --</option>
                         <?php foreach ($countries as $c): ?>
-                            <option value="<?= $c['id'] ?>"><?= e($c['name']) ?></option>
+                            <option value="<?= e($c['id']) ?>"><?= e($c['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -122,12 +62,9 @@
 
 <script>
 $(document).ready(function() {
-    $('#states-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    ScholarMatchDataTable('#states-datatable', {
         ajax: {
-            url: '<?= url("/admin/states/data") ?>',
+            url: '<?= url("/admin/locations/states/data") ?>',
             type: 'GET'
         },
         columns: [

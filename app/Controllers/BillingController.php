@@ -101,6 +101,29 @@ class BillingController {
         $userId = Auth::userId();
         $ref = 'TXN_' . strtoupper(bin2hex(random_bytes(8)));
 
+        // Check if user is referred by a partner
+        $stmtRef = $this->db->prepare("
+            SELECT u.referral_code, u.discount_percent 
+            FROM users u
+            JOIN roles r ON u.role_id = r.id
+            JOIN users referred ON referred.referred_by_code = u.referral_code
+            WHERE referred.id = :uid AND u.referral_code IS NOT NULL AND r.name = 'referral_partner' AND u.status = 'active'
+            LIMIT 1
+        ");
+        $stmtRef->execute(['uid' => $userId]);
+        $referralInfo = $stmtRef->fetch(PDO::FETCH_ASSOC);
+
+        $discountPercent = 0.00;
+        $referralCodeUsed = null;
+        $finalAmount = $plan['price'];
+
+        if ($referralInfo) {
+            $discountPercent = (float)$referralInfo['discount_percent'];
+            $referralCodeUsed = $referralInfo['referral_code'];
+            $discountAmount = round(($plan['price'] * ($discountPercent / 100)), 2);
+            $finalAmount = max(0.00, $plan['price'] - $discountAmount);
+        }
+
         // Create transaction record
         $this->db->beginTransaction();
         try {
@@ -112,9 +135,9 @@ class BillingController {
             $stmtTx = $this->db->prepare("
                 INSERT INTO payment_transactions (
                     user_id, subscription_id, provider, transaction_reference, 
-                    amount, currency, status, created_at, updated_at
+                    amount, currency, status, discount_percent, referral_code_used, created_at, updated_at
                 ) VALUES (
-                    :uid, :sub_id, :provider, :ref, :amount, :currency, 'pending', NOW(), NOW()
+                    :uid, :sub_id, :provider, :ref, :amount, :currency, 'pending', :discount_percent, :referral_code_used, NOW(), NOW()
                 )
             ");
             $stmtTx->execute([
@@ -122,8 +145,10 @@ class BillingController {
                 'sub_id' => $subId,
                 'provider' => $provider,
                 'ref' => $ref,
-                'amount' => $plan['price'],
-                'currency' => $plan['currency']
+                'amount' => $finalAmount,
+                'currency' => $plan['currency'],
+                'discount_percent' => $discountPercent,
+                'referral_code_used' => $referralCodeUsed
             ]);
 
             $this->db->commit();
@@ -140,7 +165,7 @@ class BillingController {
 
         $checkoutData = $gateway->createCheckout([
             'user_id' => $userId,
-            'amount' => $plan['price'],
+            'amount' => $finalAmount,
             'currency' => $plan['currency'],
             'email' => $_SESSION['user_email'] ?? '',
             'callback_url' => url("/checkout/callback"),

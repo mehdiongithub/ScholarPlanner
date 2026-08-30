@@ -730,11 +730,13 @@ class DashboardController {
             'coverage_type' => 'institutions.coverage_type',
             'status' => 'institutions.status',
             'country_name' => 'countries.name',
-            'city_name' => 'cities.name'
+            'city_name' => 'cities.name',
+            'state_name' => 'states.name'
         ];
         $joins = [
             'LEFT JOIN countries ON institutions.country_id = countries.id',
-            'LEFT JOIN cities ON institutions.city_id = cities.id'
+            'LEFT JOIN cities ON institutions.city_id = cities.id',
+            'LEFT JOIN states ON institutions.state_id = states.id'
         ];
         $searchableColumns = ['institutions.name', 'institutions.institution_type', 'countries.name'];
         $columnMapping = [

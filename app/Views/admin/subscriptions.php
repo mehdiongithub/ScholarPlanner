@@ -1,44 +1,5 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
-<style>
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-    .employees-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .employees-table th, .employees-table td {
-        padding: 14px 16px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .employees-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    /* Badge styles */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 8px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-    }
-    .status-badge.active { background-color: #dcfce7; color: #15803d; }
-    .status-badge.suspended { background-color: #fee2e2; color: #b91c1c; }
-</style>
-
 <div style="margin-bottom: 24px;">
     <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Student Subscriptions</h1>
     <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Monitor student premium subscriptions and active membership cycles.</p>
@@ -65,10 +26,7 @@
 
 <script>
 $(document).ready(function() {
-    $('#subscriptions-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    ScholarMatchDataTable('#subscriptions-datatable', {
         ajax: {
             url: '<?= url("/admin/subscriptions/data") ?>',
             type: 'GET'

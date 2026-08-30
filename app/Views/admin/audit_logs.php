@@ -1,51 +1,8 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
 <style>
-    .filter-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 24px;
-    }
     .filter-form {
-        display: grid;
         grid-template-columns: 2fr 1fr auto;
-        gap: 16px;
-        align-items: end;
-    }
-    @media (max-width: 768px) {
-        .filter-form {
-            grid-template-columns: 1fr;
-        }
-    }
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-    .logs-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.875rem;
-    }
-    .logs-table th, .logs-table td {
-        padding: 12px 14px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .logs-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .logs-table tbody tr:hover {
-        background-color: #fafafb;
     }
 </style>
 
@@ -103,10 +60,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = $('#logs-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    var table = ScholarMatchDataTable('#logs-datatable', {
         ajax: {
             url: '<?= url("/admin/audit-logs/data") ?>',
             type: 'GET',

@@ -1,33 +1,6 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
 <style>
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-    .employees-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .employees-table th, .employees-table td {
-        padding: 14px 16px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .employees-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .employees-table tbody tr:hover {
-        background-color: #fafafb;
-    }
     .edit-inline-form {
         display: flex;
         align-items: center;
@@ -68,10 +41,7 @@
 const rolesList = <?= json_encode($roles) ?>;
 
 $(document).ready(function() {
-    $('#employees-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    ScholarMatchDataTable('#employees-datatable', {
         ajax: {
             url: '<?= url("/admin/employees/data") ?>',
             type: 'GET'

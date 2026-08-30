@@ -1947,34 +1947,41 @@ class AdminController {
             exit();
         }
         $db = \App\Services\Database::connection();
-        $customWhere = "role = 'visitor'";
+        $customWhere = "roles.name = 'visitor'";
         $customParams = [];
         if (!empty($_GET['status'])) {
-            $customWhere .= " AND status = :status";
+            $customWhere .= " AND users.status = :status";
             $customParams['status'] = $_GET['status'];
         }
         if (isset($_GET['email_verified']) && $_GET['email_verified'] !== '') {
-            $customWhere .= " AND is_email_verified = :is_email_verified";
-            $customParams['is_email_verified'] = (int)$_GET['email_verified'];
+            if ($_GET['email_verified'] == '1') {
+                $customWhere .= " AND users.email_verified_at IS NOT NULL";
+            } else {
+                $customWhere .= " AND users.email_verified_at IS NULL";
+            }
         }
         $columns = [
-            'id' => 'id',
-            'first_name' => 'first_name',
-            'last_name' => 'last_name',
-            'email' => 'email',
-            'phone' => 'phone',
-            'status' => 'status',
-            'created_at' => 'created_at',
-            'is_email_verified' => 'is_email_verified'
+            'id' => 'users.id',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'email' => 'users.email',
+            'status' => 'users.status',
+            'created_at' => 'users.created_at',
+            'email_verified_at' => 'users.email_verified_at',
+            'completion' => 'student_profiles.profile_completion_percentage',
+            'plan_name' => 'subscription_plans.name'
         ];
-        $searchableColumns = ['first_name', 'last_name', 'email', 'phone', 'status'];
+        $joins = [
+            'LEFT JOIN roles ON users.role_id = roles.id',
+            'LEFT JOIN student_profiles ON users.id = student_profiles.user_id',
+            'LEFT JOIN subscriptions ON users.id = subscriptions.user_id AND subscriptions.status = \'active\' AND (subscriptions.expires_at IS NULL OR subscriptions.expires_at > NOW())',
+            'LEFT JOIN subscription_plans ON subscriptions.plan_id = subscription_plans.id'
+        ];
+        $searchableColumns = ['users.first_name', 'users.last_name', 'users.email', 'users.status'];
         $columnMapping = [
-            'first_name' => 'first_name',
-            'last_name' => 'last_name',
-            'email' => 'email',
-            'phone' => 'phone',
-            'status' => 'status',
-            'created_at' => 'created_at'
+            'email' => 'users.email',
+            'status' => 'users.status',
+            'created_at' => 'users.created_at'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -1982,12 +1989,15 @@ class AdminController {
             $columns,
             $searchableColumns,
             $columnMapping,
-            [],
+            $joins,
             $customWhere,
             $customParams,
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
-                unset($row['id']);
+                $row['student_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+                $row['completion'] = $row['completion'] !== null ? (int)$row['completion'] : 0;
+                $row['plan_name'] = $row['plan_name'] ?: 'Free Tier';
+                unset($row['id'], $row['first_name'], $row['last_name']);
                 return $row;
             }
         );
@@ -2005,33 +2015,35 @@ class AdminController {
             exit();
         }
         $db = \App\Services\Database::connection();
-        $customWhere = "role IN ('admin', 'employee')";
+        $customWhere = "roles.name IN ('admin', 'employee')";
         $customParams = [];
         if (!empty($_GET['role'])) {
-            $customWhere .= " AND role = :role";
+            $customWhere .= " AND roles.name = :role";
             $customParams['role'] = $_GET['role'];
         }
         if (!empty($_GET['status'])) {
-            $customWhere .= " AND status = :status";
+            $customWhere .= " AND users.status = :status";
             $customParams['status'] = $_GET['status'];
         }
         $columns = [
-            'id' => 'id',
-            'first_name' => 'first_name',
-            'last_name' => 'last_name',
-            'email' => 'email',
-            'role' => 'role',
-            'status' => 'status',
-            'created_at' => 'created_at'
+            'id' => 'users.id',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'email' => 'users.email',
+            'role_name' => 'roles.name',
+            'role_id' => 'users.role_id',
+            'status' => 'users.status',
+            'created_at' => 'users.created_at'
         ];
-        $searchableColumns = ['first_name', 'last_name', 'email', 'role', 'status'];
+        $joins = [
+            'LEFT JOIN roles ON users.role_id = roles.id'
+        ];
+        $searchableColumns = ['users.first_name', 'users.last_name', 'users.email', 'roles.name', 'users.status'];
         $columnMapping = [
-            'first_name' => 'first_name',
-            'last_name' => 'last_name',
-            'email' => 'email',
-            'role' => 'role',
-            'status' => 'status',
-            'created_at' => 'created_at'
+            'email' => 'users.email',
+            'role_name' => 'roles.name',
+            'status' => 'users.status',
+            'created_at' => 'users.created_at'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -2039,12 +2051,13 @@ class AdminController {
             $columns,
             $searchableColumns,
             $columnMapping,
-            [],
+            $joins,
             $customWhere,
             $customParams,
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
-                unset($row['id']);
+                $row['employee_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+                unset($row['id'], $row['first_name'], $row['last_name']);
                 return $row;
             }
         );
@@ -2065,16 +2078,16 @@ class AdminController {
         $columns = [
             'id' => 'id',
             'name' => 'name',
-            'iso2' => 'iso2',
-            'iso3' => 'iso3',
-            'phone_code' => 'phone_code'
+            'iso_code' => 'iso2',
+            'currency_code' => 'currency_code',
+            'dial_code' => 'phone_code'
         ];
-        $searchableColumns = ['name', 'iso2', 'iso3', 'phone_code'];
+        $searchableColumns = ['name', 'iso2', 'phone_code', 'currency_code'];
         $columnMapping = [
             'name' => 'name',
-            'iso2' => 'iso2',
-            'iso3' => 'iso3',
-            'phone_code' => 'phone_code'
+            'iso_code' => 'iso2',
+            'currency_code' => 'currency_code',
+            'dial_code' => 'phone_code'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -2232,12 +2245,14 @@ class AdminController {
         $columns = [
             'id' => 'id',
             'name' => 'name',
-            'status' => 'status'
+            'status' => 'status',
+            'sort_order' => 'sort_order'
         ];
         $searchableColumns = ['name', 'status'];
         $columnMapping = [
             'name' => 'name',
-            'status' => 'status'
+            'status' => 'status',
+            'sort_order' => 'sort_order'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -2327,20 +2342,21 @@ class AdminController {
 
         $columns = [
             'id' => 'payments.id',
-            'transaction_id' => 'payments.transaction_id',
-            'gateway' => 'payments.gateway',
+            'reference_id' => 'payments.transaction_id',
+            'gateway_name' => 'payments.gateway',
             'amount' => 'payments.amount',
             'currency' => 'payments.currency',
             'status' => 'payments.status',
             'created_at' => 'payments.created_at',
             'first_name' => 'users.first_name',
-            'last_name' => 'users.last_name'
+            'last_name' => 'users.last_name',
+            'email' => 'users.email'
         ];
         $joins = ['JOIN users ON payments.user_id = users.id'];
-        $searchableColumns = ['payments.transaction_id', 'payments.gateway', 'users.first_name', 'users.last_name'];
+        $searchableColumns = ['payments.transaction_id', 'payments.gateway', 'users.first_name', 'users.last_name', 'users.email'];
         $columnMapping = [
-            'transaction_id' => 'payments.transaction_id',
-            'gateway' => 'payments.gateway',
+            'reference_id' => 'payments.transaction_id',
+            'gateway_name' => 'payments.gateway',
             'amount' => 'payments.amount',
             'currency' => 'payments.currency',
             'status' => 'payments.status',
@@ -2357,7 +2373,7 @@ class AdminController {
             $customParams,
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
-                $row['user_name'] = e($row['first_name'] . ' ' . $row['last_name']);
+                $row['student_name'] = e($row['first_name'] . ' ' . $row['last_name']);
                 unset($row['id'], $row['first_name'], $row['last_name']);
                 return $row;
             }
@@ -2386,18 +2402,22 @@ class AdminController {
 
         $columns = [
             'id' => 'subscriptions.id',
-            'plan_name' => 'subscriptions.plan_name',
+            'plan_name' => 'subscription_plans.name',
             'status' => 'subscriptions.status',
             'starts_at' => 'subscriptions.starts_at',
             'ends_at' => 'subscriptions.ends_at',
             'created_at' => 'subscriptions.created_at',
             'first_name' => 'users.first_name',
-            'last_name' => 'users.last_name'
+            'last_name' => 'users.last_name',
+            'email' => 'users.email'
         ];
-        $joins = ['JOIN users ON subscriptions.user_id = users.id'];
-        $searchableColumns = ['subscriptions.plan_name', 'users.first_name', 'users.last_name'];
+        $joins = [
+            'JOIN users ON subscriptions.user_id = users.id',
+            'JOIN subscription_plans ON subscriptions.plan_id = subscription_plans.id'
+        ];
+        $searchableColumns = ['subscription_plans.name', 'users.first_name', 'users.last_name', 'users.email'];
         $columnMapping = [
-            'plan_name' => 'subscriptions.plan_name',
+            'plan_name' => 'subscription_plans.name',
             'status' => 'subscriptions.status',
             'starts_at' => 'subscriptions.starts_at',
             'ends_at' => 'subscriptions.ends_at',
@@ -2414,7 +2434,7 @@ class AdminController {
             $customParams,
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
-                $row['user_name'] = e($row['first_name'] . ' ' . $row['last_name']);
+                $row['student_name'] = e($row['first_name'] . ' ' . $row['last_name']);
                 unset($row['id'], $row['first_name'], $row['last_name']);
                 return $row;
             }
@@ -2437,7 +2457,6 @@ class AdminController {
             'id' => 'audit_logs.id',
             'action' => 'audit_logs.action',
             'module' => 'audit_logs.module',
-            'description' => 'audit_logs.description',
             'resource_type' => 'audit_logs.resource_type',
             'resource_id' => 'audit_logs.resource_id',
             'ip_address' => 'audit_logs.ip_address',
@@ -2448,11 +2467,10 @@ class AdminController {
             'actor_email' => 'users.email'
         ];
         $joins = ['LEFT JOIN users ON audit_logs.user_id = users.id'];
-        $searchableColumns = ['audit_logs.action', 'audit_logs.module', 'audit_logs.description', 'users.first_name', 'users.last_name', 'users.email', 'audit_logs.ip_address'];
+        $searchableColumns = ['audit_logs.action', 'audit_logs.module', 'users.first_name', 'users.last_name', 'users.email', 'audit_logs.ip_address'];
         $columnMapping = [
             'action' => 'audit_logs.action',
             'module' => 'audit_logs.module',
-            'description' => 'audit_logs.description',
             'created_at' => 'audit_logs.created_at'
         ];
         $extraWhere = '';
@@ -2475,6 +2493,193 @@ class AdminController {
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
                 $row['actor'] = $row['first_name'] ? e($row['first_name'] . ' ' . $row['last_name']) : 'System';
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function referralsIndex(): void {
+        Auth::requirePermission('referrals.view');
+        View::render('admin.referrals.index', [
+            'csrf_token' => Security::csrfToken(),
+            'errors' => $_SESSION['admin_errors'] ?? null,
+            'success' => $_SESSION['admin_success'] ?? null
+        ]);
+        unset($_SESSION['admin_errors'], $_SESSION['admin_success']);
+    }
+
+    public function referralsStore(): void {
+        Auth::requirePermission('referrals.manage');
+        
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $firstName = trim($_POST['first_name'] ?? '');
+        $lastName = trim($_POST['last_name'] ?? '');
+        $email = strtolower(trim($_POST['email'] ?? ''));
+        $password = $_POST['password'] ?? '';
+        $discountPercent = (float)($_POST['discount_percent'] ?? 10.00);
+
+        if (empty($firstName) || empty($lastName) || empty($email) || empty($password)) {
+            $_SESSION['admin_errors'] = 'All fields are required.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $db = \App\Services\Database::connection();
+
+        // Check duplicate email
+        $stmtCheck = $db->prepare("SELECT COUNT(*) FROM users WHERE email = :email");
+        $stmtCheck->execute(['email' => $email]);
+        if ((int)$stmtCheck->fetchColumn() > 0) {
+            $_SESSION['admin_errors'] = 'This email address is already registered.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        // Generate unique referral code
+        $referralCode = 'PARTNER_' . strtoupper(bin2hex(random_bytes(3)));
+
+        // Get referral_partner role id
+        $partnerRoleId = $db->query("SELECT id FROM roles WHERE name = 'referral_partner'")->fetchColumn();
+        if (!$partnerRoleId) {
+            $_SESSION['admin_errors'] = 'Referral partner role not found in system.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+
+        // Insert referral partner
+        $stmt = $db->prepare("
+            INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referral_code, discount_percent, email_verified_at) 
+            VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'active', :referral_code, :discount_percent, NOW())
+        ");
+        $stmt->execute([
+            'role_id' => $partnerRoleId,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $email,
+            'password_hash' => $passwordHash,
+            'referral_code' => $referralCode,
+            'discount_percent' => $discountPercent
+        ]);
+
+        $partnerId = $db->lastInsertId();
+        $this->logAction('referral_partner_create', 'referrals', 'users', $partnerId, ['email' => $email, 'code' => $referralCode]);
+
+        $_SESSION['admin_success'] = 'Referral partner created successfully. Referral code is: ' . $referralCode;
+        header("Location: " . url("/admin/referrals"));
+        exit();
+    }
+
+    public function referralsDelete(string $encodedId): void {
+        Auth::requirePermission('referrals.manage');
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $id = decode_id($encodedId);
+        if (!$id) {
+            $_SESSION['admin_errors'] = 'Invalid partner ID.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $db = \App\Services\Database::connection();
+
+        // Check if user is actually a referral partner
+        $stmtCheck = $db->prepare("
+            SELECT u.id, u.referral_code FROM users u
+            JOIN roles r ON u.role_id = r.id
+            WHERE u.id = :id AND r.name = 'referral_partner'
+            LIMIT 1
+        ");
+        $stmtCheck->execute(['id' => $id]);
+        $partner = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+        if (!$partner) {
+            $_SESSION['admin_errors'] = 'Partner not found or role does not match.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        // Get visitor role id to demote them
+        $visitorRoleId = $db->query("SELECT id FROM roles WHERE name = 'visitor'")->fetchColumn();
+
+        $stmtUpd = $db->prepare("
+            UPDATE users SET role_id = :visitor_role_id, status = 'suspended', referral_code = NULL 
+            WHERE id = :id
+        ");
+        $stmtUpd->execute([
+            'visitor_role_id' => $visitorRoleId,
+            'id' => $id
+        ]);
+
+        $this->logAction('referral_partner_delete', 'referrals', 'users', $id, ['old_code' => $partner['referral_code']]);
+
+        $_SESSION['admin_success'] = 'Referral partner access revoked successfully.';
+        header("Location: " . url("/admin/referrals"));
+        exit();
+    }
+
+    public function referralsData(): void {
+        Auth::requirePermission('referrals.view');
+        $db = \App\Services\Database::connection();
+        
+        $columns = [
+            'id' => 'users.id',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'email' => 'users.email',
+            'referral_code' => 'users.referral_code',
+            'discount_percent' => 'users.discount_percent',
+            'status' => 'users.status',
+            'created_at' => 'users.created_at',
+            'conversions' => '(SELECT COUNT(*) FROM payment_transactions pt WHERE pt.referral_code_used = users.referral_code AND pt.status IN (\'paid\', \'success\'))'
+        ];
+        
+        $joins = [
+            'LEFT JOIN roles ON users.role_id = roles.id'
+        ];
+        
+        $customWhere = "roles.name = 'referral_partner'";
+        $customParams = [];
+        
+        $searchableColumns = ['users.first_name', 'users.last_name', 'users.email', 'users.referral_code'];
+        $columnMapping = [
+            'referral_code' => 'users.referral_code',
+            'discount_percent' => 'users.discount_percent',
+            'status' => 'users.status',
+            'created_at' => 'users.created_at'
+        ];
+        
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'users',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
+                $row['partner_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+                $row['conversions'] = (int)$row['conversions'];
+                $row['payouts'] = number_format($row['conversions'] * 20.00, 2);
                 unset($row['id'], $row['first_name'], $row['last_name']);
                 return $row;
             }

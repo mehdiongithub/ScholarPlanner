@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
 </head>
 <body>
@@ -99,9 +99,9 @@
                             </a>
                         </div>
                         <div class="hero-sub-note">
-                            <span><i data-lucide="check-circle-2"></i> Personalized matches</span>
-                            <span><i data-lucide="check-circle-2"></i> Deadline alerts</span>
-                            <span><i data-lucide="check-circle-2"></i> Detailed requirements</span>
+                            <span><i data-lucide="circle-check"></i> Personalized matches</span>
+                            <span><i data-lucide="circle-check"></i> Deadline alerts</span>
+                            <span><i data-lucide="circle-check"></i> Detailed requirements</span>
                         </div>
                     </div>
 
@@ -262,27 +262,27 @@
                         <h3>What Students Should Do</h3>
                         <div class="problem-list">
                             <div class="problem-list-item">
-                                <i data-lucide="check-circle-2"></i>
+                                <i data-lucide="circle-check"></i>
                                 Create a profile once
                             </div>
                             <div class="problem-list-item">
-                                <i data-lucide="check-circle-2"></i>
+                                <i data-lucide="circle-check"></i>
                                 System matches scholarships automatically
                             </div>
                             <div class="problem-list-item">
-                                <i data-lucide="check-circle-2"></i>
+                                <i data-lucide="circle-check"></i>
                                 Receive alerts through WhatsApp
                             </div>
                             <div class="problem-list-item">
-                                <i data-lucide="check-circle-2"></i>
+                                <i data-lucide="circle-check"></i>
                                 Get email notifications with details
                             </div>
                             <div class="problem-list-item">
-                                <i data-lucide="check-circle-2"></i>
+                                <i data-lucide="circle-check"></i>
                                 View complete eligibility and requirements
                             </div>
                             <div class="problem-list-item">
-                                <i data-lucide="check-circle-2"></i>
+                                <i data-lucide="circle-check"></i>
                                 Apply through official links
                             </div>
                         </div>

@@ -1,74 +1,14 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
-<style>
-    .location-layout {
-        display: grid;
-        grid-template-columns: 1fr 2fr;
-        gap: 30px;
-    }
-    @media (max-width: 991px) {
-        .location-layout {
-            grid-template-columns: 1fr;
-        }
-    }
-    .form-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-    }
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-    }
-    .location-nav {
-        display: flex;
-        gap: 8px;
-        border-bottom: 1px solid var(--border-slate-200);
-        margin-bottom: 24px;
-    }
-    .location-nav-link {
-        padding: 12px 20px;
-        font-weight: 600;
-        text-decoration: none;
-        color: #64748b;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -1px;
-    }
-    .location-nav-link.active {
-        color: var(--primary);
-        border-bottom-color: var(--primary);
-    }
-    .employees-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .employees-table th, .employees-table td {
-        padding: 14px 16px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .employees-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-</style>
-
 <div style="margin-bottom: 24px;">
-    <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Academic Configurations</h1>
-    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage Fields of Study, Degree Levels, and Funding Types.</p>
+    <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Academic Configuration</h1>
+    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage Fields of Study, Academic Degrees, and Funding Types.</p>
 </div>
 
 <!-- Navigation Tabs -->
 <div class="location-nav">
     <a href="<?= url('/admin/academic/fields') ?>" class="location-nav-link active">Fields of Study</a>
-    <a href="<?= url('/admin/academic/degrees') ?>" class="location-nav-link">Degree Levels</a>
+    <a href="<?= url('/admin/academic/degrees') ?>" class="location-nav-link">Degrees</a>
     <a href="<?= url('/admin/academic/funding') ?>" class="location-nav-link">Funding Types</a>
 </div>
 
@@ -76,7 +16,7 @@
     <!-- Quick Add Form -->
     <div>
         <div class="form-card">
-            <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add Field of Study</h2>
+            <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add New Field of Study</h2>
             <form action="<?= url('/admin/academic/fields') ?>" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
                 
@@ -86,8 +26,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label" for="description">Brief Description</label>
-                    <textarea name="description" id="description" class="form-control" placeholder="Optional description..." style="height: 100px;"></textarea>
+                    <label class="form-label" for="description">Description</label>
+                    <textarea name="description" id="description" class="form-control" placeholder="Short detail about this study sector" style="height: 100px; resize: none;"></textarea>
                 </div>
 
                 <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 12px;">Add Field</button>
@@ -117,12 +57,9 @@
 
 <script>
 $(document).ready(function() {
-    $('#fields-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    ScholarMatchDataTable('#fields-datatable', {
         ajax: {
-            url: '<?= url("/admin/fields/data") ?>',
+            url: '<?= url("/admin/academic/fields/data") ?>',
             type: 'GET'
         },
         columns: [

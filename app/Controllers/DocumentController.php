@@ -773,7 +773,7 @@ class DocumentController {
         $customParams = [];
         
         if (!empty($_GET['status'])) {
-            $customWhere = "user_documents.verification_status = :status";
+            $customWhere = "user_documents.status = :status";
             $customParams['status'] = $_GET['status'];
         }
         if (!empty($_GET['document_id'])) {
@@ -785,23 +785,23 @@ class DocumentController {
         $columns = [
             'id' => 'user_documents.id',
             'original_filename' => 'user_documents.original_filename',
-            'verification_status' => 'user_documents.verification_status',
+            'verification_status' => 'user_documents.status',
             'created_at' => 'user_documents.created_at',
-            'document_name' => 'required_documents.document_name',
+            'document_name' => 'documents.name',
             'first_name' => 'users.first_name',
             'last_name' => 'users.last_name',
             'user_email' => 'users.email'
         ];
         $joins = [
-            'JOIN required_documents ON user_documents.document_id = required_documents.id',
+            'JOIN documents ON user_documents.document_id = documents.id',
             'JOIN users ON user_documents.user_id = users.id'
         ];
-        $searchableColumns = ['user_documents.original_filename', 'required_documents.document_name', 'users.first_name', 'users.last_name', 'users.email'];
+        $searchableColumns = ['user_documents.original_filename', 'documents.name', 'users.first_name', 'users.last_name', 'users.email'];
         $columnMapping = [
             'original_filename' => 'user_documents.original_filename',
-            'verification_status' => 'user_documents.verification_status',
+            'verification_status' => 'user_documents.status',
             'created_at' => 'user_documents.created_at',
-            'document_name' => 'required_documents.document_name'
+            'document_name' => 'documents.name'
         ];
         
         $result = \App\Helpers\DataTableHelper::process(

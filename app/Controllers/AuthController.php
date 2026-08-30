@@ -26,17 +26,22 @@ class AuthController {
             $this->redirectBasedOnRole();
         }
 
+        $old = [];
+        if (!empty($_GET['ref'])) {
+            $old['referral_code'] = trim($_GET['ref']);
+        }
+
         view('auth.register', [
             'csrf_token' => Security::csrfToken(),
             'errors' => [],
-            'old' => []
+            'old' => $old
         ]);
     }
 
     /**
      * Process registration POST request
      */
-    public function register(): void {
+     public function register(): void {
         if (Auth::isAuthenticated()) {
             $this->redirectBasedOnRole();
         }
@@ -53,6 +58,7 @@ class AuthController {
         $password = $_POST['password'] ?? '';
         $confirmPassword = $_POST['confirm_password'] ?? '';
         $terms = isset($_POST['terms']) ? 1 : 0;
+        $referralCode = trim($_POST['referral_code'] ?? '');
 
         // Validation checks
         if (empty($firstName)) $errors['first_name'] = "First name is required.";
@@ -92,6 +98,32 @@ class AuthController {
             }
         }
 
+        // Validate Referral Code if provided
+        $partnerId = null;
+        if (!empty($referralCode)) {
+            $stmtCheckPartner = $db->prepare("
+                SELECT u.id, u.created_at FROM users u
+                JOIN roles r ON u.role_id = r.id
+                WHERE u.referral_code = :ref AND r.name = 'referral_partner' AND u.status = 'active'
+                LIMIT 1
+            ");
+            $stmtCheckPartner->execute(['ref' => $referralCode]);
+            $partner = $stmtCheckPartner->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$partner) {
+                $errors['referral_code'] = "The referral code is invalid or the partner is inactive.";
+            } else {
+                $partnerId = $partner['id'];
+                $windowMonths = (int)$db->query("SELECT `value` FROM settings WHERE `key` = 'referral_attribution_window_months'")->fetchColumn();
+                if ($windowMonths <= 0) $windowMonths = 3;
+                
+                $windowLimit = strtotime("+$windowMonths months", strtotime($partner['created_at']));
+                if (time() > $windowLimit) {
+                    $errors['referral_code'] = "This referral code has expired.";
+                }
+            }
+        }
+
         if (!empty($errors)) {
             view('auth.register', [
                 'csrf_token' => Security::csrfToken(),
@@ -111,18 +143,32 @@ class AuthController {
             
             // Insert user
             $stmt = $db->prepare("
-                INSERT INTO users (role_id, first_name, last_name, email, password_hash, status) 
-                VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'pending')
+                INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referred_by_code) 
+                VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'pending', :referred_by_code)
             ");
             $stmt->execute([
                 'role_id' => $visitorRoleId,
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'email' => $email,
-                'password_hash' => $passwordHash
+                'password_hash' => $passwordHash,
+                'referred_by_code' => !empty($referralCode) ? $referralCode : null
             ]);
             
             $userId = $db->lastInsertId();
+
+            // Insert into referral_signups if referred
+            if ($partnerId) {
+                $stmtSignup = $db->prepare("
+                    INSERT INTO referral_signups (partner_id, referred_user_id, referral_code) 
+                    VALUES (:partner_id, :referred_user_id, :referral_code)
+                ");
+                $stmtSignup->execute([
+                    'partner_id' => $partnerId,
+                    'referred_user_id' => $userId,
+                    'referral_code' => $referralCode
+                ]);
+            }
 
             // Create student profile
             $stmtProfile = $db->prepare("
@@ -496,6 +542,8 @@ class AuthController {
             $redirectUrl = url('/admin');
         } elseif (Auth::hasRole('employee')) {
             $redirectUrl = url('/employee');
+        } elseif (Auth::hasRole('referral_partner')) {
+            $redirectUrl = url('/referral-partner');
         } else {
             $redirectUrl = url('/dashboard');
         }
@@ -613,9 +661,14 @@ class AuthController {
                     session_regenerate_id(true);
                 }
 
-                $_SESSION['verify_success_toast'] = "Email verified successfully! Let's complete your profile.";
-                header("Location: " . url('/profile/edit'));
-                $this->halt("Redirect to profile edit");
+                if (Auth::hasRole('referral_partner')) {
+                    $_SESSION['verify_success_toast'] = "Email verified successfully! Welcome to your dashboard.";
+                    header("Location: " . url('/referral-partner'));
+                } else {
+                    $_SESSION['verify_success_toast'] = "Email verified successfully! Let's complete your profile.";
+                    header("Location: " . url('/profile/edit'));
+                }
+                $this->halt("Redirect to profile edit or partner dashboard");
             }
         }
 

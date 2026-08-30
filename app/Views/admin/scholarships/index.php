@@ -1,47 +1,6 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
 <style>
-    .filter-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 24px;
-    }
-    .filter-form {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-        align-items: end;
-    }
-    .data-table-card {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-    .sch-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.875rem;
-    }
-    .sch-table th, .sch-table td {
-        padding: 12px 14px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .sch-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    .sch-table tbody tr:hover {
-        background-color: #fafafb;
-    }
     .thumb-img {
         width: 60px;
         height: 38px;
@@ -55,10 +14,10 @@
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
     <div>
         <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Scholarship Registry</h1>
-        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage eligibility rules, cover media, publishing pipelines, and match triggers.</p>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Create, edit, duplicate, publish or unpublish scholarship opportunity listings.</p>
     </div>
     <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary">
-        <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+        <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i>
         <span>Add Scholarship</span>
     </a>
 </div>
@@ -67,39 +26,37 @@
 <div class="filter-card">
     <form class="filter-form">
         <div class="form-group" style="margin: 0;">
-            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Search</label>
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Search Listings</label>
             <input type="text" name="search" class="form-control" placeholder="Search by title, provider..." value="<?= e($search ?? '') ?>">
         </div>
 
         <div class="form-group" style="margin: 0;">
-            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Country</label>
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Location Scope</label>
             <select name="country_id" class="form-control">
                 <option value="">All Countries</option>
+                <option value="multi" <?= ($selectedCountry ?? '') === 'multi' ? 'selected' : '' ?>>Multi-Country Scope</option>
                 <?php foreach ($countries as $c): ?>
-                    <option value="<?= e($c['id']) ?>" <?= ($countryId ?? 0) === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                    <option value="<?= e($c['id']) ?>" <?= ($selectedCountry ?? '') == $c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
 
         <div class="form-group" style="margin: 0;">
-            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Funding</label>
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Funding Style</label>
             <select name="funding_type" class="form-control">
-                <option value="">All Funding</option>
-                <option value="Fully Funded" <?= ($funding ?? '') === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
-                <option value="Partially Funded" <?= ($funding ?? '') === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
-                <option value="Tuition waiver" <?= ($funding ?? '') === 'Tuition waiver' ? 'selected' : '' ?>>Tuition Waiver</option>
-                <option value="Stipend" <?= ($funding ?? '') === 'Stipend' ? 'selected' : '' ?>>Stipend</option>
+                <option value="">All Types</option>
+                <option value="full" <?= ($selectedFunding ?? '') === 'full' ? 'selected' : '' ?>>Fully Funded</option>
+                <option value="partial" <?= ($selectedFunding ?? '') === 'partial' ? 'selected' : '' ?>>Partially Funded</option>
+                <option value="tuition" <?= ($selectedFunding ?? '') === 'tuition' ? 'selected' : '' ?>>Tuition Waiver</option>
             </select>
         </div>
 
         <div class="form-group" style="margin: 0;">
-            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Status</label>
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Publication Status</label>
             <select name="status" class="form-control">
                 <option value="">All Statuses</option>
-                <option value="draft" <?= ($status ?? '') === 'draft' ? 'selected' : '' ?>>Draft</option>
-                <option value="pending_review" <?= ($status ?? '') === 'pending_review' ? 'selected' : '' ?>>Pending Review</option>
-                <option value="published" <?= ($status ?? '') === 'published' ? 'selected' : '' ?>>Published</option>
-                <option value="archived" <?= ($status ?? '') === 'archived' ? 'selected' : '' ?>>Archived</option>
+                <option value="published" <?= ($selectedStatus ?? '') === 'published' ? 'selected' : '' ?>>Published</option>
+                <option value="draft" <?= ($selectedStatus ?? '') === 'draft' ? 'selected' : '' ?>>Draft</option>
             </select>
         </div>
 
@@ -147,10 +104,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = $('#scholarships-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    var table = ScholarMatchDataTable('#scholarships-datatable', {
         ajax: {
             url: '<?= url("/admin/scholarships/data") ?>',
             type: 'GET',

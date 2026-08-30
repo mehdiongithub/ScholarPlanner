@@ -83,6 +83,7 @@
             <a href="#payment" class="settings-nav-item" id="nav-payment"><i data-lucide="credit-card"></i> Payment Sandbox</a>
             <a href="#homepage" class="settings-nav-item" id="nav-homepage"><i data-lucide="home"></i> Homepage CMS</a>
             <a href="#legal" class="settings-nav-item" id="nav-legal"><i data-lucide="file-text"></i> Terms & Privacy</a>
+            <a href="#referral" class="settings-nav-item" id="nav-referral"><i data-lucide="share-2"></i> Referral System</a>
         </nav>
     </div>
 
@@ -163,6 +164,17 @@
                 <div class="form-group">
                     <label class="form-label" style="text-transform: capitalize;"><?= str_replace('_', ' ', $s['key']) ?></label>
                     <textarea name="<?= e($s['key']) ?>" class="form-control" style="height: 150px;"><?= e($s['value']) ?></textarea>
+                </div>
+            <?php endforeach; ?>
+        </section>
+
+        <!-- Referral System Configurations -->
+        <section id="referral" class="settings-group-card">
+            <h2 class="settings-group-title"><i data-lucide="share-2"></i> Referral System settings</h2>
+            <?php foreach ($groups['referral'] ?? [] as $s): ?>
+                <div class="form-group">
+                    <label class="form-label" style="text-transform: capitalize;"><?= str_replace('_', ' ', $s['key']) ?></label>
+                    <input type="text" name="<?= e($s['key']) ?>" class="form-control" value="<?= e($s['value']) ?>">
                 </div>
             <?php endforeach; ?>
         </section>

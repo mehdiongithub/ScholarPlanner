@@ -1,52 +1,13 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
 <style>
-    .search-filter-bar {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 24px;
-    }
-    .filter-form {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 16px;
-        align-items: end;
-    }
-    .data-table-container {
-        background: #fff;
-        border: 1px solid var(--border-slate-200);
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-    }
-    .data-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.875rem;
-    }
-    .data-table th, .data-table td {
-        padding: 14px 20px;
-        text-align: left;
-        border-bottom: 1px solid var(--border-slate-200);
-    }
-    .data-table th {
-        background-color: var(--bg-slate-50);
-        font-weight: 600;
-        color: #475569;
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
     .badge-status {
-        padding: 6px 12px;
+        padding: 4px 10px;
         border-radius: 9999px;
         font-size: 0.75rem;
-        font-weight: 700;
+        font-weight: 600;
         text-transform: uppercase;
         display: inline-block;
-        text-align: center;
     }
     .status-interested { background: #eff6ff; color: #1d4ed8; }
     .status-planning { background: #fef3c7; color: #d97706; }
@@ -57,22 +18,6 @@
     .status-accepted { background: #f0fdf4; color: #16a34a; }
     .status-rejected { background: #fef2f2; color: #dc2626; }
     .status-withdrawn { background: #f1f5f9; color: #475569; }
-
-    .btn-action {
-        background: var(--primary);
-        color: white;
-        padding: 6px 14px;
-        border-radius: 6px;
-        text-decoration: none;
-        font-size: 0.8125rem;
-        font-weight: 600;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .btn-action:hover {
-        background: var(--primary-hover);
-    }
 </style>
 
 <div style="margin-bottom: 24px;">
@@ -89,7 +34,7 @@
 <?php endif; ?>
 
 <!-- Filters -->
-<div class="search-filter-bar">
+<div class="filter-card">
     <form class="filter-form">
         <div class="form-group" style="margin: 0;">
             <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Search Applicants / Scholarships</label>
@@ -100,43 +45,45 @@
             <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Status</label>
             <select name="status" class="form-control">
                 <option value="">All Statuses</option>
-                <option value="interested" <?= ($status ?? '') === 'interested' ? 'selected' : '' ?>>Interested</option>
-                <option value="planning" <?= ($status ?? '') === 'planning' ? 'selected' : '' ?>>Planning</option>
-                <option value="documents_pending" <?= ($status ?? '') === 'documents_pending' ? 'selected' : '' ?>>Documents Pending</option>
-                <option value="ready_to_apply" <?= ($status ?? '') === 'ready_to_apply' ? 'selected' : '' ?>>Ready to Apply</option>
-                <option value="applied" <?= ($status ?? '') === 'applied' ? 'selected' : '' ?>>Applied</option>
-                <option value="interview" <?= ($status ?? '') === 'interview' ? 'selected' : '' ?>>Interview</option>
-                <option value="accepted" <?= ($status ?? '') === 'accepted' ? 'selected' : '' ?>>Accepted</option>
-                <option value="rejected" <?= ($status ?? '') === 'rejected' ? 'selected' : '' ?>>Rejected</option>
-                <option value="withdrawn" <?= ($status ?? '') === 'withdrawn' ? 'selected' : '' ?>>Withdrawn</option>
+                <option value="interested" <?= ($selectedStatus ?? '') === 'interested' ? 'selected' : '' ?>>Interested</option>
+                <option value="planning" <?= ($selectedStatus ?? '') === 'planning' ? 'selected' : '' ?>>Planning</option>
+                <option value="documents_pending" <?= ($selectedStatus ?? '') === 'documents_pending' ? 'selected' : '' ?>>Documents Pending</option>
+                <option value="ready_to_apply" <?= ($selectedStatus ?? '') === 'ready_to_apply' ? 'selected' : '' ?>>Ready to Apply</option>
+                <option value="applied" <?= ($selectedStatus ?? '') === 'applied' ? 'selected' : '' ?>>Applied</option>
+                <option value="interview" <?= ($selectedStatus ?? '') === 'interview' ? 'selected' : '' ?>>Interviewing</option>
+                <option value="accepted" <?= ($selectedStatus ?? '') === 'accepted' ? 'selected' : '' ?>>Accepted</option>
+                <option value="rejected" <?= ($selectedStatus ?? '') === 'rejected' ? 'selected' : '' ?>>Rejected</option>
+                <option value="withdrawn" <?= ($selectedStatus ?? '') === 'withdrawn' ? 'selected' : '' ?>>Withdrawn</option>
             </select>
         </div>
 
         <div class="form-group" style="margin: 0;">
-            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Scholarship Opportunity</label>
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Scholarship Listing</label>
             <select name="scholarship_id" class="form-control">
                 <option value="">All Scholarships</option>
                 <?php foreach ($scholarships as $s): ?>
-                    <option value="<?= e($s['id']) ?>" <?= (int)($scholarship_id ?? 0) === (int)$s['id'] ? 'selected' : '' ?>><?= e($s['title']) ?></option>
+                    <option value="<?= e($s['id']) ?>" <?= ($selectedScholarship ?? '') == $s['id'] ? 'selected' : '' ?>><?= e($s['title']) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
 
-        <div style="display: flex; gap: 8px;">
-            <a href="<?= url('/admin/applications') ?>" class="btn btn-secondary" style="padding: 10px 14px;" title="Clear Filters">Clear</a>
-            <button type="submit" class="btn btn-primary" style="padding: 10px 18px; flex-grow: 1;">Filter</button>
+        <div>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 18px; width: 100%;">
+                <i data-lucide="filter" style="width: 16px; height: 16px;"></i>
+                <span>Filter</span>
+            </button>
         </div>
     </form>
 </div>
 
-<!-- Table -->
-<div class="data-table-container">
-    <div class="table-responsive">
-        <table class="data-table" id="applications-datatable" style="width:100%">
+<!-- List Grid -->
+<div class="data-table-card">
+    <div style="overflow-x: auto;">
+        <table class="admin-table" id="applications-datatable" style="width:100%">
             <thead>
                 <tr>
-                    <th>Applicant</th>
-                    <th>Scholarship Opportunity</th>
+                    <th>Applicant Details</th>
+                    <th>Scholarship Opp</th>
                     <th>Tracking Status</th>
                     <th>Date Tracked</th>
                     <th>Actions</th>
@@ -150,10 +97,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = $('#applications-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    var table = ScholarMatchDataTable('#applications-datatable', {
         ajax: {
             url: '<?= url("/admin/applications/data") ?>',
             type: 'GET',

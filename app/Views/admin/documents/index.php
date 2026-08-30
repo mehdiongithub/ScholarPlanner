@@ -98,7 +98,6 @@
     .badge-uploaded { background: #e0f2fe; color: #0369a1; }
     .badge-approved { background: #d1fae5; color: #065f46; }
     .badge-rejected { background: #fef2f2; color: #991b1b; }
-    
     .actions-cell {
         display: flex;
         align-items: center;
@@ -181,109 +180,94 @@
     }
 </style>
 
-<div style="margin-bottom: 24px;">
-    <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Manage Documents</h1>
-    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Verify, approve, or reject files uploaded by scholarship applicants</p>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">User Uploaded Documents</h1>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage verification process, view uploads, and track submissions.</p>
+    </div>
 </div>
 
-<!-- Statistics Dashboard -->
+<!-- Stats -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-header">
-            <span class="stat-label">Total Uploaded</span>
-            <div class="stat-icon">
-                <i data-lucide="files"></i>
-            </div>
+            <div class="stat-icon"><i data-lucide="files" style="width: 20px; height: 20px;"></i></div>
+            <span class="stat-value"><?= e($stats['total_count'] ?? 0) ?></span>
         </div>
-        <div class="stat-value"><?= e($stats['total_uploaded'] ?? 0) ?></div>
+        <div class="stat-label">Total Submissions</div>
     </div>
-
     <div class="stat-card">
         <div class="stat-header">
-            <span class="stat-label">Pending Review</span>
-            <div class="stat-icon warning">
-                <i data-lucide="clock"></i>
-            </div>
+            <div class="stat-icon warning"><i data-lucide="clock" style="width: 20px; height: 20px;"></i></div>
+            <span class="stat-value" style="color: #d97706;"><?= e($stats['pending_count'] ?? 0) ?></span>
         </div>
-        <div class="stat-value"><?= e($stats['pending_review'] ?? 0) ?></div>
+        <div class="stat-label">Pending Verification</div>
     </div>
-
     <div class="stat-card">
         <div class="stat-header">
-            <span class="stat-label">Approved</span>
-            <div class="stat-icon success">
-                <i data-lucide="check-circle"></i>
-            </div>
+            <div class="stat-icon success"><i data-lucide="check-circle" style="width: 20px; height: 20px;"></i></div>
+            <span class="stat-value" style="color: #059669;"><?= e($stats['approved_count'] ?? 0) ?></span>
         </div>
-        <div class="stat-value"><?= e($stats['approved'] ?? 0) ?></div>
+        <div class="stat-label">Approved Documents</div>
     </div>
-
     <div class="stat-card">
         <div class="stat-header">
-            <span class="stat-label">Rejected</span>
-            <div class="stat-icon danger">
-                <i data-lucide="x-circle"></i>
-            </div>
+            <div class="stat-icon danger"><i data-lucide="x-circle" style="width: 20px; height: 20px;"></i></div>
+            <span class="stat-value" style="color: #dc2626;"><?= e($stats['rejected_count'] ?? 0) ?></span>
         </div>
-        <div class="stat-value"><?= e($stats['rejected'] ?? 0) ?></div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-header">
-            <span class="stat-label">Missing Required</span>
-            <div class="stat-icon danger">
-                <i data-lucide="alert-triangle"></i>
-            </div>
-        </div>
-        <div class="stat-value"><?= e($stats['missing'] ?? 0) ?></div>
+        <div class="stat-label">Rejected / Flagged</div>
     </div>
 </div>
 
 <!-- Filters -->
 <div class="filter-card">
     <form class="filter-form">
-        <div class="form-group">
-            <label for="status">Status</label>
-            <select name="status" id="status">
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Search Users</label>
+            <input type="text" name="search" id="search" class="form-control" placeholder="Search by name, email..." value="<?= e($search ?? '') ?>">
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Verification Status</label>
+            <select name="status" id="status" class="form-control">
                 <option value="">All Statuses</option>
-                <option value="uploaded" <?= ($status ?? '') === 'uploaded' ? 'selected' : '' ?>>Under Review</option>
-                <option value="approved" <?= ($status ?? '') === 'approved' ? 'selected' : '' ?>>Approved</option>
-                <option value="rejected" <?= ($status ?? '') === 'rejected' ? 'selected' : '' ?>>Rejected</option>
+                <option value="uploaded" <?= ($selectedStatus ?? '') === 'uploaded' ? 'selected' : '' ?>>Uploaded (Pending Review)</option>
+                <option value="approved" <?= ($selectedStatus ?? '') === 'approved' ? 'selected' : '' ?>>Approved</option>
+                <option value="rejected" <?= ($selectedStatus ?? '') === 'rejected' ? 'selected' : '' ?>>Rejected</option>
             </select>
         </div>
 
-        <div class="form-group">
-            <label for="document_id">Document Type</label>
-            <select name="document_id" id="document_id">
+        <div class="form-group" style="margin: 0;">
+            <label class="form-label" style="font-size: 0.8125rem; font-weight: 600;">Document Requirement</label>
+            <select name="document_id" id="document_id" class="form-control">
                 <option value="">All Types</option>
-                <?php foreach ($docTypes as $dt): ?>
-                    <option value="<?= e($dt['id']) ?>" <?= ($docId ?? 0) == $dt['id'] ? 'selected' : '' ?>><?= e($dt['name']) ?></option>
+                <?php foreach ($availableDocs as $doc): ?>
+                    <option value="<?= e($doc['id']) ?>" <?= ($selectedDoc ?? '') == $doc['id'] ? 'selected' : '' ?>><?= e($doc['name']) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
 
-        <div class="form-group">
-            <label for="search">Search Applicant/File</label>
-            <input type="text" name="search" id="search" value="<?= e($search ?? '') ?>" placeholder="Name, email, or filename...">
+        <div>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 18px; width: 100%;">
+                <i data-lucide="filter" style="width: 16px; height: 16px;"></i>
+                <span>Filter</span>
+            </button>
         </div>
-
-        <button type="submit" class="btn-filter-submit">Filter</button>
-        <a href="<?= url('/admin/documents') ?>" class="btn-filter-reset">Reset</a>
     </form>
 </div>
 
 <!-- Records List -->
-<div class="records-card">
+<div class="data-table-card">
     <div style="overflow-x: auto;">
-        <table class="records-table" id="documents-datatable" style="width:100%">
+        <table class="admin-table" id="documents-datatable" style="width:100%">
             <thead>
                 <tr>
-                    <th>Applicant</th>
-                    <th>Document Type</th>
-                    <th>Filename</th>
-                    <th>Uploaded Date</th>
+                    <th>Student Details</th>
+                    <th>Required Document Type</th>
+                    <th>Uploaded Filename</th>
+                    <th>Uploaded At</th>
                     <th>Status</th>
-                    <th style="text-align: right;">Actions</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -294,10 +278,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = $('#documents-datatable').DataTable({
-        processing: true,
-        serverSide: true,
-        responsive: true,
+    var table = ScholarMatchDataTable('#documents-datatable', {
         ajax: {
             url: '<?= url("/admin/documents/data") ?>',
             type: 'GET',

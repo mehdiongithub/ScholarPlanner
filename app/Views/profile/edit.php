@@ -19,7 +19,7 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
     
     <!-- Global CSS -->
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
@@ -32,6 +32,43 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <style>
+        /* Select2 Custom Styles to match Tailwind/Slate UI */
+        .select2-container--default .select2-selection--single {
+            border: 1px solid var(--border) !important;
+            border-radius: 8px !important;
+            height: 42px !important;
+            padding: 6px 12px !important;
+            font-size: 0.9375rem !important;
+            background-color: #fff !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            color: var(--text-900) !important;
+            line-height: 28px !important;
+            padding-left: 0 !important;
+        }
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px !important;
+            right: 8px !important;
+        }
+        .select2-dropdown {
+            border: 1px solid var(--border) !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+            font-size: 0.9375rem !important;
+            background-color: #fff !important;
+        }
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: var(--primary) !important;
+        }
+        .select2-container--default .select2-search--dropdown .select2-search__field {
+            border: 1px solid var(--border) !important;
+            border-radius: 6px !important;
+            padding: 6px 10px !important;
+            outline: none !important;
+        }
+
         .profile-layout {
             min-height: 100vh;
             background: #f8fafc;
@@ -870,7 +907,7 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
             <!-- STEP 4 PANEL: Summary Review & Final Complete -->
             <section class="wizard-step-panel" id="step-4" aria-labelledby="step4-title">
                 <div class="card">
-                    <h2 class="card-title" id="step4-title"><i data-lucide="check-circle-2"></i> Review Profile & Onboarding Completion</h2>
+                    <h2 class="card-title" id="step4-title"><i data-lucide="circle-check"></i> Review Profile & Onboarding Completion</h2>
                     <p class="card-subtitle">Verify your information before finalizing. You can edit any section instantly.</p>
                     
                     <div style="display:flex; flex-direction:column; gap:24px;">

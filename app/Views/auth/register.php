@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
     <style>
         .auth-wrapper {
@@ -259,6 +259,17 @@
                             </span>
                         <?php endif; ?>
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="referral_code" class="form-label">Referral Code (Optional)</label>
+                    <input type="text" id="referral_code" name="referral_code" class="form-input" 
+                           value="<?= e($old['referral_code'] ?? '') ?>" placeholder="e.g. PARTNER10">
+                    <?php if (!empty($errors['referral_code'])): ?>
+                        <span style="font-size: 0.75rem; color: #b91c1c; margin-top: 4px; display: block;">
+                            <?= e($errors['referral_code']) ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
 
                 <div class="form-group">

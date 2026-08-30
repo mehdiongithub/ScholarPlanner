@@ -2530,8 +2530,17 @@ class ScholarshipController {
         }
         if (!empty($_GET['degree_level_id'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
-            $customWhere .= "scholarships.degree_level_id = :degree_level_id";
+            $customWhere .= "EXISTS (
+                SELECT 1 FROM scholarship_degree_levels sdl
+                JOIN degree_levels dl ON sdl.degree_level = dl.name
+                WHERE sdl.scholarship_id = scholarships.id AND dl.id = :degree_level_id
+            )";
             $customParams['degree_level_id'] = $_GET['degree_level_id'];
+        }
+        if (!empty($_GET['funding_type'])) {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "scholarships.funding_type = :funding_type";
+            $customParams['funding_type'] = $_GET['funding_type'];
         }
         if (!empty($_GET['expired'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
@@ -2541,24 +2550,24 @@ class ScholarshipController {
         $columns = [
             'id' => 'scholarships.id',
             'title' => 'scholarships.title',
-            'provider' => 'scholarships.provider',
+            'slug' => 'scholarships.slug',
+            'provider_name' => 'scholarships.provider_name',
             'country_name' => 'countries.name',
-            'degree_name' => 'degree_levels.name',
+            'funding_type' => 'scholarships.funding_type',
             'application_deadline' => 'scholarships.application_deadline',
             'status' => 'scholarships.status',
             'created_at' => 'scholarships.created_at',
             'cover_image' => 'scholarships.cover_image'
         ];
         $joins = [
-            'LEFT JOIN countries ON scholarships.country_id = countries.id',
-            'LEFT JOIN degree_levels ON scholarships.degree_level_id = degree_levels.id'
+            'LEFT JOIN countries ON scholarships.country_id = countries.id'
         ];
-        $searchableColumns = ['scholarships.title', 'scholarships.provider', 'countries.name', 'scholarships.status'];
+        $searchableColumns = ['scholarships.title', 'scholarships.provider_name', 'countries.name', 'scholarships.status'];
         $columnMapping = [
             'title' => 'scholarships.title',
-            'provider' => 'scholarships.provider',
+            'provider_name' => 'scholarships.provider_name',
             'country_name' => 'countries.name',
-            'degree_name' => 'degree_levels.name',
+            'funding_type' => 'scholarships.funding_type',
             'application_deadline' => 'scholarships.application_deadline',
             'status' => 'scholarships.status',
             'created_at' => 'scholarships.created_at'
