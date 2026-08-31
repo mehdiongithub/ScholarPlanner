@@ -8,6 +8,8 @@ $user = \App\Services\Auth::currentUser();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($title ?? 'Personalized Scholarship Alerts | ScholarMatch') ?></title>
     <meta name="description" content="<?= e($description ?? 'Discover scholarship opportunities matched to your education, academic background and goals.') ?>">
+    <link rel="canonical" href="<?= e(($_ENV['APP_URL'] ?? 'http://localhost') . parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH)) ?>">
+    <meta property="og:title" content="<?= e($title ?? 'Personalized Scholarship Alerts | ScholarMatch') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">

@@ -290,7 +290,7 @@
                 </a>
 
                 <form action="<?= url('/logout') ?>" method="POST" class="logout-form">
-                    <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                    <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                     <button type="submit" class="logout-btn">
                         <i data-lucide="log-out"></i>
                         <span>Logout</span>

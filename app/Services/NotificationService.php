@@ -150,4 +150,141 @@ class NotificationService {
                 return "ScholarMatch Notification";
         }
     }
+
+    /**
+     * Verify WhatsApp Opt-in settings for a user.
+     */
+    public function hasWhatsAppOptIn(int $userId, string $type): bool {
+        $stmt = $this->db->prepare("SELECT whatsapp_opt_in FROM users WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $userId]);
+        $userOptIn = $stmt->fetchColumn();
+        if (!$userOptIn) {
+            return false;
+        }
+
+        $stmtPref = $this->db->prepare("SELECT * FROM notification_preferences WHERE user_id = :uid");
+        $stmtPref->execute(['uid' => $userId]);
+        $prefs = $stmtPref->fetchAll(PDO::FETCH_ASSOC);
+
+        $prefMap = [];
+        foreach ($prefs as $p) {
+            $prefMap[$p['notification_type']] = (bool)$p['whatsapp_enabled'];
+        }
+
+        $generalWhatsapp = $prefMap['whatsapp_alerts'] ?? false;
+        if (!$generalWhatsapp) {
+            return false;
+        }
+
+        $prefKey = null;
+        if ($type === 'NEW_MATCH') {
+            $prefKey = 'matching_scholarship_alerts';
+        } elseif ($type === 'SCHOLARSHIP_DEADLINE_SOON' || $type === 'SCHOLARSHIP_DEADLINE_TODAY' || $type === 'DEADLINE_REMINDER') {
+            $prefKey = 'deadline_reminders';
+        }
+
+        if ($prefKey) {
+            return $prefMap[$prefKey] ?? false;
+        }
+
+        return false;
+    }
+
+    /**
+     * Create premium NEW_MATCH WhatsApp notification event.
+     */
+    public function createNewMatchNotification(int $userId, int $scholarshipId): bool {
+        // 1. User exists
+        $stmtUser = $this->db->prepare("SELECT id, phone, whatsapp_phone, whatsapp_opt_in FROM users WHERE id = :id LIMIT 1");
+        $stmtUser->execute(['id' => $userId]);
+        $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
+        if (!$user) {
+            return false;
+        }
+
+        // 2. User is eligible for premium notifications (Premium Subscription check)
+        if (!SubscriptionService::can($userId, 'whatsapp_alerts')) {
+            return false;
+        }
+
+        // 3. User has WhatsApp opt-in
+        if (!$this->hasWhatsAppOptIn($userId, NotificationTypes::NEW_MATCH)) {
+            return false;
+        }
+
+        // 4. User has a valid WhatsApp number
+        $recipient = $user['whatsapp_phone'] ?: $user['phone'];
+        if (empty($recipient)) {
+            return false;
+        }
+        $normalized = \App\Services\WhatsApp\WacrmWhatsAppProvider::normalizePhoneNumber($recipient);
+        if ($normalized === null) {
+            return false;
+        }
+
+        // 5. Scholarship exists
+        $stmtSch = $this->db->prepare("SELECT id, title, provider_name, funding_type, application_deadline, slug, status FROM scholarships WHERE id = :id LIMIT 1");
+        $stmtSch->execute(['id' => $scholarshipId]);
+        $sch = $stmtSch->fetch(PDO::FETCH_ASSOC);
+        if (!$sch) {
+            return false;
+        }
+
+        // 6. Scholarship is published
+        if ($sch['status'] !== 'published') {
+            return false;
+        }
+
+        // 7. Scholarship has not expired
+        if ($sch['application_deadline'] !== null && strtotime($sch['application_deadline']) < strtotime(date('Y-m-d'))) {
+            return false;
+        }
+
+        // 8. Scholarship matches the user
+        $matchingService = new ScholarshipMatchingService();
+        $match = $matchingService->matchUserAndScholarship($userId, $scholarshipId);
+        if (($match['eligibility_status'] ?? '') !== 'ELIGIBLE') {
+            return false;
+        }
+
+        // 9. NEW_MATCH notification does not already exist (Concurrency & Idempotency safe check)
+        $stmtCheck = $this->db->prepare("
+            SELECT COUNT(*) FROM notification_logs 
+            WHERE user_id = :user_id 
+              AND scholarship_id = :scholarship_id 
+              AND notification_type = :type 
+              AND channel = 'whatsapp'
+        ");
+        $stmtCheck->execute([
+            'user_id' => $userId,
+            'scholarship_id' => $scholarshipId,
+            'type' => NotificationTypes::NEW_MATCH
+        ]);
+        if ((int)$stmtCheck->fetchColumn() > 0) {
+            return false;
+        }
+
+        $payloadData = [
+            'title' => $sch['title'],
+            'provider' => $sch['provider_name'],
+            'funding' => $sch['funding_type'],
+            'deadline' => $sch['application_deadline'],
+            'slug' => $sch['slug']
+        ];
+        
+        $activeProvider = $_ENV['WHATSAPP_PROVIDER'] ?? 'wacrm';
+
+        return $this->queueService->enqueue(
+            $userId,
+            $scholarshipId,
+            NotificationTypes::NEW_MATCH,
+            'whatsapp',
+            $normalized,
+            null,
+            $payloadData,
+            null,
+            null,
+            $activeProvider
+        );
+    }
 }

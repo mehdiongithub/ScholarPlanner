@@ -86,7 +86,7 @@ $(document).ready(function() {
                     var updateUrl = '<?= url("/admin/employees/") ?>' + '/' + row.record_id + '/update';
 
                     return '<form action="' + updateUrl + '" method="POST" class="edit-inline-form">' +
-                        '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                        '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                         '<select name="role_id" class="form-control" style="padding: 4px 8px; font-size: 0.8125rem; width: auto; min-width: 140px;">' +
                         roleOptions +
                         '</select>' +

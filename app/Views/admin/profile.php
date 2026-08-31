@@ -17,7 +17,7 @@
     <p style="margin: 0 0 24px 0; color: #64748b; font-size: 0.875rem;">Modify personal administrative details and change login passwords securely.</p>
 
     <form action="/admin/profile" method="POST">
-        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+        <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
 
         <div class="form-group">
             <label class="form-label" for="first_name">First Name</label>

@@ -35,7 +35,7 @@
     <p style="margin: 0 0 24px 0; color: #64748b; font-size: 0.875rem;">Modify sort weight and activation statuses.</p>
 
     <form action="/admin/academic/degrees/<?= $degree['id'] ?>/update" method="POST">
-        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+        <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
 
         <div class="form-group">
             <label class="form-label" for="name">Degree Level Name</label>

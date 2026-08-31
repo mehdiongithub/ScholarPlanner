@@ -12,6 +12,8 @@ use Exception;
 class ScholarshipController {
     
     /**
+     * Sanitizes HTML description content to prevent XSS.
+     */
     private function sanitizeHtml(string $html): string {
         // Preprocess tags with slashes immediately after tag name (e.g. <p/onmouseover)
         $clean = preg_replace('/<([a-z1-6]+)\//i', '<$1 /', $html);

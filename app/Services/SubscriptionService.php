@@ -95,6 +95,7 @@ class SubscriptionService {
             JOIN subscription_plans p ON s.plan_id = p.id
             WHERE s.user_id = :user_id 
               AND s.status IN ('active', 'cancelled') 
+              AND s.starts_at <= NOW()
               AND s.ends_at >= NOW()
             ORDER BY s.id DESC LIMIT 1
         ");

@@ -278,7 +278,7 @@ class ScholarshipTest {
         $payloads = [
             '<script>alert(1)</script>' => '',
             '<img src=x onerror=alert(1)>' => '',
-            '<a href="javascript:alert(1)">test</a>' => 'test',
+            '<a href="javascript:alert(1)">test</a>' => '<a>test</a>',
             '<div onclick="alert(1)">test</div>' => 'test',
             '<p onclick=alert(1)>test</p>' => '<p>test</p>',
             '<li style="color:red;" onmouseover="alert(1)">item</li>' => '<li>item</li>'

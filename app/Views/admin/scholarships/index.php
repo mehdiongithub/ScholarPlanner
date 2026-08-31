@@ -164,19 +164,19 @@ $(document).ready(function() {
                     var editUrl = '<?= url("/admin/scholarships") ?>' + '/' + row.record_id + '/edit';
                     
                     var duplicateForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/duplicate" method="POST" style="display:inline;">' +
-                        '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                        '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                         '<button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #7c3aed;">Duplicate</button>' +
                         '</form>';
 
                     var pubForm = '';
                     if (row.status !== 'published') {
                         pubForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/publish" method="POST" style="display:inline;">' +
-                            '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                            '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                             '<button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #16a34a;">Publish</button>' +
                             '</form>';
                     } else {
                         pubForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/unpublish" method="POST" style="display:inline;">' +
-                            '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                            '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                             '<button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #ca8a04;">Unpublish</button>' +
                             '</form>';
                     }
@@ -184,13 +184,13 @@ $(document).ready(function() {
                     var archiveForm = '';
                     if (row.status !== 'archived') {
                         archiveForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/archive" method="POST" style="display:inline;">' +
-                            '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                            '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                             '<button type="submit" class="action-link" style="background:none; border:none; cursor:pointer; font-family:inherit; color: #64748b;">Archive</button>' +
                             '</form>';
                     }
 
                     var deleteForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/delete" method="POST" onsubmit="return confirm(\'Are you sure you want to permanently delete this scholarship?\');" style="display:inline;">' +
-                        '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                        '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                         '<button type="submit" class="action-link danger" style="background:none; border:none; cursor:pointer; font-family:inherit;">Delete</button>' +
                         '</form>';
 

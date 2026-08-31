@@ -181,7 +181,7 @@ class DocumentTest {
 
         $idorBlocked = false;
         try {
-            $controller->download($otherDocId);
+            $controller->download(encode_id($otherDocId));
         } catch (\Exception $e) {
             // Might die() or throw Exception depending on implementation
             $idorBlocked = true;
@@ -369,7 +369,7 @@ class DocumentTest {
         $_POST = ['csrf_token' => Security::csrfToken()];
         unset($_SESSION['document_errors']);
         try {
-            $controller->delete($row['id']);
+            $controller->delete(encode_id($row['id']));
         } catch (\RuntimeException $e) {}
 
         if (empty($_SESSION['document_errors']['delete'])) {
@@ -380,7 +380,7 @@ class DocumentTest {
         $this->db->exec("UPDATE user_documents SET status = 'uploaded' WHERE id = {$row['id']}");
         unset($_SESSION['document_errors']);
         try {
-            $controller->delete($row['id']);
+            $controller->delete(encode_id($row['id']));
         } catch (\RuntimeException $e) {}
 
         if (!empty($_SESSION['document_errors']['delete'])) {
@@ -414,7 +414,7 @@ class DocumentTest {
         $_POST = ['csrf_token' => Security::csrfToken()];
         unset($_SESSION['admin_doc_error'], $_SESSION['admin_doc_success']);
         try {
-            $controller->approve($docId);
+            $controller->approve(encode_id($docId));
         } catch (\RuntimeException $e) {}
 
         $status = $this->db->query("SELECT status FROM user_documents WHERE id = $docId")->fetchColumn();
@@ -439,7 +439,7 @@ class DocumentTest {
         ];
         unset($_SESSION['admin_doc_error'], $_SESSION['admin_doc_success']);
         try {
-            $controller->reject($docId);
+            $controller->reject(encode_id($docId));
         } catch (\RuntimeException $e) {}
 
         $docRow = $this->db->query("SELECT status, rejection_reason FROM user_documents WHERE id = $docId")->fetch(PDO::FETCH_ASSOC);

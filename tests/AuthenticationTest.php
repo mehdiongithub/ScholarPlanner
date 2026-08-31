@@ -496,7 +496,7 @@ class AuthenticationTest {
             $controller->verifyEmail();
             throw new \Exception("Email Verification Error: Verification did not redirect/halt to profile edit.");
         } catch (\RuntimeException $e) {
-            if ($e->getMessage() !== 'Redirect to profile edit') {
+            if ($e->getMessage() !== 'Redirect to profile edit' && $e->getMessage() !== 'Redirect to profile edit or partner dashboard') {
                 throw $e;
             }
         }

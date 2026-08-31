@@ -73,7 +73,7 @@
 </div>
 
 <form action="/admin/settings" method="POST" class="settings-layout">
-    <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+    <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
 
     <!-- Left Sticky Navigation -->
     <div>
@@ -84,6 +84,7 @@
             <a href="#homepage" class="settings-nav-item" id="nav-homepage"><i data-lucide="home"></i> Homepage CMS</a>
             <a href="#legal" class="settings-nav-item" id="nav-legal"><i data-lucide="file-text"></i> Terms & Privacy</a>
             <a href="#referral" class="settings-nav-item" id="nav-referral"><i data-lucide="share-2"></i> Referral System</a>
+            <a href="#whatsapp" class="settings-nav-item" id="nav-whatsapp"><i data-lucide="message-square"></i> WhatsApp CRM</a>
         </nav>
     </div>
 
@@ -179,6 +180,29 @@
             <?php endforeach; ?>
         </section>
 
+        <!-- WhatsApp CRM Configurations -->
+        <section id="whatsapp" class="settings-group-card">
+            <h2 class="settings-group-title"><i data-lucide="message-square"></i> WhatsApp CRM settings</h2>
+            <div class="form-group">
+                <label class="form-label">Provider Name (WHATSAPP_PROVIDER)</label>
+                <input type="text" class="form-control" value="<?= \App\Helpers\Security::escape(strtoupper($_ENV['WHATSAPP_PROVIDER'] ?? 'LOG')) ?>" disabled>
+            </div>
+            <div class="form-group">
+                <label class="form-label">WACRM Configuration Status</label>
+                <div>
+                    <span class="status-badge <?= (($_ENV['WHATSAPP_PROVIDER'] ?? '') === 'wacrm' && !empty($_ENV['WACRM_API_KEY'])) ? 'active' : 'inactive' ?>">
+                        <?= (($_ENV['WHATSAPP_PROVIDER'] ?? '') === 'wacrm' && !empty($_ENV['WACRM_API_KEY'])) ? 'CONFIGURED' : 'NOT CONFIGURED' ?>
+                    </span>
+                </div>
+            </div>
+            <?php if (($_ENV['WHATSAPP_PROVIDER'] ?? '') === 'wacrm'): ?>
+                <button type="button" id="btnTestWacrm" class="btn btn-secondary" style="margin-top: 10px; display: inline-flex; align-items: center; gap: 8px;">
+                    <i data-lucide="activity"></i> Test WACRM Connection
+                </button>
+                <div id="wacrmTestResult" style="margin-top: 10px; font-weight: bold; font-size: 0.875rem;"></div>
+            <?php endif; ?>
+        </section>
+
         <!-- Save Button Bar -->
         <div style="background-color: #fff; border: 1px solid var(--border-slate-200); border-radius: 12px; padding: 20px; display: flex; justify-content: flex-end; position: sticky; bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); z-index: 100;">
             <button type="submit" class="btn btn-primary" style="padding: 12px 24px;">Save System configurations</button>
@@ -207,6 +231,44 @@
             }
         });
     });
+
+    // Test connection button handler
+    const btnTestWacrm = document.getElementById('btnTestWacrm');
+    if (btnTestWacrm) {
+        btnTestWacrm.addEventListener('click', () => {
+            const resultDiv = document.getElementById('wacrmTestResult');
+            resultDiv.style.color = '#475569';
+            resultDiv.textContent = 'Testing connection...';
+            btnTestWacrm.disabled = true;
+
+            const formData = new FormData();
+            formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
+
+            fetch('/admin/settings/wacrm/test-connection', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                btnTestWacrm.disabled = false;
+                if (data.status === 'CONNECTED') {
+                    resultDiv.style.color = '#10b981';
+                    resultDiv.textContent = '✔ CONNECTED';
+                } else {
+                    resultDiv.style.color = '#ef4444';
+                    resultDiv.textContent = '❌ NOT CONNECTED' + (data.error ? ' (' + data.error + ')' : '');
+                }
+            })
+            .catch(err => {
+                btnTestWacrm.disabled = false;
+                resultDiv.style.color = '#ef4444';
+                resultDiv.textContent = '❌ Error testing connection.';
+            });
+        });
+    }
 </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

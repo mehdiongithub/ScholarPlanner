@@ -211,13 +211,14 @@ class CommunicationAndManagementTest {
      */
     private function testDetailAuthorizationAndTimelineIntegrity(): void {
         $appId = (int)$this->db->query("SELECT id FROM scholarship_applications WHERE user_id = {$this->studentId} LIMIT 1")->fetchColumn();
+        $encAppId = encode_id($appId);
         $controller = new ApplicationController();
 
         // 1. Authorized Access: Student A accesses own details
         $this->loginUser(['id' => $this->studentId, 'role_name' => 'visitor']);
         ob_start();
         try {
-            $controller->show($appId);
+            $controller->show($encAppId);
         } catch (RuntimeException $e) {
             // Expected view halt
         }
@@ -226,7 +227,7 @@ class CommunicationAndManagementTest {
         // 2. IDOR: Student B tries to access Student A's application details
         $this->loginUser(['id' => $this->otherStudentId, 'role_name' => 'visitor']);
         try {
-            $controller->show($appId);
+            $controller->show($encAppId);
             throw new Exception("IDOR breach: Student B allowed to access Student A's application details.");
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'Unauthorized access to application tracker.') {
@@ -239,7 +240,7 @@ class CommunicationAndManagementTest {
         $this->loginUser(['id' => $this->adminId, 'role_name' => 'admin', 'permissions' => ['applications.view']]);
         ob_start();
         try {
-            $controller->adminShow($appId);
+            $controller->adminShow($encAppId);
         } catch (RuntimeException $e) {
             // Expected admin view halt
         }
@@ -251,6 +252,7 @@ class CommunicationAndManagementTest {
      */
     private function testStaffNotesPrivilegeAndLogging(): void {
         $appId = (int)$this->db->query("SELECT id FROM scholarship_applications WHERE user_id = {$this->studentId} LIMIT 1")->fetchColumn();
+        $encAppId = encode_id($appId);
         $controller = new ApplicationController();
 
         // 1. Update administrative notes, status, and internal_notes as Admin
@@ -261,7 +263,7 @@ class CommunicationAndManagementTest {
         $_POST['internal_notes'] = 'Sensitive staff note: candidate looks promising.';
 
         try {
-            $controller->adminUpdateStatus($appId);
+            $controller->adminUpdateStatus($encAppId);
         } catch (RuntimeException $e) {
             // Expected halt redirect
         }
@@ -445,6 +447,7 @@ class CommunicationAndManagementTest {
         echo "Testing Step 10 endpoints for security vulnerabilities, CSRF, IDOR, array parameters, and malformed inputs...\n";
 
         $appId = (int)$this->db->query("SELECT id FROM scholarship_applications WHERE user_id = {$this->studentId} LIMIT 1")->fetchColumn();
+        $encAppId = encode_id($appId);
         $controller = new ApplicationController();
 
         // 1. CSRF validation bypass attempt on status update
@@ -457,7 +460,7 @@ class CommunicationAndManagementTest {
         // Emulate controller update call with bad CSRF
         ob_start();
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
             throw new Exception("CSRF bypass vulnerability: allowed update with invalid token.");
         } catch (RuntimeException $e) {
             // Expected halt from failed CSRF redirection
@@ -472,7 +475,7 @@ class CommunicationAndManagementTest {
             'personal_notes' => 'Attempted hijack notes'
         ];
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
             throw new Exception("IDOR vulnerability: Student B updated Student A's application tracker.");
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'Unauthorized access to application tracker.') {
@@ -491,7 +494,7 @@ class CommunicationAndManagementTest {
         
         ob_start();
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
         } catch (RuntimeException $e) {
             // Expected halt redirect
         }
@@ -512,7 +515,7 @@ class CommunicationAndManagementTest {
         ];
         ob_start();
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
         } catch (RuntimeException $e) {
             // Expected halt redirect
         }
@@ -552,7 +555,7 @@ class CommunicationAndManagementTest {
 
         // 6. Malformed application ID (e.g. negative or non-existent)
         try {
-            $controller->show(-9999);
+            $controller->show(encode_id(-9999));
             throw new Exception("Error handling fail: allowed access with malformed negative application ID.");
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'Application tracker record not found.') {

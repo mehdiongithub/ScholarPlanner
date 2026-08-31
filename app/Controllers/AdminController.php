@@ -1733,6 +1733,34 @@ class AdminController {
         header("Location: " . url("/admin/settings"));
     }
 
+    /**
+     * POST /admin/settings/wacrm/test-connection
+     */
+    public function testWacrmConnection(): void {
+        Auth::requirePermission('settings.view');
+        
+        $csrf = $_POST['csrf_token'] ?? '';
+        if (!Security::verifyCsrfToken($csrf)) {
+            header('Content-Type: application/json');
+            http_response_code(400);
+            echo json_encode(['status' => 'NOT CONNECTED', 'error' => 'CSRF validation failed.']);
+            if (($_ENV['APP_ENV'] ?? '') === 'testing') {
+                return;
+            }
+            exit;
+        }
+
+        $provider = new \App\Services\WhatsApp\WacrmWhatsAppProvider();
+        $status = $provider->testConnection();
+
+        header('Content-Type: application/json');
+        echo json_encode(['status' => $status]);
+        if (($_ENV['APP_ENV'] ?? '') === 'testing') {
+            return;
+        }
+        exit;
+    }
+
     // ==========================================
     // IMMUTABLE AUDIT LOGS
     // ==========================================

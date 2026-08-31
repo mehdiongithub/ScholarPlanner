@@ -227,11 +227,12 @@ class ApplicationTest {
         if (!$appId) {
             throw new Exception("Functional failed: Application tracker row not saved.");
         }
+        $encAppId = encode_id($appId);
 
         // 2. IDOR: Log in User B and attempt to view User A's application details
         $this->loginUser(['id' => $this->otherUserId, 'role_name' => 'visitor']);
         try {
-            $controller->show($appId);
+            $controller->show($encAppId);
             throw new Exception("Security IDOR failed: User B was allowed to view User A's application.");
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'Unauthorized access to application tracker.') {
@@ -245,7 +246,7 @@ class ApplicationTest {
         $_POST['status'] = 'planning';
         $_POST['personal_notes'] = 'hacked notes';
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
             throw new Exception("Security IDOR failed: User B was allowed to update User A's application.");
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'Unauthorized access to application tracker.') {
@@ -256,7 +257,7 @@ class ApplicationTest {
 
         // 4. IDOR: User B tries to delete User A's application tracker row
         try {
-            $controller->delete($appId);
+            $controller->delete($encAppId);
             throw new Exception("Security IDOR failed: User B was allowed to delete User A's application.");
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'Unauthorized access to application tracker.') {
@@ -272,7 +273,7 @@ class ApplicationTest {
         $_POST['csrf_token'] = 'invalid_token';
         $_POST['status'] = 'planning';
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
             throw new Exception("Security CSRF failed: update allowed with invalid token.");
         } catch (RuntimeException $e) {
             // Halt expected due to redirect on CSRF failure
@@ -288,7 +289,7 @@ class ApplicationTest {
         $_POST['csrf_token'] = 'test_token';
         $_POST['status'] = 'invalid_state';
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
         } catch (RuntimeException $e) {
             // Redirect halt
         }
@@ -315,7 +316,7 @@ class ApplicationTest {
         $_POST['csrf_token'] = 'test_token';
         $_POST['status'] = 'accepted';
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
         } catch (RuntimeException $e) {
             // Expected redirect halt
         }
@@ -328,7 +329,7 @@ class ApplicationTest {
         $_POST['csrf_token'] = 'test_token';
         $_POST['status'] = 'applied';
         try {
-            $controller->update($appId);
+            $controller->update($encAppId);
         } catch (RuntimeException $e) {
             // Expected redirect halt
         }
@@ -373,12 +374,13 @@ class ApplicationTest {
             VALUES ({$this->userId}, {$this->secondScholarshipId}, 'interested')
         ");
         $histAppId = (int)$this->db->lastInsertId();
+        $encHistAppId = encode_id($histAppId);
         
         // Try to change status to planning
         $_POST['csrf_token'] = 'test_token';
         $_POST['status'] = 'planning';
         try {
-            $controller->update($histAppId);
+            $controller->update($encHistAppId);
         } catch (RuntimeException $e) {
             // Expected halt
         }
@@ -392,7 +394,7 @@ class ApplicationTest {
         $_POST['csrf_token'] = 'test_token';
         $_POST['status'] = 'withdrawn';
         try {
-            $controller->update($histAppId);
+            $controller->update($encHistAppId);
         } catch (RuntimeException $e) {
             // Expected halt
         }
@@ -429,7 +431,7 @@ class ApplicationTest {
         $_POST['personal_notes'] = 'I have submitted my files.';
         
         try {
-            $controller->update($appId);
+            $controller->update(encode_id($appId));
         } catch (RuntimeException $e) {
             // Expected halt after save
         }
@@ -453,7 +455,7 @@ class ApplicationTest {
         $_POST['status'] = 'interview';
         $_POST['notes'] = 'Selected for interview stage.';
         try {
-            $controller->adminUpdateStatus($appId);
+            $controller->adminUpdateStatus(encode_id($appId));
         } catch (RuntimeException $e) {
             // Expected halt
         }

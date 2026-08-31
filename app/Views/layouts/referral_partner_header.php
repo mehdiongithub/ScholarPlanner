@@ -92,7 +92,7 @@ $user = \App\Services\Auth::currentUser();
             
             <div style="margin-top: auto; padding-top: 20px;">
                 <form action="<?= url('/logout') ?>" method="POST" class="logout-form">
-                    <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                    <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                     <button type="submit" class="menu-item" style="width: 100%; border: none; background: none; text-align: left; cursor: pointer; color: #fca5a5;">
                         <i data-lucide="log-out"></i>
                         <span>Log Out</span>

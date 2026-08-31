@@ -173,18 +173,18 @@
                 
                 <?php if ($targetUser['status'] !== 'suspended'): ?>
                     <form action="/admin/users/<?= $targetUser['id'] ?>/suspend" method="POST" onsubmit="return confirm('Suspend this student account?');" style="width: 100%;">
-                        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                        <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                         <button type="submit" class="btn btn-danger" style="justify-content: center; width: 100%;">Suspend User</button>
                     </form>
                 <?php else: ?>
                     <form action="/admin/users/<?= $targetUser['id'] ?>/activate" method="POST" onsubmit="return confirm('Activate this student account?');" style="width: 100%;">
-                        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                        <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                         <button type="submit" class="btn btn-primary" style="justify-content: center; width: 100%;">Activate User</button>
                     </form>
                 <?php endif; ?>
 
                 <form action="/admin/users/<?= $targetUser['id'] ?>/delete" method="POST" onsubmit="return confirm('Are you sure you want to permanently deactivate this account? Actions cannot be undone.');" style="width: 100%;">
-                    <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                    <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                     <button type="submit" class="btn btn-secondary" style="justify-content: center; width: 100%; border-color: #fca5a5; color: #ef4444; background: #fff;">Deactivate / Delete</button>
                 </form>
             </div>
@@ -194,7 +194,7 @@
         <div class="card" style="margin-top: 24px;">
             <h3 class="card-title">Reset Password</h3>
             <form action="/admin/users/<?= $targetUser['id'] ?>/password" method="POST">
-                <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                 <div class="form-group">
                     <label class="form-label" for="password">New Password (min 8 chars)</label>
                     <input type="password" name="password" id="password" class="form-control" placeholder="Enter new strong password" required minlength="8">

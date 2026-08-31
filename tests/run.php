@@ -26,6 +26,8 @@ require_once __DIR__ . '/PublicDiscoverySeoTest.php';
 require_once __DIR__ . '/BillingSubscriptionTest.php';
 require_once __DIR__ . '/AnalyticsExportTest.php';
 require_once __DIR__ . '/EndToEndLaunchTest.php';
+require_once __DIR__ . '/WacrmWhatsAppProviderTest.php';
+require_once __DIR__ . '/NotificationFoundationTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -112,6 +114,14 @@ try {
     // 19. End-To-End Testing & Launch Readiness Verification
     $e2eTest = new \App\Tests\EndToEndLaunchTest();
     $e2eTest->run();
+
+    // 20. WACRM WhatsApp Provider Integration Verification
+    $wacrmTest = new WacrmWhatsAppProviderTest();
+    $wacrmTest->run();
+
+    // 21. Notification Foundation Gating & Idempotency Verification
+    $notifFoundationTest = new NotificationFoundationTest();
+    $notifFoundationTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

@@ -11,7 +11,7 @@
         <div class="form-card">
             <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add Referral Partner</h2>
             <form action="<?= url('/admin/referrals') ?>" method="POST">
-                <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                 
                 <div class="form-group">
                     <label class="form-label" for="first_name">First Name</label>
@@ -117,7 +117,7 @@ $(document).ready(function() {
                 orderable: false,
                 render: function(data, type, row) {
                     var deleteForm = '<form action="<?= url("/admin/referrals") ?>/' + row.record_id + '/delete" method="POST" onsubmit="return confirm(\'Are you sure you want to revoke this referral partner? This clears their partner code and suspends their access, but preserves historical data.\');" style="display:inline;">' +
-                                     '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                                     '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                                      '<button type="submit" class="action-link danger" style="background:none; border:none; padding:0; cursor:pointer; font-weight:600;">Revoke Partner</button>' +
                                      '</form>';
                     

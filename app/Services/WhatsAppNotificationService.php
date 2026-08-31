@@ -13,6 +13,8 @@ class WhatsAppNotificationService {
         $providerType = strtolower($_ENV['WHATSAPP_PROVIDER'] ?? 'log');
         if ($providerType === 'meta') {
             $this->provider = new MetaWhatsAppProvider();
+        } elseif ($providerType === 'wacrm') {
+            $this->provider = new WhatsApp\WacrmWhatsAppProvider();
         } else {
             $this->provider = new LogWhatsAppProvider();
         }

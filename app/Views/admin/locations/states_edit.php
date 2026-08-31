@@ -35,7 +35,7 @@
     <p style="margin: 0 0 24px 0; color: #64748b; font-size: 0.875rem;">Modify state/province parent country bindings.</p>
 
     <form action="/admin/locations/states/<?= $state['id'] ?>/update" method="POST">
-        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+        <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
 
         <div class="form-group">
             <label class="form-label" for="name">State Name</label>

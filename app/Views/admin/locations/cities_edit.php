@@ -35,7 +35,7 @@
     <p style="margin: 0 0 24px 0; color: #64748b; font-size: 0.875rem;">Modify city parent state/province bindings dynamically.</p>
 
     <form action="/admin/locations/cities/<?= $city['id'] ?>/update" method="POST">
-        <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+        <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
 
         <div class="form-group">
             <label class="form-label" for="name">City Name</label>

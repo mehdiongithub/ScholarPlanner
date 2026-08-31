@@ -178,7 +178,7 @@ function updateUserStatus(recordId, action) {
     }
 
     const formData = new FormData();
-    formData.append('csrf_token', '<?= Security::csrfToken() ?>');
+    formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
 
     fetch('<?= url("/admin/users") ?>/' + recordId + '/' + action, {
         method: 'POST',

@@ -171,7 +171,7 @@
                 
                 const formData = new FormData();
                 formData.append('phone', phone);
-                formData.append('csrf_token', '<?= Security::csrfToken() ?>');
+                formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
 
                 fetch('<?= url("/profile/preferences/update") ?>', {
                     method: 'POST',

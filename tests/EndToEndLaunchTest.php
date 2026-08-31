@@ -237,7 +237,7 @@ class EndToEndLaunchTest {
             
             ob_start();
             try {
-                $appController->update((int)$app['id']);
+                $appController->update(encode_id((int)$app['id']));
                 throw new Exception("IDOR application update status bypassed: student updated status to accepted.");
             } catch (\RuntimeException $e) {
                 if (strpos($e->getMessage(), '403') === false && strpos($e->getMessage(), 'Redirect') === false) {
@@ -440,7 +440,7 @@ class EndToEndLaunchTest {
             
             ob_start();
             try {
-                $docController->approve((int)$doc['id']);
+                $docController->approve(encode_id((int)$doc['id']));
             } catch (\RuntimeException $e) {
                 // redirects expected
             }

@@ -31,7 +31,8 @@ class NotificationQueueService {
         ?string $subject,
         array $payloadData,
         ?string $idempotencyKey = null,
-        ?string $availableAt = null
+        ?string $availableAt = null,
+        ?string $provider = null
     ): bool {
         // Gating rules for premium notifications
         $isTestingBypass = false;
@@ -65,8 +66,12 @@ class NotificationQueueService {
         if ($idempotencyKey === null) {
             // Build deterministic idempotency key
             $schId = $scholarshipId ?? 0;
-            $eventDate = date('Y-m-d');
-            $idempotencyKey = "{$userId}_{$schId}_{$type}_{$channel}_{$eventDate}";
+            if ($type === 'NEW_MATCH' || $type === 'DEADLINE_REMINDER') {
+                $idempotencyKey = "{$userId}_{$schId}_{$type}_{$channel}";
+            } else {
+                $eventDate = date('Y-m-d');
+                $idempotencyKey = "{$userId}_{$schId}_{$type}_{$channel}_{$eventDate}";
+            }
         }
 
         $payload = json_encode($payloadData);
@@ -75,10 +80,10 @@ class NotificationQueueService {
         try {
             $stmt = $this->db->prepare("
                 INSERT INTO notification_logs (
-                    user_id, scholarship_id, notification_type, channel, recipient, 
+                    user_id, scholarship_id, notification_type, channel, provider, recipient, 
                     subject, payload, idempotency_key, status, available_at, created_at, updated_at
                 ) VALUES (
-                    :user_id, :scholarship_id, :type, :channel, :recipient, 
+                    :user_id, :scholarship_id, :type, :channel, :provider, :recipient, 
                     :subject, :payload, :idempotency_key, 'pending', :available_at, NOW(), NOW()
                 )
             ");
@@ -87,6 +92,7 @@ class NotificationQueueService {
                 'scholarship_id' => $scholarshipId,
                 'type' => $type,
                 'channel' => $channel,
+                'provider' => $provider,
                 'recipient' => $recipient,
                 'subject' => $subject,
                 'payload' => $payload,

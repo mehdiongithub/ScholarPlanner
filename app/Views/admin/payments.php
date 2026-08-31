@@ -80,7 +80,7 @@ $(document).ready(function() {
                     if (row.status === 'paid') {
                         var refundUrl = '<?= url("/admin/billing/refund") ?>';
                         return '<form action="' + refundUrl + '" method="POST" onsubmit="return confirm(\'Issue a refund of $' + row.amount + ' for reference ' + row.reference_id + '?\');" style="display: inline;">' +
-                            '<input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">' +
+                            '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                             '<input type="hidden" name="transaction_id" value="' + row.record_id + '">' +
                             '<button type="submit" class="action-link danger" style="background: none; border: none; cursor: pointer; font-family: inherit;">Refund</button>' +
                             '</form>';

@@ -216,7 +216,7 @@
                 <?php if (in_array($log['status'], ['failed', 'retrying'])): ?>
                     <div style="margin-top:32px; border-top:1px solid var(--border); padding-top:24px; display:flex; justify-content:flex-end;">
                         <form action="<?= url('/admin/notifications/' . $log['id'] . '/retry') ?>" method="POST" style="margin:0;">
-                            <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                            <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                             <button type="submit" class="btn-retry">
                                 <i data-lucide="rotate-ccw" style="width:16px; height:16px;"></i>
                                 <span>Re-enqueue Notification</span>

@@ -18,7 +18,7 @@
         <div class="form-card">
             <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add New Degree Level</h2>
             <form action="<?= url('/admin/academic/degrees') ?>" method="POST">
-                <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                 
                 <div class="form-group">
                     <label class="form-label" for="name">Degree Level Name</label>
@@ -101,7 +101,7 @@ function deleteDegree(recordId) {
         return;
     }
     const formData = new FormData();
-    formData.append('csrf_token', '<?= Security::csrfToken() ?>');
+    formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
 
     fetch('<?= url("/admin/academic/degrees") ?>/' + recordId + '/delete', {
         method: 'POST',

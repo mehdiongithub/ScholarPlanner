@@ -210,6 +210,7 @@ $router->get('/admin/matching/stats', ['App\Controllers\AdminController', 'match
 
 $router->get('/admin/settings', ['App\Controllers\AdminController', 'settings']);
 $router->post('/admin/settings', ['App\Controllers\AdminController', 'settingsUpdate']);
+$router->post('/admin/settings/wacrm/test-connection', ['App\Controllers\AdminController', 'testWacrmConnection']);
 
 // Admin Referral Management Routes
 $router->get('/admin/referrals', ['App\Controllers\AdminController', 'referralsIndex']);

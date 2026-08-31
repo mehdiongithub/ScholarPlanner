@@ -94,7 +94,7 @@
             <p style="margin: 0; color: #64748b; font-size: 0.8125rem;">Check permissions this group of backoffice staff should have access to.</p>
 
             <form action="/admin/employees/roles" method="POST" id="permissionsForm">
-                <input type="hidden" name="csrf_token" value="<?= Security::csrfToken() ?>">
+                <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                 <input type="hidden" name="role_id" id="formRoleId" value="">
 
                 <div class="permissions-columns">
