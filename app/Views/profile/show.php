@@ -1,15 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Profile | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<style>
         .profile-layout {
             min-height: 100vh;
             background: #f8fafc;
@@ -375,26 +364,15 @@
     </style>
 </head>
 <body>
-
-    <div class="profile-layout">
-        <header class="profile-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
-            </a>
-            
-            <div class="nav-links">
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                <a href="<?= url('/profile') ?>" class="nav-link active">My Profile</a>
-                <a href="<?= url('/documents') ?>" class="nav-link">Documents</a>
-                <a href="<?= url('/applications') ?>" class="nav-link">Applications</a>
-                <a href="<?= url('/profile/edit') ?>" class="btn-action btn-primary">
-                    <i data-lucide="edit-3"></i>
-                    <span>Edit Profile</span>
-                </a>
-            </div>
-        </header>
-
+<?php
+$title = 'My Profile';
+include ROOT_PATH . '/app/Views/layouts/student_header.php';
+?>
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
         <main class="profile-content">
             <!-- Banner summary card -->
             <div class="banner-card">
@@ -407,34 +385,10 @@
                             <span style="margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--border);">Age: <strong><?= e($age) ?></strong></span>
                         <?php endif; ?>
                     </p>
-                    <div>
-                        <span class="pref-tag" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">Role: <?= e(ucfirst($user['role_name'])) ?></span>
-                        <span class="pref-tag" style="background:#ecfdf5; color:#047857; border-color:#a7f3d0;">Status: <?= e(ucfirst($user['status'])) ?></span>
-                    </div>
-                </div>
-
-                <div class="completion-wrapper" style="display: flex; flex-direction: column; gap: 16px; min-width: 250px;">
-                    <div>
-                        <div class="completion-header">
-                            <span>Profile Completion</span>
-                            <span class="completion-percent"><?= e($completion) ?>%</span>
-                        </div>
-                        <div class="progress-track">
-                            <div class="progress-bar" style="width: <?= e($completion) ?>%;"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="completion-header">
-                            <span>Document Readiness</span>
-                            <span class="completion-percent"><?= e($docReadiness['readiness_percentage']) ?>%</span>
-                        </div>
-                        <div class="progress-track">
-                            <div class="progress-bar" style="width: <?= e($docReadiness['readiness_percentage']) ?>%; background: #2563eb;"></div>
-                        </div>
-                        <p style="font-size: 0.75rem; color: var(--text-500); margin-top: 6px;">
-                            <a href="<?= url('/documents') ?>" style="color: var(--primary); text-decoration: none; font-weight: 500;">Manage Documents &rarr;</a>
-                        </p>
-                    </div>
+                    <p class="banner-email" style="margin-top: 6px;">
+                        <i data-lucide="phone" style="display:inline-block; width:14px; height:14px; vertical-align:middle; margin-right:4px;"></i>
+                        <span><?= !empty($user['phone']) ? e($user['phone']) : 'No phone number set' ?></span>
+                    </p>
                 </div>
             </div>
 
@@ -621,59 +575,10 @@
                             </span>
                         </div>
                     </div>
-
-                    <!-- Document checklist placeholder -->
-                    <div class="card">
-                        <h2 class="card-title">
-                            <i data-lucide="file-text"></i>
-                            <span>Documents (Coming in Step 8)</span>
-                        </h2>
-
-                        <div class="document-checklist">
-                            <div class="doc-item">
-                                <span class="doc-name">
-                                    <i data-lucide="file"></i>
-                                    <span>Passport</span>
-                                </span>
-                                <span class="doc-badge">Not uploaded</span>
-                            </div>
-                            <div class="doc-item">
-                                <span class="doc-name">
-                                    <i data-lucide="file"></i>
-                                    <span>Academic Transcript</span>
-                                </span>
-                                <span class="doc-badge">Not uploaded</span>
-                            </div>
-                            <div class="doc-item">
-                                <span class="doc-name">
-                                    <i data-lucide="file"></i>
-                                    <span>Degree Certificate</span>
-                                </span>
-                                <span class="doc-badge">Not uploaded</span>
-                            </div>
-                            <div class="doc-item">
-                                <span class="doc-name">
-                                    <i data-lucide="file"></i>
-                                    <span>Curriculum Vitae (CV)</span>
-                                </span>
-                                <span class="doc-badge">Not uploaded</span>
-                            </div>
-                            <div class="doc-item">
-                                <span class="doc-name">
-                                    <i data-lucide="file"></i>
-                                    <span>Recommendation Letter</span>
-                                </span>
-                                <span class="doc-badge">Not uploaded</span>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
         </main>
     </div>
 
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

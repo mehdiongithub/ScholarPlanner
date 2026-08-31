@@ -1,56 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($pageTitle ?? 'Search Scholarships | ScholarMatch') ?></title>
-    <meta name="description" content="<?= e($metaDescription ?? 'Search over verified opportunities matched to your qualifications.') ?>">
-    <link rel="canonical" href="<?= e($canonicalUrl ?? url('/scholarships')) ?>">
-    <meta name="robots" content="<?= e($robotsDirective ?? 'index, follow') ?>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<?php
+$title = $pageTitle ?? 'Search Scholarships | ScholarMatch';
+$description = $metaDescription ?? 'Search over verified opportunities matched to your qualifications.';
+include ROOT_PATH . '/app/Views/layouts/public_header.php';
+?>
+
+<style>
         .page-layout {
             min-height: 100vh;
             background: #f8fafc;
             display: flex;
             flex-direction: column;
-        }
-        .main-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .nav-link {
-            font-size: 0.875rem;
-            color: var(--text-600);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .nav-link:hover {
-            color: var(--primary);
         }
         .page-content {
             max-width: 1200px;
@@ -105,20 +64,20 @@
             outline: none;
             font-size: 1rem;
             width: 100%;
-            color: var(--text-800);
+            color: #0f172a !important;
+            background: transparent !important;
         }
         .btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 20px;
             font-size: 0.875rem;
             font-weight: 600;
+            padding: 10px 20px;
             border-radius: var(--radius-lg);
-            text-decoration: none;
+            transition: all 0.2s;
             cursor: pointer;
             border: none;
-            transition: all 0.2s;
         }
         .btn-primary {
             background: var(--primary);
@@ -129,162 +88,254 @@
         }
         .btn-secondary {
             background: var(--bg-white);
-            color: var(--text-700);
             border: 1px solid var(--border);
+            color: var(--text-700);
         }
         .btn-secondary:hover {
             background: #f1f5f9;
+            color: var(--text-900);
         }
         .list-layout {
             display: grid;
             grid-template-columns: 280px 1fr;
             gap: 32px;
+            align-items: start;
         }
-        .filters-aside {
+        .filters-panel {
             background: var(--bg-white);
             border: 1px solid var(--border);
-            border-radius: var(--radius-2xl);
+            border-radius: var(--radius-xl);
             padding: 24px;
             box-shadow: var(--shadow-sm);
-            height: fit-content;
         }
-        .filter-section-title {
+        .filter-section {
+            margin-bottom: 24px;
+        }
+        .filter-section:last-child {
+            margin-bottom: 0;
+        }
+        .filter-title {
             font-size: 0.875rem;
             font-weight: 700;
             color: var(--text-800);
+            margin-bottom: 12px;
             text-transform: uppercase;
-            margin-bottom: 16px;
-            margin-top: 24px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--border);
+            letter-spacing: 0.05em;
         }
-        .filter-section-title:first-child {
-            margin-top: 0;
+        .form-group {
+            margin-bottom: 12px;
         }
-        .filter-link {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            color: var(--text-700);
-            text-decoration: none;
-            font-size: 0.875rem;
-            padding: 6px 0;
-            transition: color 0.2s;
-        }
-        .filter-link:hover, .filter-link.active {
-            color: var(--primary);
+        .form-group label {
+            display: block;
+            font-size: 0.8125rem;
             font-weight: 600;
+            color: var(--text-600);
+            margin-bottom: 6px;
         }
         .form-control {
-            padding: 10px 14px;
+            width: 100%;
+            padding: 10px 12px;
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
             font-size: 0.875rem;
-            width: 100%;
-            background: var(--bg-white);
-            margin-bottom: 12px;
+            color: var(--text-800);
+            outline: none;
+            background: #fff;
         }
-        .results-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        .form-control:focus {
+            border-color: var(--primary);
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+            color: var(--text-700);
+            cursor: pointer;
+        }
+        .checkbox-label input {
+            width: 16px;
+            height: 16px;
+            border-radius: var(--radius-sm);
+            border-color: var(--border);
+        }
+        .results-container {
+            display: flex;
+            flex-direction: column;
             gap: 24px;
-            margin-bottom: 32px;
+        }
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .results-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-900);
+        }
+        .cards-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
         }
         .scholarship-card {
             background: var(--bg-white);
             border: 1px solid var(--border);
-            border-radius: var(--radius-2xl);
+            border-radius: var(--radius-xl);
             padding: 24px;
-            box-shadow: var(--shadow-sm);
+            transition: all 0.2s;
+            position: relative;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            transition: transform 0.2s, box-shadow 0.2s;
-            position: relative;
+            gap: 16px;
         }
         .scholarship-card:hover {
-            transform: translateY(-4px);
             box-shadow: var(--shadow-md);
+            border-color: var(--primary-light);
         }
-        .featured-badge {
-            position: absolute;
-            top: 16px;
-            right: 16px;
-            background: #fef3c7;
-            color: #d97706;
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 4px 8px;
-            border-radius: var(--radius-full);
+        .card-header-row {
             display: flex;
-            align-items: center;
-            gap: 4px;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
         }
-        .card-provider {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-500);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 8px;
+        .card-title-area {
+            flex-grow: 1;
         }
         .card-title {
-            font-size: 1.125rem;
+            font-size: 1.25rem;
             font-weight: 700;
             color: var(--text-900);
-            margin-bottom: 12px;
+            margin-bottom: 6px;
             line-height: 1.4;
         }
-        .card-desc {
+        .card-title a {
+            text-decoration: none;
+            color: inherit;
+        }
+        .card-title a:hover {
+            color: var(--primary);
+        }
+        .card-provider {
+            font-size: 0.875rem;
+            color: var(--text-500);
+            font-weight: 500;
+        }
+        .btn-bookmark {
+            border: 1px solid var(--border);
+            background: var(--bg-white);
+            color: var(--text-400);
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .btn-bookmark:hover {
+            background: #fff1f2;
+            border-color: #fecdd3;
+            color: #f43f5e;
+        }
+        .btn-bookmark.bookmarked {
+            background: #ffe4e6;
+            border-color: #fda4af;
+            color: #e11d48;
+        }
+        .badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 100px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .badge-verified {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+        .badge-featured {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .badge-degree {
+            background: #f1f5f9;
+            color: #475569;
+        }
+        .badge-closing-soon {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        .card-description {
             font-size: 0.875rem;
             color: var(--text-600);
-            margin-bottom: 20px;
-            line-height: 1.5;
+            line-height: 1.6;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-footer-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .card-actions-compare {
+            display: flex;
+            gap: 8px;
             flex-grow: 1;
+            max-width: 320px;
+        }
+        .btn-action-compare {
+            flex-grow: 1;
+            justify-content: center;
         }
         .card-meta {
             display: flex;
             align-items: center;
             gap: 16px;
-            font-size: 0.75rem;
+            font-size: 0.8125rem;
             color: var(--text-500);
-            border-top: 1px solid var(--border);
-            padding-top: 16px;
-            margin-top: auto;
         }
         .card-meta-item {
             display: flex;
             align-items: center;
-            gap: 4px;
-        }
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 8px;
-            font-size: 0.75rem;
-            font-weight: 500;
-            border-radius: var(--radius-full);
-        }
-        .badge-verified {
-            background: #d1fae5;
-            color: #065f46;
-            font-size: 0.7rem;
-            margin-left: 8px;
+            gap: 6px;
         }
         .pagination {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
             flex-wrap: wrap;
             gap: 16px;
         }
         .pagination-links {
             display: flex;
-            align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
         .pagination-btn {
-            padding: 8px 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 14px;
             border: 1px solid var(--border);
             background: var(--bg-white);
             color: var(--text-700);
@@ -294,13 +345,8 @@
         }
         .pagination-btn.active {
             background: var(--primary);
-            color: var(--bg-white);
+            color: #fff;
             border-color: var(--primary);
-        }
-        .pagination-btn.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
         }
         @media (max-width: 992px) {
             .list-layout {
@@ -311,26 +357,8 @@
             }
         }
     </style>
-</head>
-<body>
-    <div class="page-layout">
-        <header class="main-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>
-                <?php if (\App\Services\Auth::isAuthenticated()): ?>
-                    <a href="<?= url('/saved-scholarships') ?>" class="nav-link">Bookmarks</a>
-                    <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                <?php else: ?>
-                    <a href="<?= url('/login') ?>" class="nav-link">Log In</a>
-                    <a href="<?= url('/register') ?>" class="btn btn-primary" style="padding: 6px 16px;">Sign Up</a>
-                <?php endif; ?>
-            </div>
-        </header>
 
+    <div class="page-layout">
         <main class="page-content">
             <!-- Hero banner section -->
             <div class="search-hero">
@@ -381,80 +409,78 @@
             <!-- Main Catalog Section -->
             <div class="list-layout">
                 <!-- Filters Sidebar -->
-                <aside class="filters-aside">
+                <aside class="filters-panel">
                     <form method="GET" action="<?= url('/scholarships') ?>">
                         <input type="hidden" name="search" value="<?= e($search) ?>">
 
-                        <h3 class="filter-section-title" style="margin-top:0;">Host Country</h3>
-                        <select name="country_id" class="form-control" onchange="this.form.submit();">
-                            <option value="">All Host Countries</option>
-                            <?php foreach ($countries as $c): ?>
-                                <option value="<?= e($c['id']) ?>" <?= $countryId === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="filter-section">
+                            <h3 class="filter-title" style="margin-top:0;">Host Country</h3>
+                            <select name="country_id" class="form-control select2" onchange="this.form.submit();">
+                                <option value="">All Host Countries</option>
+                                <?php foreach ($countries as $c): ?>
+                                    <option value="<?= e($c['id']) ?>" <?= $countryId === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                        <h3 class="filter-section-title">Study Destination</h3>
-                        <select name="study_destination_id" class="form-control" onchange="this.form.submit();">
-                            <option value="">All Destinations</option>
-                            <?php foreach ($countries as $c): ?>
-                                <option value="<?= e($c['id']) ?>" <?= ($studyDestinationId ?? null) === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="filter-section">
+                            <h3 class="filter-title">Study Destination</h3>
+                            <select name="study_destination_id" class="form-control select2" onchange="this.form.submit();">
+                                <option value="">All Destinations</option>
+                                <?php foreach ($countries as $c): ?>
+                                    <option value="<?= e($c['id']) ?>" <?= ($studyDestinationId ?? null) === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                        <h3 class="filter-section-title">Degree Level</h3>
-                        <select name="degree" class="form-control" onchange="this.form.submit();">
-                            <option value="">All Levels</option>
-                            <option value="Bachelor's" <?= $degree === "Bachelor's" ? 'selected' : '' ?>>Bachelor's</option>
-                            <option value="Master's" <?= $degree === "Master's" ? 'selected' : '' ?>>Master's</option>
-                            <option value="PhD" <?= $degree === 'PhD' ? 'selected' : '' ?>>PhD</option>
-                            <option value="Diploma" <?= $degree === 'Diploma' ? 'selected' : '' ?>>Diploma</option>
-                        </select>
+                        <div class="filter-section">
+                            <h3 class="filter-title">Degree Level</h3>
+                            <select name="degree" class="form-control select2" onchange="this.form.submit();">
+                                <option value="">All Levels</option>
+                                <option value="Bachelor's" <?= $degree === "Bachelor's" ? 'selected' : '' ?>>Bachelor's</option>
+                                <option value="Master's" <?= $degree === "Master's" ? 'selected' : '' ?>>Master's</option>
+                                <option value="PhD" <?= $degree === 'PhD' ? 'selected' : '' ?>>PhD</option>
+                                <option value="Diploma" <?= $degree === 'Diploma' ? 'selected' : '' ?>>Diploma</option>
+                            </select>
+                        </div>
 
-                        <h3 class="filter-section-title">Discipline / Field</h3>
-                        <select name="field_id" class="form-control" onchange="this.form.submit();">
-                            <option value="">All Disciplines</option>
-                            <?php foreach ($fields as $f): ?>
-                                <option value="<?= e($f['id']) ?>" <?= $fieldId === (int)$f['id'] ? 'selected' : '' ?>><?= e($f['name']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="filter-section">
+                            <h3 class="filter-title">Discipline / Field</h3>
+                            <select name="field_id" class="form-control select2" onchange="this.form.submit();">
+                                <option value="">All Disciplines</option>
+                                <?php foreach ($fields as $f): ?>
+                                    <option value="<?= e($f['id']) ?>" <?= $fieldId === (int)$f['id'] ? 'selected' : '' ?>><?= e($f['name']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                        <h3 class="filter-section-title">Funding Mode</h3>
-                        <select name="funding_type" class="form-control" onchange="this.form.submit();">
-                            <option value="">All Types</option>
-                            <option value="Fully Funded" <?= $funding === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
-                            <option value="Partially Funded" <?= $funding === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
-                            <option value="Tuition Waiver" <?= $funding === 'Tuition Waiver' ? 'selected' : '' ?>>Tuition Waiver</option>
-                        </select>
+                        <div class="filter-section">
+                            <h3 class="filter-title">Funding Mode</h3>
+                            <select name="funding_type" class="form-control select2" onchange="this.form.submit();">
+                                <option value="">All Types</option>
+                                <option value="Fully Funded" <?= $funding === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
+                                <option value="Partially Funded" <?= $funding === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
+                                <option value="Tuition Waiver" <?= $funding === 'Tuition Waiver' ? 'selected' : '' ?>>Tuition Waiver</option>
+                            </select>
+                        </div>
 
-                        <h3 class="filter-section-title">Deadline Status</h3>
-                        <select name="deadline_status" class="form-control" onchange="this.form.submit();">
-                            <option value="">All Deadlines</option>
-                            <option value="open" <?= ($deadlineStatus ?? '') === 'open' ? 'selected' : '' ?>>Open</option>
-                            <option value="closing_soon" <?= ($deadlineStatus ?? '') === 'closing_soon' ? 'selected' : '' ?>>Closing Soon</option>
-                            <option value="rolling" <?= ($deadlineStatus ?? '') === 'rolling' ? 'selected' : '' ?>>Rolling / No Deadline</option>
-                        </select>
+                        <div class="filter-section">
+                            <h3 class="filter-title">Deadline Status</h3>
+                            <select name="deadline_status" class="form-control select2" onchange="this.form.submit();">
+                                <option value="">All Deadlines</option>
+                                <option value="open" <?= ($deadlineStatus ?? '') === 'open' ? 'selected' : '' ?>>Open</option>
+                                <option value="closing_soon" <?= ($deadlineStatus ?? '') === 'closing_soon' ? 'selected' : '' ?>>Closing Soon</option>
+                                <option value="rolling" <?= ($deadlineStatus ?? '') === 'rolling' ? 'selected' : '' ?>>Rolling / No Deadline</option>
+                            </select>
+                        </div>
 
-                        <h3 class="filter-section-title">Nationality Eligibility</h3>
-                        <input type="text" name="nationality" class="form-control" placeholder="E.g. Pakistan, India..." value="<?= e($nationality) ?>" onchange="this.form.submit();">
-
-                        <h3 class="filter-section-title">Status Check</h3>
-                        <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="fully_funded" value="1" <?= ($fullyFunded ?? '') === '1' ? 'checked' : '' ?> onchange="this.form.submit();">
-                                <span>Fully Funded Only</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="verified" value="1" <?= $verified === '1' ? 'checked' : '' ?> onchange="this.form.submit();">
-                                <span>Verified Sources</span>
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="featured" value="1" <?= $featured === '1' ? 'checked' : '' ?> onchange="this.form.submit();">
-                                <span>Featured Listings</span>
-                            </label>
+                        <div class="filter-section">
+                            <h3 class="filter-title">Nationality Eligibility</h3>
+                            <input type="text" name="nationality" class="form-control" placeholder="E.g. Pakistan, India..." value="<?= e($nationality) ?>" onchange="this.form.submit();">
                         </div>
 
                         <div style="margin-top: 24px;">
-                            <a href="<?= url('/scholarships') ?>" class="btn btn-secondary" style="width: 100%; text-align: center; text-decoration: none; display: block; font-size: 0.875rem; padding: 8px 12px; border-radius: var(--radius-md); box-sizing: border-box;">Clear All Filters</a>
+                            <a href="<?= url('/scholarships') ?>" class="btn btn-secondary" style="width: 100%; text-align: center; text-decoration: none; display: block; font-size: 0.875rem; padding: 10px 12px; border-radius: var(--radius-lg); box-sizing: border-box; font-weight:600;">Clear All Filters</a>
                         </div>
                     </form>
                 </aside>
@@ -685,8 +711,5 @@
             </div>
         </main>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+
+<?php include ROOT_PATH . '/app/Views/layouts/public_footer.php'; ?>

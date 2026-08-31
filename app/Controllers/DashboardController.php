@@ -222,6 +222,121 @@ class DashboardController {
         ]);
     }
 
+    public function matches(): void {
+        Auth::requireRole('visitor');
+
+        $user = Auth::currentUser();
+        $db = Database::connection();
+
+        // 1. Fetch completion percentage
+        $stmt = $db->prepare("SELECT profile_completion_percentage FROM student_profiles WHERE user_id = :user_id LIMIT 1");
+        $stmt->execute(['user_id' => $user['id']]);
+        $completion = $stmt->fetchColumn() ?: 0;
+
+        // 2. Fetch subscription tier
+        $stmtSub = $db->prepare("
+            SELECT s.status, s.ends_at, p.name as plan_name 
+            FROM subscriptions s
+            JOIN subscription_plans p ON s.plan_id = p.id
+            WHERE s.user_id = :user_id
+            ORDER BY s.id DESC LIMIT 1
+        ");
+        $stmtSub->execute(['user_id' => $user['id']]);
+        $sub = $stmtSub->fetch();
+
+        // 3. Inputs
+        $filter = trim($_GET['filter'] ?? 'all');
+        $sort = trim($_GET['sort'] ?? 'match_score');
+
+        // Whitelist sort fields
+        if (!in_array($sort, ['match_score', 'deadline', 'newest'])) {
+            $sort = 'match_score';
+        }
+
+        // Check if matches exist. If not, calculate lazy.
+        $stmtCount = $db->prepare("SELECT COUNT(*) FROM scholarship_matches WHERE user_id = :user_id");
+        $stmtCount->execute(['user_id' => $user['id']]);
+        $hasMatches = $stmtCount->fetchColumn() > 0;
+
+        if (!$hasMatches) {
+            $matchingService = new \App\Services\ScholarshipMatchingService();
+            $matchingService->recalculateForUser($user['id']);
+        }
+
+        // Build query to select matches joined with scholarships
+        $sql = "
+            SELECT m.*, s.title, s.provider_name, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name,
+                   (SELECT GROUP_CONCAT(sdl.degree_level SEPARATOR ', ') FROM scholarship_degree_levels sdl WHERE sdl.scholarship_id = s.id) as degree_level,
+                   (SELECT GROUP_CONCAT(fs.name SEPARATOR ', ') FROM scholarship_fields sf JOIN fields_of_study fs ON sf.field_of_study_id = fs.id WHERE sf.scholarship_id = s.id) as field_of_study
+            FROM scholarship_matches m
+            JOIN scholarships s ON m.scholarship_id = s.id
+            LEFT JOIN countries c ON s.country_id = c.id
+            WHERE m.user_id = :user_id AND s.status = 'published'
+        ";
+
+        $params = ['user_id' => $user['id']];
+
+        // Apply filters
+        if ($filter === 'highly_recommended') {
+            $sql .= " AND m.recommendation_level = 'HIGHLY_RECOMMENDED'";
+        } elseif ($filter === 'eligible') {
+            $sql .= " AND m.eligibility_status = 'ELIGIBLE'";
+        } elseif ($filter === 'possibly_eligible') {
+            $sql .= " AND m.eligibility_status = 'POSSIBLY_ELIGIBLE'";
+        } elseif ($filter === 'missing') {
+            $sql .= " AND m.eligibility_status = 'INSUFFICIENT_DATA'";
+        } elseif ($filter === 'closing_soon') {
+            $sql .= " AND s.application_deadline >= CURDATE() AND s.application_deadline <= DATE_ADD(CURDATE(), INTERVAL 14 DAY)";
+        }
+
+        // Apply sorting
+        if ($sort === 'deadline') {
+            $sql .= " ORDER BY s.application_deadline ASC";
+        } elseif ($sort === 'newest') {
+            $sql .= " ORDER BY s.published_at DESC, s.created_at DESC";
+        } else {
+            $sql .= " ORDER BY m.match_score DESC";
+        }
+
+        $stmtMatches = $db->prepare($sql);
+        $stmtMatches->execute($params);
+        $matches = $stmtMatches->fetchAll(PDO::FETCH_ASSOC);
+
+        // Decode JSON elements
+        foreach ($matches as &$m) {
+            $m['matched_criteria'] = json_decode((string)($m['matched_criteria'] ?? ''), true) ?: [];
+            $m['failed_criteria'] = json_decode((string)($m['failed_criteria'] ?? ''), true) ?: [];
+            $m['missing_criteria'] = json_decode((string)($m['missing_criteria'] ?? ''), true) ?: [];
+        }
+
+        // Apply Premium Matching feature gate limits
+        if (!\App\Services\SubscriptionService::can($user['id'], 'premium_matching')) {
+            $matches = array_slice($matches, 0, \App\Services\SubscriptionService::getLimit($user['id'], 'max_matches'));
+        }
+
+        // Map bookmarks status
+        $stmtSavedIds = $db->prepare("SELECT scholarship_id FROM saved_scholarships WHERE user_id = :uid");
+        $stmtSavedIds->execute(['uid' => $user['id']]);
+        $savedIds = $stmtSavedIds->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        foreach ($matches as &$m) {
+            $m['is_saved'] = in_array((int)$m['scholarship_id'], $savedIds);
+        }
+
+        view('scholarships.matches', [
+            'user' => $user,
+            'completion' => $completion,
+            'matches' => $matches,
+            'filter' => $filter,
+            'sort' => $sort,
+            'subscription' => $sub ?: [
+                'plan_name' => 'None (Free Guest)',
+                'status' => 'inactive',
+                'ends_at' => null
+            ],
+            'csrf_token' => \App\Helpers\Security::csrfToken()
+        ]);
+    }
+
     /**
      * GET /api/matches
      * JSON endpoint for the current user's matches

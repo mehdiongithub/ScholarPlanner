@@ -39,18 +39,7 @@ function getDaysLeftText(string $deadlineDate): array {
     }
 }
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard — ScholarMatch</title>
-    <meta name="description" content="Your scholarship dashboard. Get personalized alerts.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <style>
+<style>
         :root {
             --primary: #1e40af;
             --primary-light: #3b82f6;
@@ -1575,111 +1564,13 @@ function getDaysLeftText(string $deadlineDate): array {
     </style>
 </head>
 <body>
-
-<div class="dash-layout">
-
-    <!-- ===== SIDEBAR ===== -->
-    <aside class="sidebar" id="sidebar" role="navigation" aria-label="Dashboard navigation">
-        <div class="sidebar-header">
-            <a href="/" class="sidebar-logo">
-                <div class="sidebar-logo-icon"><i data-lucide="graduation-cap"></i></div>
-                <span class="sidebar-logo-text">ScholarMatch</span>
-            </a>
-        </div>
-
-        <!-- User profile mini-card -->
-        <div class="sidebar-user-card">
-            <div class="sidebar-user-info">
-                <div class="sidebar-avatar"><?= e($initials) ?></div>
-                <div class="sidebar-user-details">
-                    <div class="sidebar-username"><?= e($fullName) ?></div>
-                    <div class="sidebar-completion-label">Profile <?= (int)$completion ?>% complete</div>
-                </div>
-            </div>
-            <div class="sidebar-progress-container">
-                <div class="sidebar-progress-bar" style="width: <?= (int)$completion ?>%"></div>
-            </div>
-        </div>
-
-        <nav class="sidebar-nav">
-            <div class="sidebar-nav-label">Main</div>
-            <a href="/dashboard" class="sidebar-link active">
-                <i data-lucide="layout-dashboard"></i>
-                Dashboard
-            </a>
-            <a href="/scholarships" class="sidebar-link">
-                <i data-lucide="graduation-cap"></i>
-                Scholarships
-            </a>
-            <a href="#matches-section" class="sidebar-link">
-                <i data-lucide="target"></i>
-                My Matches
-                <?php if ($matchesCount > 0): ?>
-                    <span class="sidebar-badge"><?= $matchesCount ?></span>
-                <?php endif; ?>
-            </a>
-            <a href="/saved-scholarships" class="sidebar-link">
-                <i data-lucide="bookmark"></i>
-                Saved Scholarships
-            </a>
-            <a href="/applications" class="sidebar-link">
-                <i data-lucide="file-check"></i>
-                Applications
-            </a>
-
-            <div class="sidebar-nav-label" style="margin-top:8px">Alerts & Billing</div>
-            <a href="#" class="sidebar-link sidebar-link-whatsapp" id="sidebarWaLink">
-                <i data-lucide="message-square"></i>
-                WhatsApp Alerts
-            </a>
-            <a href="/billing" class="sidebar-link">
-                <i data-lucide="credit-card"></i>
-                Subscription
-            </a>
-
-            <div class="sidebar-nav-label" style="margin-top:8px">Settings</div>
-            <a href="/profile/edit" class="sidebar-link">
-                <i data-lucide="user"></i>
-                Profile settings
-            </a>
-            <a href="#" onclick="event.preventDefault(); document.getElementById('logoutForm').submit();" class="sidebar-link" style="margin-top:8px; color:rgba(255,255,255,0.4)">
-                <i data-lucide="log-out"></i>
-                Log Out
-            </a>
-        </nav>
-
-        <div class="sidebar-footer">
-            <span style="font-size:0.6875rem; color:rgba(255,255,255,0.35);">ScholarMatch Student Hub v2.0</span>
-        </div>
-    </aside>
-
-    <!-- Sidebar overlay (mobile drawer backdrop) -->
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-    <!-- ===== MAIN CONTENT ===== -->
-    <div class="dash-main">
-
-        <!-- Topbar -->
-        <header class="dash-header">
-            <div class="dash-header-left">
-                <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
-                    <i data-lucide="menu"></i>
-                </button>
-                <div class="dash-header-welcome">
-                    <span class="dash-header-title"><?= e($greeting) ?>, <?= e($first_name) ?>!</span>
-                    <span class="dash-header-subtitle">Find scholarships that match your academic goals.</span>
-                </div>
-            </div>
-            <div class="dash-header-right">
-                <button class="dash-header-btn" aria-label="Settings" onclick="window.location.href='/profile/edit'">
-                    <i data-lucide="settings"></i>
-                </button>
-                <div class="user-nav-avatar"><?= e($initials) ?></div>
-            </div>
-        </header>
+<?php
+$title = 'Dashboard';
+include ROOT_PATH . '/app/Views/layouts/student_header.php';
+?>
 
         <!-- ===== DASHBOARD PAGE ===== -->
-        <div class="dash-content dashboard-page" id="dashboardPage">
+        <div class="dashboard-page" id="dashboardPage">
 
             <!-- Profile Completion Banner -->
             <div class="profile-completion-card">
@@ -2368,9 +2259,9 @@ function getDaysLeftText(string $deadlineDate): array {
     let userPhone = '';
 
     // ===== ELEMENTS =====
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('adminSidebar');
     const sidebarOverlay = document.getElementById('sidebarOverlay');
-    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const dashboardMobileToggle = document.getElementById('mobileToggle');
     const waModal = document.getElementById('waModal');
     const waModalClose = document.getElementById('waModalClose');
     const openWaModal = document.getElementById('openWaModal');
@@ -2395,17 +2286,18 @@ function getDaysLeftText(string $deadlineDate): array {
     // ===== SIDEBAR TOGGLE (MOBILE) =====
     function openSidebar() {
         sidebar.classList.add('open');
-        sidebarOverlay.classList.add('active');
+        sidebarOverlay.classList.add('open');
         document.body.style.overflow = 'hidden';
     }
 
+    // Close sidebar when a link is clicked on mobile
     function closeSidebar() {
         sidebar.classList.remove('open');
-        sidebarOverlay.classList.remove('active');
+        sidebarOverlay.classList.remove('open');
         document.body.style.overflow = '';
     }
 
-    if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', openSidebar);
+    if (dashboardMobileToggle) dashboardMobileToggle.addEventListener('click', openSidebar);
     if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
 
     document.addEventListener('keydown', function(e) {

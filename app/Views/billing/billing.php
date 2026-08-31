@@ -1,15 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Billing & Subscription | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<style>
         .billing-layout {
             min-height: 100vh;
             background: #f8fafc;
@@ -116,17 +105,15 @@
     </style>
 </head>
 <body>
-    <div class="billing-layout">
-        <header class="main-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-            </div>
-        </header>
+<?php
+$title = 'Billing & Plan Management';
+include ROOT_PATH . '/app/Views/layouts/student_header.php';
+?>
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
 
         <main class="billing-container">
             <div style="margin-bottom: 32px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
@@ -253,8 +240,5 @@
             </div>
         </main>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+
+<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

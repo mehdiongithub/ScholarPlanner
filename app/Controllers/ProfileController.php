@@ -238,7 +238,7 @@ class ProfileController {
         // Whitelisted inputs
         $firstName = trim($_POST['first_name'] ?? '');
         $lastName = trim($_POST['last_name'] ?? '');
-        $email = strtolower(trim($_POST['email'] ?? ''));
+        $email = strtolower(trim($_POST['email'] ?? Auth::currentUser()['email'] ?? ''));
         $phone = trim($_POST['phone'] ?? '');
         $dob = trim($_POST['date_of_birth'] ?? '');
         $gender = trim($_POST['gender'] ?? '');
@@ -1049,13 +1049,13 @@ class ProfileController {
 
 
             $db->commit();
-            ProfileCompletionService::calculate($userId);
+            $completion = ProfileCompletionService::calculate($userId);
             $this->invalidateMatches($userId);
 
             $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
             if ($isAjax) {
                 header('Content-Type: application/json');
-                echo json_encode(['success' => true, 'message' => 'Preferences updated successfully.']);
+                echo json_encode(['success' => true, 'message' => 'Preferences updated successfully.', 'completion' => $completion]);
                 $this->halt("AJAX success response");
             }
 
@@ -1365,6 +1365,30 @@ class ProfileController {
 
         header("Location: " . url('/dashboard'));
         $this->halt("Redirect to dashboard");
+    }
+
+    /**
+     * Display recent notification queue alerts for the current logged-in user
+     */
+    public function notifications(): void {
+        Auth::requireAuth();
+        $userId = Auth::userId();
+        $db = Database::connection();
+
+        $stmt = $db->prepare("
+            SELECT * 
+            FROM notification_logs 
+            WHERE user_id = :user_id 
+            ORDER BY created_at DESC 
+            LIMIT 30
+        ");
+        $stmt->execute(['user_id' => $userId]);
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        view('profile.notifications', [
+            'logs' => $logs,
+            'title' => 'My Notifications'
+        ]);
     }
 }
 

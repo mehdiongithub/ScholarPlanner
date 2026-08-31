@@ -61,6 +61,12 @@ $router->get('/profile', ['App\Controllers\ProfileController', 'show']);
 $router->get('/profile/complete', ['App\Controllers\ProfileController', 'complete']);
 $router->post('/profile/complete', ['App\Controllers\ProfileController', 'completeWizard']);
 $router->get('/profile/edit', ['App\Controllers\ProfileController', 'edit']);
+$router->get('/notifications', ['App\Controllers\ProfileController', 'notifications']);
+$router->get('/matches', ['App\Controllers\DashboardController', 'matches']);
+$router->get('/settings', function() {
+    header('Location: ' . url('/profile/edit#step-3'));
+    exit;
+});
 
 $router->post('/profile/update', ['App\Controllers\ProfileController', 'update']);
 

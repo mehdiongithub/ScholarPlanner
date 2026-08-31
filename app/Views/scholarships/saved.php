@@ -1,15 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Bookmarked Scholarships | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<style>
         .page-layout {
             min-height: 100vh;
             background: #f8fafc;
@@ -205,18 +194,15 @@
     </style>
 </head>
 <body>
-    <div class="page-layout">
-        <header class="main-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                <a href="<?= url('/saved-scholarships') ?>" class="nav-link active">Bookmarks</a>
-            </div>
-        </header>
+<?php
+$title = 'My Bookmarked Scholarships';
+include ROOT_PATH . '/app/Views/layouts/student_header.php';
+?>
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
 
         <main class="page-content">
             <div style="margin-bottom: 24px;">
@@ -252,7 +238,7 @@
                         <input type="text" name="search" class="form-control" placeholder="Search keywords..." value="<?= e($search) ?>" onchange="this.form.submit();">
 
                         <h3 class="filter-section-title">Host Country</h3>
-                        <select name="country_id" class="form-control" onchange="this.form.submit();">
+                        <select name="country_id" class="form-control select2" onchange="this.form.submit();">
                             <option value="">All Countries</option>
                             <?php foreach ($countries as $c): ?>
                                 <option value="<?= e($c['id']) ?>" <?= $countryId === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
@@ -260,7 +246,7 @@
                         </select>
 
                         <h3 class="filter-section-title">Degree Level</h3>
-                        <select name="degree" class="form-control" onchange="this.form.submit();">
+                        <select name="degree" class="form-control select2" onchange="this.form.submit();">
                             <option value="">All Levels</option>
                             <option value="Bachelor's" <?= $degree === "Bachelor's" ? 'selected' : '' ?>>Bachelor's</option>
                             <option value="Master's" <?= $degree === "Master's" ? 'selected' : '' ?>>Master's</option>
@@ -269,7 +255,7 @@
                         </select>
 
                         <h3 class="filter-section-title">Funding Mode</h3>
-                        <select name="funding_type" class="form-control" onchange="this.form.submit();">
+                        <select name="funding_type" class="form-control select2" onchange="this.form.submit();">
                             <option value="">All Types</option>
                             <option value="Fully Funded" <?= $funding === 'Fully Funded' ? 'selected' : '' ?>>Fully Funded</option>
                             <option value="Partially Funded" <?= $funding === 'Partially Funded' ? 'selected' : '' ?>>Partially Funded</option>
@@ -419,8 +405,5 @@
             </div>
         </main>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+
+<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

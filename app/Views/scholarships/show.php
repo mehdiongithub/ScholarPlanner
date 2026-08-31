@@ -1,102 +1,48 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($scholarship['title']) ?> | ScholarMatch Opportunities</title>
-    <meta name="description" content="<?= e($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 160)) ?>">
-    <link rel="canonical" href="<?= e(url('/scholarships/' . $scholarship['slug'])) ?>">
-    <meta name="robots" content="index, follow">
-    
-    <!-- Open Graph Protocol -->
-    <meta property="og:title" content="<?= e($scholarship['title']) ?> | ScholarMatch">
-    <meta property="og:description" content="<?= e($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 160)) ?>">
-    <meta property="og:url" content="<?= e(url('/scholarships/' . $scholarship['slug'])) ?>">
-    <meta property="og:type" content="article">
-    
-    <!-- Schema.org JSON-LD Structured Data -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Grant",
-      "name": <?= json_encode($scholarship['title'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
-      "description": <?= json_encode($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 200), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
-      "sponsor": {
-        "@type": "Organization",
-        "name": <?= json_encode($scholarship['provider_name'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
-      },
-      "recipient": {
-        "@type": "EducationalAudience",
-        "educationalRole": <?= json_encode($scholarship['study_level'] ?? 'All levels', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
-      },
-      "amount": {
-        "@type": "MonetaryAmount",
-        "currency": "USD",
-        "description": <?= json_encode($scholarship['funding_type'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
-      }
-      <?php if (!empty($scholarship['application_deadline'])): ?>,
-      "endDate": "<?= date('Y-m-d', strtotime($scholarship['application_deadline'])) ?>"
-      <?php endif; ?>
-    }
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<?php
+$title = $scholarship['title'] . ' | ScholarMatch';
+$description = $scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 160);
+include ROOT_PATH . '/app/Views/layouts/public_header.php';
+?>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Grant",
+  "name": <?= json_encode($scholarship['title'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+  "description": <?= json_encode($scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 200), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+  "sponsor": {
+    "@type": "Organization",
+    "name": <?= json_encode($scholarship['provider_name'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+  },
+  "recipient": {
+    "@type": "EducationalAudience",
+    "educationalRole": <?= json_encode($scholarship['study_level'] ?? 'All levels', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+  },
+  "amount": {
+    "@type": "MonetaryAmount",
+    "currency": "USD",
+    "description": <?= json_encode($scholarship['funding_type'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+  }
+  <?php if (!empty($scholarship['application_deadline'])): ?>,
+  "endDate": "<?= date('Y-m-d', strtotime($scholarship['application_deadline'])) ?>"
+  <?php endif; ?>
+}
+</script>
+
+<style>
         .page-layout {
             min-height: 100vh;
             background: #f8fafc;
             display: flex;
             flex-direction: column;
         }
-        .main-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .nav-link {
-            font-size: 0.875rem;
-            color: var(--text-600);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .nav-link:hover {
-            color: var(--primary);
-        }
         .page-content {
-            max-width: 1100px;
+            max-width: 1200px;
             width: 100%;
             margin: 40px auto;
             padding: 0 20px;
             flex-grow: 1;
         }
-        .banner-card {
-            background: var(--bg-white);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-2xl);
-            padding: clamp(24px, 5vw, 40px);
-            box-shadow: var(--shadow-sm);
             margin-bottom: 32px;
             display: flex;
             align-items: center;
@@ -741,8 +687,5 @@
             </div>
         </main>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+
+<?php include ROOT_PATH . '/app/Views/layouts/public_footer.php'; ?>

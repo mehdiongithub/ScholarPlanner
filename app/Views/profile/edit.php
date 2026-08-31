@@ -8,30 +8,7 @@ unset($_SESSION['verify_success_toast']);
 
 $currentCompletion = $user['profile_completion_percentage'] ?? 0;
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Complete Profile Onboarding | ScholarMatch</title>
-    
-    <!-- Fonts & Icons -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    
-    <!-- Global CSS -->
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    
-    <!-- External Dependencies (jQuery, Select2, Flatpickr) -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-
-    <style>
+<style>
         /* Select2 Custom Styles to match Tailwind/Slate UI */
         .select2-container--default .select2-selection--single {
             border: 1px solid var(--border) !important;
@@ -419,44 +396,20 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     </style>
 </head>
 <body>
+<?php
+$title = 'Complete Profile Onboarding';
+include ROOT_PATH . '/app/Views/layouts/student_header.php';
+?>
 
-    <!-- Email Verification Toast Alert -->
     <?php if (!empty($verifySuccessToast)): ?>
-        <div class="toast-notification" id="verify-toast">
-            <i data-lucide="check-circle" style="width: 20px; height: 20px; color: #10b981;"></i>
-            <span style="font-size: 0.875rem; font-weight: 500;"><?= e($verifySuccessToast) ?></span>
-            <button class="toast-close" onclick="document.getElementById('verify-toast').remove()">
-                <i data-lucide="x" style="width: 16px; height: 16px;"></i>
-            </button>
-        </div>
         <script>
-            setTimeout(() => {
-                const t = document.getElementById('verify-toast');
-                if (t) {
-                    t.style.opacity = '0';
-                    t.style.transform = 'translateY(-10px)';
-                    setTimeout(() => t.remove(), 300);
+            $(document).ready(function() {
+                if (typeof showToast === 'function') {
+                    showToast(<?= json_encode($verifySuccessToast) ?>, 'success');
                 }
-            }, 5000);
+            });
         </script>
     <?php endif; ?>
-
-    <div class="profile-layout">
-        <header class="profile-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
-            </a>
-            
-            <div class="nav-links">
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                <a href="<?= url('/profile') ?>" class="nav-link">My Profile</a>
-                <a href="<?= url('/logout') ?>" class="nav-link" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">Log Out</a>
-            </div>
-            <form id="logout-form" action="<?= url('/logout') ?>" method="POST" style="display: none;">
-                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
-            </form>
-        </header>
 
         <main class="profile-content">
             
@@ -513,7 +466,7 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
 
                             <div class="form-group">
                                 <label for="email" class="form-label">Email Address</label>
-                                <input type="email" id="email" name="email" class="form-input" readonly disabled value="<?= e($user['email'] ?? '') ?>">
+                                <input type="email" id="email" name="email" class="form-input" readonly value="<?= e($user['email'] ?? '') ?>">
                             </div>
 
                             <div class="form-group">
@@ -1435,19 +1388,44 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
         }
 
         function updateProgressIndicator(completionPct) {
+            if (completionPct === undefined || completionPct === null) {
+                return;
+            }
             $('#completion-value').text(completionPct + '%');
             $('#completion-fill').css('width', completionPct + '%');
         }
 
-        // Restore active step on page reload
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedStep = sessionStorage.getItem('active_wizard_step');
-            if (savedStep) {
-                showStep(parseInt(savedStep));
+        // Restore active step on page reload or hash change
+        function getStepFromHash() {
+            const hash = window.location.hash;
+            if (hash && hash.match(/^#step-[1-4]$/)) {
+                return parseInt(hash.replace('#step-', ''));
             }
+            return null;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const hashStep = getStepFromHash();
+            const savedStep = sessionStorage.getItem('active_wizard_step');
+            let stepToShow = 1;
+
+            if (hashStep !== null) {
+                stepToShow = hashStep;
+            } else if (savedStep) {
+                stepToShow = parseInt(savedStep);
+            }
+
+            showStep(stepToShow);
             renderEducationCards();
             handleFormConditions();
             updatePreferredDegreesOptions();
+        });
+
+        window.addEventListener('hashchange', () => {
+            const hashStep = getStepFromHash();
+            if (hashStep !== null) {
+                showStep(hashStep);
+            }
         });
 
         // 7. Action: Save Step 1 Demographics via AJAX
@@ -1885,5 +1863,4 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
                       .replace(/'/g, '&#039;');
         }
     </script>
-</body>
-</html>
+<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

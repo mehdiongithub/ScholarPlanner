@@ -1,53 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pricing Plans | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<?php
+$title = 'Pricing Plans | ScholarMatch';
+$isStudent = \App\Services\Auth::isAuthenticated() && \App\Services\Auth::currentUser()['role_name'] === 'visitor';
+
+if ($isStudent) {
+    include ROOT_PATH . '/app/Views/layouts/student_header.php';
+} else {
+    include ROOT_PATH . '/app/Views/layouts/public_header.php';
+}
+?>
+
+<style>
         .pricing-layout {
             min-height: 100vh;
             background: #f8fafc;
             display: flex;
             flex-direction: column;
-        }
-        .main-header {
-            background: var(--bg-white);
-            border-bottom: 1px solid var(--border);
-            padding: 16px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .logo-box {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: var(--text-900);
-            font-weight: 700;
-        }
-        .logo-box i {
-            color: var(--primary);
-        }
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .nav-link {
-            font-size: 0.875rem;
-            color: var(--text-600);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .nav-link:hover {
-            color: var(--primary);
         }
         .pricing-container {
             max-width: 1000px;
@@ -327,8 +294,11 @@
             </div>
         </main>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+
+<?php
+if ($isStudent) {
+    include ROOT_PATH . '/app/Views/layouts/student_footer.php';
+} else {
+    include ROOT_PATH . '/app/Views/layouts/public_footer.php';
+}
+?>

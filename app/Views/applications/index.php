@@ -1,15 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Application Tracker | ScholarMatch</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@0.460.0"></script>
-    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
-    <style>
+<style>
         .tracker-layout {
             min-height: 100vh;
             background: #f8fafc;
@@ -366,24 +355,10 @@
     </style>
 </head>
 <body>
-    <div class="tracker-layout">
-        <header class="tracker-header" role="banner">
-            <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
-            </a>
-            
-            <div class="nav-links">
-                <a href="/dashboard" class="nav-link">Dashboard</a>
-                <a href="/profile" class="nav-link">My Profile</a>
-                <a href="/documents" class="nav-link">Documents</a>
-                <a href="/applications" class="nav-link active">Applications</a>
-            </div>
-            
-            <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-800);">
-                Active Session
-            </div>
-        </header>
+<?php
+$title = 'Application Tracker';
+include ROOT_PATH . '/app/Views/layouts/student_header.php';
+?>
 
         <main class="tracker-content">
             <div class="welcome-section">
@@ -545,8 +520,5 @@
             <?php endif; ?>
         </main>
     </div>
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
-</html>
+
+<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>
