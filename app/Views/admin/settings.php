@@ -85,11 +85,14 @@
             <a href="#legal" class="settings-nav-item" id="nav-legal"><i data-lucide="file-text"></i> Terms & Privacy</a>
             <a href="#referral" class="settings-nav-item" id="nav-referral"><i data-lucide="share-2"></i> Referral System</a>
             <a href="#whatsapp" class="settings-nav-item" id="nav-whatsapp"><i data-lucide="message-square"></i> WhatsApp CRM</a>
+            <a href="#notifications" class="settings-nav-item" id="nav-notifications"><i data-lucide="bell"></i> Notification Scheduler</a>
         </nav>
     </div>
 
     <!-- Right Configuration Fields -->
     <div>
+        <!-- Hidden marker for notification scheduler settings submission -->
+        <input type="hidden" name="is_notification_settings" value="1">
         <!-- General Website Settings -->
         <section id="general" class="settings-group-card">
             <h2 class="settings-group-title"><i data-lucide="info"></i> General website Configuration</h2>
@@ -201,6 +204,98 @@
                 </button>
                 <div id="wacrmTestResult" style="margin-top: 10px; font-weight: bold; font-size: 0.875rem;"></div>
             <?php endif; ?>
+        </section>
+
+        <!-- WhatsApp Notification Scheduler Configurations -->
+        <section id="notifications" class="settings-group-card">
+            <h2 class="settings-group-title"><i data-lucide="bell"></i> Notification Scheduler & Dispatch</h2>
+
+            <!-- Master Toggle -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label" style="font-weight: 700; display: block; margin-bottom: 8px;">Automatic WhatsApp Notifications</label>
+                <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" name="whatsapp_notifications_enabled" value="1" <?= !empty($schedulerSettings['whatsapp_notifications_enabled']) ? 'checked' : '' ?> style="width: 18px; height: 18px;">
+                    <span style="font-size: 0.95rem; color: #1e293b; font-weight: 600;">Enable Automatic Notification Engine</span>
+                </label>
+                <small style="display: block; color: #64748b; margin-top: 4px;">When disabled, the cron worker skips dispatching all scheduled alerts.</small>
+            </div>
+
+            <!-- Allowed Types -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label" style="font-weight: 700; display: block; margin-bottom: 8px;">Enabled Notification Types</label>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="whatsapp_new_match_enabled" value="1" <?= !empty($schedulerSettings['whatsapp_new_match_enabled']) ? 'checked' : '' ?> style="width: 16px; height: 16px;">
+                        <span><strong>NEW_MATCH</strong> — Send alert when a newly matching scholarship is found for paid users</span>
+                    </label>
+                    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="whatsapp_deadline_reminder_enabled" value="1" <?= !empty($schedulerSettings['whatsapp_deadline_reminder_enabled']) ? 'checked' : '' ?> style="width: 16px; height: 16px;">
+                        <span><strong>DEADLINE_REMINDER</strong> — Send reminder alerts for saved/matched upcoming scholarship deadlines</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Allowed Days Checkboxes -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label" style="font-weight: 700; display: block; margin-bottom: 8px;">Allowed Dispatch Days</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px;">
+                    <?php 
+                    $allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    $selectedDays = $schedulerSettings['whatsapp_allowed_days'] ?? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                    foreach ($allDays as $day): 
+                    ?>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: #f8fafc; padding: 8px 12px; border: 1px solid var(--border-slate-200); border-radius: 8px;">
+                            <input type="checkbox" name="whatsapp_allowed_days[]" value="<?= $day ?>" <?= in_array($day, $selectedDays, true) ? 'checked' : '' ?>>
+                            <span style="font-size: 0.875rem;"><?= $day ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <small style="display: block; color: #64748b; margin-top: 6px;">Select the days of the week on which automated WhatsApp alerts are permitted to send.</small>
+            </div>
+
+            <!-- Time, Timezone, Batch Size in Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                <div class="form-group">
+                    <label class="form-label" style="font-weight: 700;">Daily Send Time (HH:MM)</label>
+                    <input type="time" name="whatsapp_send_time" class="form-control" value="<?= \App\Helpers\Security::escape($schedulerSettings['whatsapp_send_time'] ?? '10:00') ?>" required>
+                    <small style="display: block; color: #64748b; margin-top: 4px;">24-hour format (e.g., 10:00 for 10:00 AM).</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="font-weight: 700;">Timezone</label>
+                    <select name="whatsapp_timezone" class="form-control" required>
+                        <?php 
+                        $currentTimezone = $schedulerSettings['whatsapp_timezone'] ?? 'Asia/Karachi';
+                        $commonTimezones = [
+                            'Asia/Karachi' => 'Asia/Karachi (PKT +05:00)',
+                            'Asia/Dubai' => 'Asia/Dubai (GST +04:00)',
+                            'Asia/Dhaka' => 'Asia/Dhaka (BST +06:00)',
+                            'Asia/Riyadh' => 'Asia/Riyadh (AST +03:00)',
+                            'UTC' => 'UTC (Universal Coordinated Time)',
+                            'Europe/London' => 'Europe/London (GMT/BST)',
+                            'Europe/Berlin' => 'Europe/Berlin (CET/CEST)',
+                            'America/New_York' => 'America/New_York (EST/EDT)',
+                            'America/Chicago' => 'America/Chicago (CST/CDT)',
+                            'America/Los_Angeles' => 'America/Los_Angeles (PST/PDT)'
+                        ];
+                        // If current timezone is not in common list, add it
+                        if (!isset($commonTimezones[$currentTimezone]) && in_array($currentTimezone, timezone_identifiers_list(), true)) {
+                            $commonTimezones[$currentTimezone] = $currentTimezone;
+                        }
+                        foreach ($commonTimezones as $tzKey => $tzLabel): 
+                        ?>
+                            <option value="<?= $tzKey ?>" <?= $currentTimezone === $tzKey ? 'selected' : '' ?>><?= $tzLabel ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small style="display: block; color: #64748b; margin-top: 4px;">Timezone used for schedule calculations.</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="font-weight: 700;">Batch Size</label>
+                    <input type="number" name="whatsapp_batch_size" class="form-control" value="<?= (int)($schedulerSettings['whatsapp_batch_size'] ?? 50) ?>" min="1" max="500" required>
+                    <small style="display: block; color: #64748b; margin-top: 4px;">Max alerts processed per iteration (1 - 500).</small>
+                </div>
+            </div>
         </section>
 
         <!-- Save Button Bar -->

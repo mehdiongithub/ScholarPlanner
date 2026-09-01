@@ -5,7 +5,8 @@ Options -Indexes
 RewriteEngine On
 
 # Reject access to system directories with 403 Forbidden
-RewriteRule ^(app|config|storage|tests|routes|database|\.git)($|/) - [F,L]
+RewriteRule ^(app|config|tests|routes|database|\.git)($|/) - [F,L]
+RewriteRule ^storage/(private_uploads|logs|cache)($|/) - [F,L]
 
 # Protect .env and composer files
 <FilesMatch "^\.env">

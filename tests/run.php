@@ -28,6 +28,8 @@ require_once __DIR__ . '/AnalyticsExportTest.php';
 require_once __DIR__ . '/EndToEndLaunchTest.php';
 require_once __DIR__ . '/WacrmWhatsAppProviderTest.php';
 require_once __DIR__ . '/NotificationFoundationTest.php';
+require_once __DIR__ . '/NotificationSchedulerTest.php';
+require_once __DIR__ . '/WacrmDispatchWorkerTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -122,6 +124,14 @@ try {
     // 21. Notification Foundation Gating & Idempotency Verification
     $notifFoundationTest = new NotificationFoundationTest();
     $notifFoundationTest->run();
+
+    // 22. Admin Notification Scheduling & Worker Foundation Verification
+    $notifSchedulerTest = new NotificationSchedulerTest();
+    $notifSchedulerTest->run();
+
+    // 23. WACRM WhatsApp Dispatch Worker Verification
+    $dispatchWorkerTest = new WacrmDispatchWorkerTest();
+    $dispatchWorkerTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

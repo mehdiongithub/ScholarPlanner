@@ -2,6 +2,195 @@
 
     <main>
         <!-- ============================================
+             BANNER OWL CAROUSEL Styling & Markup
+             ============================================ -->
+        <style>
+        .banner-carousel-wrapper {
+            width: 100%;
+            margin-bottom: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+        }
+        .main-banner-carousel .item {
+            height: 480px;
+            background-size: cover;
+            background-position: center;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .main-banner-carousel .carousel-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.4) 100%);
+            z-index: 1;
+        }
+        .main-banner-carousel .carousel-content {
+            position: relative;
+            z-index: 2;
+            max-width: 800px;
+            padding: 0 2rem;
+            text-align: center;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .main-banner-carousel .carousel-content h2 {
+            font-size: 2.75rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #ffffff;
+            line-height: 1.2;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .main-banner-carousel .carousel-content p {
+            font-size: 1.25rem;
+            color: #cbd5e1;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+        .main-banner-carousel .carousel-content .btn {
+            padding: 0.875rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            transition: transform 150ms ease, box-shadow 150ms ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .main-banner-carousel .carousel-content .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Customize Owl Carousel controls to match professional branding */
+        .main-banner-carousel.owl-carousel .owl-nav button.owl-prev,
+        .main-banner-carousel.owl-carousel .owl-nav button.owl-next {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 48px;
+            background: rgba(255, 255, 255, 0.15) !important;
+            color: #ffffff !important;
+            border-radius: 50% !important;
+            font-size: 1.5rem !important;
+            line-height: 48px !important;
+            margin: 0 !important;
+            transition: background 150ms ease, color 150ms ease !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .main-banner-carousel.owl-carousel .owl-nav button.owl-prev:hover,
+        .main-banner-carousel.owl-carousel .owl-nav button.owl-next:hover {
+            background: #ffffff !important;
+            color: #0f172a !important;
+        }
+        .main-banner-carousel.owl-carousel .owl-nav button.owl-prev {
+            left: 24px;
+        }
+        .main-banner-carousel.owl-carousel .owl-nav button.owl-next {
+            right: 24px;
+        }
+        .main-banner-carousel.owl-carousel .owl-dots {
+            position: absolute;
+            bottom: 24px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            margin: 0 !important;
+            z-index: 10;
+        }
+        .main-banner-carousel.owl-carousel .owl-dots .owl-dot span {
+            width: 10px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.4) !important;
+            transition: background 150ms ease, transform 150ms ease;
+            border-radius: 50%;
+            display: block;
+        }
+        .main-banner-carousel.owl-carousel .owl-dots .owl-dot.active span {
+            background: #ffffff !important;
+            transform: scale(1.2);
+        }
+
+        /* Responsiveness media queries */
+        @media (max-width: 768px) {
+            .main-banner-carousel .item {
+                height: 380px;
+            }
+            .main-banner-carousel .carousel-content h2 {
+                font-size: 2rem;
+            }
+            .main-banner-carousel .carousel-content p {
+                font-size: 1.1rem;
+                margin-bottom: 1.5rem;
+            }
+            .main-banner-carousel.owl-carousel .owl-nav {
+                display: none !important;
+            }
+        }
+        @media (max-width: 480px) {
+            .main-banner-carousel .item {
+                height: 320px;
+            }
+            .main-banner-carousel .carousel-content h2 {
+                font-size: 1.5rem;
+            }
+            .main-banner-carousel .carousel-content p {
+                font-size: 0.9rem;
+                margin-bottom: 1.25rem;
+            }
+        }
+        </style>
+
+        <section class="banner-carousel-wrapper">
+            <div class="owl-carousel owl-theme main-banner-carousel">
+                <div class="item" style="background-image: url('<?= url('/storage/banners/german-scholarship.webp') ?>');">
+                    <div class="carousel-overlay"></div>
+                    <div class="carousel-content">
+                        <h2>Fully Funded German Scholarships</h2>
+                        <p>Discover government & university programs with full tuition coverage and monthly stipends.</p>
+                        <a href="<?= url('/scholarships') ?>" class="btn btn-primary">
+                            <i data-lucide="compass" style="width:18px;height:18px"></i>
+                            Explore German Scholarships
+                        </a>
+                    </div>
+                </div>
+                <div class="item" style="background-image: url('<?= url('/storage/banners/master-usa.webp') ?>');">
+                    <div class="carousel-overlay"></div>
+                    <div class="carousel-content">
+                        <h2>Master's Programs in the USA</h2>
+                        <p>Get matched with prestigious American universities offering research and teaching assistantships.</p>
+                        <a href="<?= url('/register') ?>" class="btn btn-primary">
+                            <i data-lucide="sparkles" style="width:18px;height:18px"></i>
+                            Find Matches in USA
+                        </a>
+                    </div>
+                </div>
+                <div class="item" style="background-image: url('<?= url('/storage/banners/china-phd.webp') ?>');">
+                    <div class="carousel-overlay"></div>
+                    <div class="carousel-content">
+                        <h2>China PhD & Research Fellowships</h2>
+                        <p>Explore doctoral programs with complete funding, free accommodation, and monthly allowances.</p>
+                        <a href="<?= url('/scholarships') ?>" class="btn btn-primary">
+                            <i data-lucide="graduation-cap" style="width:18px;height:18px"></i>
+                            View PhD Opportunities
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- ============================================
              HERO SECTION
              ============================================ -->
         <section class="hero" id="hero">
@@ -1218,5 +1407,31 @@
             </div>
         </section>
     </main>
+
+    <!-- Initialize Owl Carousel for Home Page Banners -->
+    <script>
+    $(document).ready(function() {
+        if ($.fn.owlCarousel) {
+            $(".main-banner-carousel").owlCarousel({
+                items: 1,
+                loop: true,
+                autoplay: true,
+                autoplayTimeout: 6000,
+                autoplayHoverPause: true,
+                nav: true,
+                navText: ["&lsaquo;", "&rsaquo;"],
+                dots: true,
+                responsive: {
+                    0: {
+                        nav: false
+                    },
+                    768: {
+                        nav: true
+                    }
+                }
+            });
+        }
+    });
+    </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/public_footer.php'; ?>

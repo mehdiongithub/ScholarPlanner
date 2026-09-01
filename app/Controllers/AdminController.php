@@ -1683,9 +1683,13 @@ class AdminController {
             $groups[$s['group_name']][] = $s;
         }
 
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+        $schedulerSettings = $schedulerService->getSettings();
+
         View::render('admin.settings', [
             'user' => Auth::currentUser(),
             'groups' => $groups,
+            'schedulerSettings' => $schedulerSettings,
             'csrf_token' => Security::csrfToken()
         ]);
     }
@@ -1699,8 +1703,25 @@ class AdminController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                return;
+            }
             header("Location: " . url("/admin/settings"));
             exit();
+        }
+
+        // Validate notification scheduler settings if submitted
+        if (isset($_POST['whatsapp_send_time']) || isset($_POST['is_notification_settings'])) {
+            $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+            $validation = $schedulerService->validateSettings($_POST);
+            if (!$validation['valid']) {
+                $_SESSION['admin_errors'] = implode(' ', $validation['errors']);
+                header("Location: " . url("/admin/settings"));
+                return;
+            }
+            foreach ($validation['sanitized'] as $k => $v) {
+                $_POST[$k] = $v;
+            }
         }
 
         // Get whitelist of keys currently in DB

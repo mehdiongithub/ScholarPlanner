@@ -1,1 +1,2 @@
-Deny from all
+RewriteEngine On
+RewriteRule ^(private_uploads|logs|cache)($|/) - [F,L]

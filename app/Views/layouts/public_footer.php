@@ -58,6 +58,8 @@
     </footer>
 
     <!-- Initialize icons & scripts -->
+    <!-- Owl Carousel JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
     <script src="<?= asset('assets/js/main.js') ?>"></script>
     <script>
         try {
