@@ -2375,45 +2375,45 @@ class AdminController {
         $customWhere = "";
         $customParams = [];
         if (!empty($_GET['status'])) {
-            $customWhere = "payments.status = :status";
+            $customWhere = "payment_transactions.status = :status";
             $customParams['status'] = $_GET['status'];
         }
         if (!empty($_GET['gateway'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
-            $customWhere .= "payments.gateway = :gateway";
+            $customWhere .= "payment_transactions.provider = :gateway";
             $customParams['gateway'] = $_GET['gateway'];
         }
         if (!empty($_GET['currency'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
-            $customWhere .= "payments.currency = :currency";
+            $customWhere .= "payment_transactions.currency = :currency";
             $customParams['currency'] = $_GET['currency'];
         }
 
         $columns = [
-            'id' => 'payments.id',
-            'reference_id' => 'payments.transaction_id',
-            'gateway_name' => 'payments.gateway',
-            'amount' => 'payments.amount',
-            'currency' => 'payments.currency',
-            'status' => 'payments.status',
-            'created_at' => 'payments.created_at',
+            'id' => 'payment_transactions.id',
+            'reference_id' => 'payment_transactions.transaction_reference',
+            'gateway_name' => 'payment_transactions.provider',
+            'amount' => 'payment_transactions.amount',
+            'currency' => 'payment_transactions.currency',
+            'status' => 'payment_transactions.status',
+            'created_at' => 'payment_transactions.created_at',
             'first_name' => 'users.first_name',
             'last_name' => 'users.last_name',
             'email' => 'users.email'
         ];
-        $joins = ['JOIN users ON payments.user_id = users.id'];
-        $searchableColumns = ['payments.transaction_id', 'payments.gateway', 'users.first_name', 'users.last_name', 'users.email'];
+        $joins = ['JOIN users ON payment_transactions.user_id = users.id'];
+        $searchableColumns = ['payment_transactions.transaction_reference', 'payment_transactions.provider_transaction_id', 'payment_transactions.provider', 'users.first_name', 'users.last_name', 'users.email'];
         $columnMapping = [
-            'reference_id' => 'payments.transaction_id',
-            'gateway_name' => 'payments.gateway',
-            'amount' => 'payments.amount',
-            'currency' => 'payments.currency',
-            'status' => 'payments.status',
-            'created_at' => 'payments.created_at'
+            'reference_id' => 'payment_transactions.transaction_reference',
+            'gateway_name' => 'payment_transactions.provider',
+            'amount' => 'payment_transactions.amount',
+            'currency' => 'payment_transactions.currency',
+            'status' => 'payment_transactions.status',
+            'created_at' => 'payment_transactions.created_at'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
-            'payments',
+            'payment_transactions',
             $columns,
             $searchableColumns,
             $columnMapping,

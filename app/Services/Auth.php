@@ -337,12 +337,13 @@ class Auth {
      * Get details of the currently authenticated user
      */
     public static function currentUser(): ?array {
-        if (self::$currentUser !== null) {
-            return self::$currentUser;
+        if (!self::isAuthenticated()) {
+            self::$currentUser = null;
+            return null;
         }
 
-        if (!self::isAuthenticated()) {
-            return null;
+        if (self::$currentUser !== null && (int)self::$currentUser['id'] === (int)$_SESSION['user_id']) {
+            return self::$currentUser;
         }
 
         $db = Database::connection();
@@ -350,18 +351,13 @@ class Auth {
             SELECT u.*, r.name as role_name 
             FROM users u
             JOIN roles r ON u.role_id = r.id
-            WHERE u.id = :id 
+            WHERE u.id = :id
             LIMIT 1
         ");
         $stmt->execute(['id' => $_SESSION['user_id']]);
         $user = $stmt->fetch();
 
-        if ($user) {
-            self::$currentUser = $user;
-        } else {
-            self::logout(); // Log out invalid session
-        }
-
+        self::$currentUser = $user ?: null;
         return self::$currentUser;
     }
 

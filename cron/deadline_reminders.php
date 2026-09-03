@@ -16,77 +16,137 @@ $db = Database::connection();
 $notificationService = new NotificationService();
 $queueService = new NotificationQueueService();
 
-$reminderDaysStr = $_ENV['DEADLINE_REMINDER_DAYS'] ?? '14,7,3,1';
-$reminderDays = array_map('intval', explode(',', $reminderDaysStr));
+// 1. Fetch all active users with their explicit reminder preferences
+$stmt = $db->query("
+    SELECT u.id, u.email, u.first_name, 
+           COALESCE(up.deadline_reminder_scope, 'off') as deadline_reminder_scope,
+           COALESCE(up.deadline_reminder_days, '3,1') as deadline_reminder_days
+    FROM users u
+    LEFT JOIN user_preferences up ON u.id = up.user_id
+    WHERE u.status = 'active'
+");
+$users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-echo "Configured reminder offsets: " . implode(', ', $reminderDays) . " days.\n";
+$totalEnqueued = 0;
 
-foreach ($reminderDays as $days) {
-    $targetDate = date('Y-m-d', strtotime("+$days days"));
-    echo "Checking scholarships closing on $targetDate ($days days from now)...\n";
+foreach ($users as $user) {
+    $userId = (int)$user['id'];
+    $scope = strtolower(trim($user['deadline_reminder_scope']));
 
-    $stmt = $db->prepare("
-        SELECT s.*, c.name as country_name 
-        FROM scholarships s
-        LEFT JOIN countries c ON s.country_id = c.id
-        WHERE s.status = 'published'
-          AND s.application_deadline IS NOT NULL
-          AND DATE(s.application_deadline) = :target_date
-    ");
-    $stmt->execute(['target_date' => $targetDate]);
-    $scholarships = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // CRITICAL USER TRUST RULE:
+    // If deadline_reminder_scope is 'off' (or empty/default), ZERO reminders are ever generated.
+    // This remains strictly true even if user has active application trackers, bookmarks, or matching scholarships.
+    if ($scope === 'off' || empty($scope)) {
+        continue;
+    }
 
-    echo "Found " . count($scholarships) . " scholarships closing on $targetDate.\n";
+    // Parse user reminder days (e.g. "7,3,1")
+    $userDays = array_unique(array_filter(array_map('intval', explode(',', $user['deadline_reminder_days']))));
+    if (empty($userDays)) {
+        $userDays = [3, 1];
+    }
 
-    foreach ($scholarships as $s) {
-        $sid = (int)$s['id'];
-        $deadlineUnix = strtotime($s['application_deadline']);
+    if ($scope === 'all') {
+        // Option B: Send deadline reminders for all eligible scholarships
+        foreach ($userDays as $days) {
+            $targetDate = date('Y-m-d', strtotime("+$days days"));
 
-        // Find users who are ELIGIBLE for this scholarship, OR who have an active application tracker for this scholarship
-        $stmtUsers = $db->prepare("
-            SELECT DISTINCT u.id as user_id, COALESCE(sm.match_score, 70) as match_score
-            FROM users u
-            LEFT JOIN scholarship_matches sm ON sm.user_id = u.id AND sm.scholarship_id = :sid1
-            LEFT JOIN scholarship_applications sa ON sa.user_id = u.id AND sa.scholarship_id = :sid2
-            WHERE (sm.eligibility_status = 'ELIGIBLE' AND sm.scholarship_id = :sid3)
-               OR (sa.status IN ('interested', 'planning', 'documents_pending', 'ready_to_apply') AND sa.scholarship_id = :sid4)
+            $stmtEligible = $db->prepare("
+                SELECT s.*, c.name as country_name, sm.match_score
+                FROM scholarships s
+                JOIN scholarship_matches sm ON s.id = sm.scholarship_id AND sm.user_id = :uid
+                LEFT JOIN countries c ON s.country_id = c.id
+                WHERE s.status = 'published'
+                  AND s.application_deadline IS NOT NULL
+                  AND DATE(s.application_deadline) = :target_date
+                  AND DATE(s.application_deadline) >= CURDATE()
+                  AND sm.eligibility_status = 'ELIGIBLE'
+            ");
+            $stmtEligible->execute([
+                'uid' => $userId,
+                'target_date' => $targetDate
+            ]);
+            $scholarships = $stmtEligible->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($scholarships as $s) {
+                $sid = (int)$s['id'];
+                $deadlineDate = date('Y-m-d', strtotime($s['application_deadline']));
+
+                // Deterministic business event key: USER + SCHOLARSHIP + REMINDER_OFFSET + DEADLINE_DATE
+                $idempotencyKey = "deadline_reminder_{$userId}_{$sid}_{$days}_{$deadlineDate}";
+                $type = ($days === 1) ? 'SCHOLARSHIP_DEADLINE_TODAY' : 'SCHOLARSHIP_DEADLINE_SOON';
+
+                $payload = [
+                    'title' => $s['title'],
+                    'provider' => $s['provider_name'],
+                    'country' => $s['country_name'] ?? 'Multiple Countries',
+                    'funding' => $s['funding_type'],
+                    'deadline' => $deadlineDate,
+                    'score' => $s['match_score'],
+                    'summary' => "Deadline Reminder: Applications for {$s['title']} close in {$days} day(s)!",
+                    'detail_url' => url('/scholarships/' . $s['slug']),
+                    'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
+                ];
+
+                $notificationService->sendNotification($userId, $type, $payload, $sid, $idempotencyKey);
+                $totalEnqueued++;
+            }
+        }
+
+    } elseif ($scope === 'selected') {
+        // Option C: Send deadline reminders ONLY for scholarships explicitly selected by user in user_scholarship_reminders
+        $stmtSelected = $db->prepare("
+            SELECT usr.reminder_days as custom_days, s.*, c.name as country_name, COALESCE(sm.match_score, 80) as match_score
+            FROM user_scholarship_reminders usr
+            JOIN scholarships s ON usr.scholarship_id = s.id
+            LEFT JOIN scholarship_matches sm ON s.id = sm.scholarship_id AND sm.user_id = :uid
+            LEFT JOIN countries c ON s.country_id = c.id
+            WHERE usr.user_id = :uid2
+              AND usr.is_enabled = 1
+              AND s.status = 'published'
+              AND s.application_deadline IS NOT NULL
+              AND DATE(s.application_deadline) >= CURDATE()
         ");
-        $stmtUsers->execute([
-            'sid1' => $sid,
-            'sid2' => $sid,
-            'sid3' => $sid,
-            'sid4' => $sid
+        $stmtSelected->execute([
+            'uid' => $userId,
+            'uid2' => $userId
         ]);
-        $matches = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+        $selectedSchs = $stmtSelected->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($matches as $match) {
-            $userId = (int)$match['user_id'];
+        foreach ($selectedSchs as $s) {
+            $sid = (int)$s['id'];
+            $deadlineDate = date('Y-m-d', strtotime($s['application_deadline']));
 
-            // Build unique key containing the deadline timestamp. If deadline changes, a new reminder is allowed.
-            $idempotencyKey = "deadline_reminder_{$userId}_{$sid}_{$days}_{$deadlineUnix}";
+            // Use custom days if specified, otherwise user default days
+            $schDays = !empty($s['custom_days']) 
+                ? array_unique(array_filter(array_map('intval', explode(',', $s['custom_days']))))
+                : $userDays;
 
-            $type = ($days === 1) ? 'SCHOLARSHIP_DEADLINE_TODAY' : 'SCHOLARSHIP_DEADLINE_SOON';
+            foreach ($schDays as $days) {
+                $targetDate = date('Y-m-d', strtotime("+$days days"));
+                if ($deadlineDate === $targetDate) {
+                    $idempotencyKey = "deadline_reminder_{$userId}_{$sid}_{$days}_{$deadlineDate}";
+                    $type = ($days === 1) ? 'SCHOLARSHIP_DEADLINE_TODAY' : 'SCHOLARSHIP_DEADLINE_SOON';
 
-            $payload = [
-                'title' => $s['title'],
-                'provider' => $s['provider_name'],
-                'degree' => 'Master\'s',
-                'field' => 'Computer Science',
-                'country' => $s['country_name'] ?? 'Multiple Countries',
-                'funding' => $s['funding_type'],
-                'deadline' => date('Y-m-d', $deadlineUnix),
-                'score' => $match['match_score'],
-                'summary' => "Reminder: The application deadline for {$s['title']} is in {$days} day(s)!",
-                'detail_url' => url('/scholarships/' . $s['slug']),
-                'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
-            ];
+                    $payload = [
+                        'title' => $s['title'],
+                        'provider' => $s['provider_name'],
+                        'country' => $s['country_name'] ?? 'Multiple Countries',
+                        'funding' => $s['funding_type'],
+                        'deadline' => $deadlineDate,
+                        'score' => $s['match_score'],
+                        'summary' => "Deadline Reminder: Applications for {$s['title']} close in {$days} day(s)!",
+                        'detail_url' => url('/scholarships/' . $s['slug']),
+                        'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
+                    ];
 
-            $notificationService->sendNotification($userId, $type, $payload, $sid, $idempotencyKey);
+                    $notificationService->sendNotification($userId, $type, $payload, $sid, $idempotencyKey);
+                    $totalEnqueued++;
+                }
+            }
         }
     }
 }
 
-// Process queue items immediately after enqueuing
-echo "Processing notification queue...\n";
-$processed = $queueService->processQueue();
-echo "Deadline Reminders process completed. Dispatched $processed pending notifications.\n";
+// Finished enqueuing deadline reminder notifications without delivering
+echo "Deadline Reminders process completed. Processed with user preferences, total reminder events queued: {$totalEnqueued}.\n";

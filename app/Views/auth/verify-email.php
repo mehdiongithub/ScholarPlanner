@@ -61,6 +61,10 @@ include ROOT_PATH . '/app/Views/layouts/auth_header.php';
     <div class="alert alert-success" role="alert">
         <?= e($success_message) ?>
     </div>
+<?php else: ?>
+    <div class="alert alert-info" role="status" style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; border-radius:8px; padding:12px 16px; font-size:0.875rem; line-height:1.5; margin-bottom:16px;">
+        A 6-digit verification code has been sent to <strong><?= e($email) ?></strong>. Please check your inbox (and spam folder) in a few moments.
+    </div>
 <?php endif; ?>
 
 <form action="<?= url('/verify-email') ?>" method="POST" id="otp-form" novalidate>

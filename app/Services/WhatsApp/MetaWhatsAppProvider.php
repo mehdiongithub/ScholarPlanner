@@ -86,7 +86,11 @@ class MetaWhatsAppProvider implements WhatsAppProviderInterface {
             ];
         }
 
-        $resData = json_decode($response, true);
+        if ($response === false || $response === null || $response === '') {
+            $resData = null;
+        } else {
+            $resData = json_decode((string)$response, true);
+        }
 
         if ($httpCode >= 200 && $httpCode < 300 && isset($resData['messages'][0]['id'])) {
             return [

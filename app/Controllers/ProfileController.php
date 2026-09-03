@@ -1368,27 +1368,245 @@ class ProfileController {
     }
 
     /**
-     * Display recent notification queue alerts for the current logged-in user
+     * Display notification center & preferences for the current logged-in user
      */
     public function notifications(): void {
         Auth::requireAuth();
         $userId = Auth::userId();
         $db = Database::connection();
 
+        // 1. Fetch recent outbox logs
         $stmt = $db->prepare("
             SELECT * 
             FROM notification_logs 
             WHERE user_id = :user_id 
             ORDER BY created_at DESC 
-            LIMIT 30
+            LIMIT 50
         ");
         $stmt->execute(['user_id' => $userId]);
         $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // 2. Fetch notification preferences
+        $stmtPrefs = $db->prepare("SELECT * FROM notification_preferences WHERE user_id = :user_id");
+        $stmtPrefs->execute(['user_id' => $userId]);
+        $rawPrefs = $stmtPrefs->fetchAll(PDO::FETCH_ASSOC);
+
+        $prefMap = [];
+        foreach ($rawPrefs as $p) {
+            $prefMap[$p['notification_type']] = [
+                'email' => (bool)$p['email_enabled'],
+                'whatsapp' => (bool)$p['whatsapp_enabled']
+            ];
+        }
+
+        // 3. Fetch user_preferences for reminder scope and days
+        $stmtUserPref = $db->prepare("SELECT deadline_reminder_scope, deadline_reminder_days FROM user_preferences WHERE user_id = :user_id LIMIT 1");
+        $stmtUserPref->execute(['user_id' => $userId]);
+        $userPref = $stmtUserPref->fetch(PDO::FETCH_ASSOC) ?: [
+            'deadline_reminder_scope' => 'off',
+            'deadline_reminder_days' => '3,1'
+        ];
+
+        // 4. Fetch specific scholarship reminders
+        $stmtReminders = $db->prepare("
+            SELECT usr.*, s.title, s.provider_name, s.application_deadline, s.slug, s.status as sch_status
+            FROM user_scholarship_reminders usr
+            JOIN scholarships s ON usr.scholarship_id = s.id
+            WHERE usr.user_id = :user_id
+            ORDER BY s.application_deadline ASC
+        ");
+        $stmtReminders->execute(['user_id' => $userId]);
+        $selectedReminders = $stmtReminders->fetchAll(PDO::FETCH_ASSOC);
+
         view('profile.notifications', [
             'logs' => $logs,
-            'title' => 'My Notifications'
+            'prefMap' => $prefMap,
+            'userPref' => $userPref,
+            'selectedReminders' => $selectedReminders,
+            'csrf_token' => Security::csrfToken(),
+            'title' => 'Notification Settings & Reminders',
+            'success_message' => $_GET['success'] ?? null
         ]);
+    }
+
+    /**
+     * Update user notification settings & deadline reminder preferences
+     */
+    public function updateNotificationSettings(): void {
+        Auth::requireAuth();
+        $userId = Auth::userId();
+        $db = Database::connection();
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.']);
+        }
+
+        // 1. Channel toggles
+        $newMatchEmail = isset($_POST['new_match_email']) ? 1 : 0;
+        $newMatchWhatsapp = isset($_POST['new_match_whatsapp']) ? 1 : 0;
+        $deadlineEmail = isset($_POST['deadline_email']) ? 1 : 0;
+        $deadlineWhatsapp = isset($_POST['deadline_whatsapp']) ? 1 : 0;
+
+        // 2. Deadline reminder scope: 'off' (default), 'all', 'selected'
+        $scope = trim($_POST['deadline_reminder_scope'] ?? 'off');
+        if (!in_array($scope, ['off', 'all', 'selected'], true)) {
+            $scope = 'off';
+        }
+
+        // 3. Reminder timing offsets: array of days [1, 3, 7]
+        $rawDays = (array)($_POST['reminder_days'] ?? [3, 1]);
+        $sanitizedDays = [];
+        foreach ($rawDays as $d) {
+            $val = (int)$d;
+            if ($val > 0 && $val <= 90) {
+                $sanitizedDays[] = $val;
+            }
+        }
+        $sanitizedDays = array_unique($sanitizedDays);
+        rsort($sanitizedDays);
+        if (empty($sanitizedDays)) {
+            $sanitizedDays = [3, 1];
+        }
+        // 4. Preferred channel and multi-channel delivery setting
+        $preferredChannel = strtolower(trim($_POST['preferred_channel'] ?? 'email'));
+        if (!in_array($preferredChannel, ['email', 'whatsapp'], true)) {
+            $preferredChannel = 'email';
+        }
+        $allowMultiChannel = isset($_POST['allow_multi_channel']) ? 1 : 0;
+
+        $db->beginTransaction();
+        try {
+            // Upsert matching_scholarship_alerts preference
+            $stmtUpsertMatch = $db->prepare("
+                INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at)
+                VALUES (:uid, 'matching_scholarship_alerts', :email, :whatsapp, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE 
+                    email_enabled = VALUES(email_enabled),
+                    whatsapp_enabled = VALUES(whatsapp_enabled),
+                    updated_at = NOW()
+            ");
+            $stmtUpsertMatch->execute([
+                'uid' => $userId,
+                'email' => $newMatchEmail,
+                'whatsapp' => $newMatchWhatsapp
+            ]);
+
+            // Upsert deadline_reminders preference
+            $stmtUpsertDeadline = $db->prepare("
+                INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at)
+                VALUES (:uid, 'deadline_reminders', :email, :whatsapp, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE 
+                    email_enabled = VALUES(email_enabled),
+                    whatsapp_enabled = VALUES(whatsapp_enabled),
+                    updated_at = NOW()
+            ");
+            $stmtUpsertDeadline->execute([
+                'uid' => $userId,
+                'email' => $deadlineEmail,
+                'whatsapp' => $deadlineWhatsapp
+            ]);
+
+            // Update user_preferences for scope, timing, preferred channel and multi-channel
+            $stmtUserPref = $db->prepare("
+                INSERT INTO user_preferences (user_id, deadline_reminder_scope, deadline_reminder_days, preferred_channel, allow_multi_channel, created_at, updated_at)
+                VALUES (:uid, :scope, :days, :pchannel, :multichannel, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE 
+                    deadline_reminder_scope = VALUES(deadline_reminder_scope),
+                    deadline_reminder_days = VALUES(deadline_reminder_days),
+                    preferred_channel = VALUES(preferred_channel),
+                    allow_multi_channel = VALUES(allow_multi_channel),
+                    updated_at = NOW()
+            ");
+            $stmtUserPref->execute([
+                'uid' => $userId,
+                'scope' => $scope,
+                'days' => $reminderDaysStr,
+                'pchannel' => $preferredChannel,
+                'multichannel' => $allowMultiChannel
+            ]);
+
+            $db->commit();
+            Auth::logAudit($userId, 'notification_settings_updated', 'profile', 'users', $userId);
+
+            $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Notification preferences saved successfully.']);
+                $this->halt("AJAX notification preferences success");
+            }
+
+            header("Location: " . url('/notifications?success=Notification settings saved successfully.'));
+            $this->halt("Redirect notifications");
+
+        } catch (Exception $e) {
+            $db->rollBack();
+            \App\Services\Logger::error("Failed to update notification settings for user $userId: " . $e->getMessage());
+            $this->redirectBackWithErrors(['notifications' => 'Could not save notification settings. Please try again.']);
+        }
+    }
+
+    /**
+     * AJAX/POST Endpoint: Toggle deadline reminder for a specific scholarship
+     */
+    public function toggleScholarshipReminder(): void {
+        Auth::requireAuth();
+        $userId = Auth::userId();
+        $db = Database::connection();
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'CSRF verification failed.']);
+            $this->halt();
+        }
+
+        $scholarshipId = (int)($_POST['scholarship_id'] ?? 0);
+        if ($scholarshipId <= 0) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid scholarship ID.']);
+            $this->halt();
+        }
+
+        // Validate scholarship exists and is published
+        $stmtSch = $db->prepare("SELECT id, title, application_deadline, status FROM scholarships WHERE id = :id LIMIT 1");
+        $stmtSch->execute(['id' => $scholarshipId]);
+        $sch = $stmtSch->fetch(PDO::FETCH_ASSOC);
+
+        if (!$sch || $sch['status'] !== 'published') {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Scholarship not found or not published.']);
+            $this->halt();
+        }
+
+        $isEnabled = isset($_POST['is_enabled']) ? (int)(bool)$_POST['is_enabled'] : 1;
+        $reminderDays = trim($_POST['reminder_days'] ?? '3,1');
+
+        $stmt = $db->prepare("
+            INSERT INTO user_scholarship_reminders (user_id, scholarship_id, reminder_days, is_enabled, created_at, updated_at)
+            VALUES (:uid, :sid, :days, :enabled, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE 
+                is_enabled = VALUES(is_enabled),
+                reminder_days = VALUES(reminder_days),
+                updated_at = NOW()
+        ");
+        $stmt->execute([
+            'uid' => $userId,
+            'sid' => $scholarshipId,
+            'days' => $reminderDays,
+            'enabled' => $isEnabled
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'is_enabled' => $isEnabled,
+            'message' => $isEnabled ? 'Deadline reminder enabled for this scholarship.' : 'Deadline reminder disabled for this scholarship.'
+        ]);
+        $this->halt();
     }
 }
 

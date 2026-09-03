@@ -6,8 +6,8 @@ class PaymentService {
     /**
      * Resolve the active payment gateway instance.
      */
-    public static function gateway(): PaymentGatewayInterface {
-        $provider = $_ENV['PAYMENT_PROVIDER'] ?? 'mock';
+    public static function gateway(?string $providerName = null): PaymentGatewayInterface {
+        $provider = $providerName ?? ($_ENV['PAYMENT_PROVIDER'] ?? 'mock');
         $env = $_ENV['APP_ENV'] ?? 'production';
         
         if (strtolower($provider) === 'mock' && $env === 'production') {
@@ -15,6 +15,8 @@ class PaymentService {
         }
         
         switch (strtolower($provider)) {
+            case 'cashmaal':
+                return new CashMaalPaymentGateway();
             case 'jazzcash':
                 return new JazzCashPaymentGateway();
             case 'easypaisa':

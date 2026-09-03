@@ -18,6 +18,20 @@ class NotificationQueueService {
     }
 
     /**
+     * Check if a notification type is transactional (bypasses marketing preferences).
+     */
+    public function isTransactionalType(string $type): bool {
+        return in_array($type, [
+            NotificationTypes::EMAIL_VERIFICATION,
+            'EMAIL_VERIFICATION',
+            'PASSWORD_RESET',
+            'PAYMENT_CONFIRMATION',
+            'PAYMENT_SUCCESS',
+            'SUBSCRIPTION_CONFIRMATION'
+        ], true);
+    }
+
+    /**
      * Enqueue a notification with idempotency protection.
      *
      * @return bool True if enqueued successfully, false if skipped as duplicate.
@@ -34,7 +48,9 @@ class NotificationQueueService {
         ?string $availableAt = null,
         ?string $provider = null
     ): bool {
-        // Gating rules for premium notifications
+        $isTransactional = $this->isTransactionalType($type);
+
+        // Gating rules for premium marketing notifications
         $isTestingBypass = false;
         if (defined('TESTING_MODE') && TESTING_MODE) {
             $db = Database::connection();
@@ -46,7 +62,7 @@ class NotificationQueueService {
             }
         }
 
-        if (!$isTestingBypass) {
+        if (!$isTransactional && !$isTestingBypass) {
             if ($channel === 'whatsapp' && !\App\Services\SubscriptionService::can($userId, 'whatsapp_alerts')) {
                 \App\Services\Logger::info("Skipped enqueuing WhatsApp notification for user $userId (Free plan).");
                 return false;
@@ -66,11 +82,26 @@ class NotificationQueueService {
         if ($idempotencyKey === null) {
             // Build deterministic idempotency key
             $schId = $scholarshipId ?? 0;
-            if ($type === 'NEW_MATCH' || $type === 'DEADLINE_REMINDER') {
+            if ($isTransactional) {
+                $tokenHash = $payloadData['token_hash'] ?? uniqid('', true);
+                $idempotencyKey = "verify_{$userId}_{$tokenHash}";
+            } elseif ($type === 'NEW_MATCH' || $type === 'DEADLINE_REMINDER') {
                 $idempotencyKey = "{$userId}_{$schId}_{$type}_{$channel}";
             } else {
                 $eventDate = date('Y-m-d');
                 $idempotencyKey = "{$userId}_{$schId}_{$type}_{$channel}_{$eventDate}";
+            }
+        }
+
+        if ($provider === null) {
+            if ($channel === 'whatsapp') {
+                if (strpos($type, 'PAYMENT') !== false || strpos($type, 'CASHMAAL') !== false || strpos($type, 'SUBSCRIPTION_CONFIRMATION') !== false) {
+                    $provider = 'meta';
+                } else {
+                    $provider = 'wacrm';
+                }
+            } elseif ($channel === 'email') {
+                $provider = 'smtp';
             }
         }
 
@@ -167,59 +198,66 @@ class NotificationQueueService {
             $recipient = $item['recipient'];
             $payload = ($item['payload'] !== null) ? (json_decode($item['payload'], true) ?: []) : [];
 
-            // Recheck user preferences immediately before delivery
+            // Recheck user details before delivery
             $userId = (int)$item['user_id'];
             $type = $item['notification_type'];
+            $isTransactional = $this->isTransactionalType($type);
             
             $stmtUser = $db->prepare("SELECT email, phone, whatsapp_phone, email_opt_in, whatsapp_opt_in FROM users WHERE id = :id LIMIT 1");
             $stmtUser->execute(['id' => $userId]);
             $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
 
             if (!$user) {
-                $this->updateQueueItemStatus($item['id'], $item['attempts'], false, "User not found (deleted).", null);
+                $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], false, "User not found (deleted).", null);
                 $processedCount++;
                 continue;
             }
 
-            $stmtPref = $db->prepare("SELECT * FROM notification_preferences WHERE user_id = :uid");
-            $stmtPref->execute(['uid' => $userId]);
-            $prefs = $stmtPref->fetchAll(PDO::FETCH_ASSOC);
-            
-            $prefMap = [];
-            foreach ($prefs as $p) {
-                $prefMap[$p['notification_type']] = [
-                    'email' => (bool)$p['email_enabled'],
-                    'whatsapp' => (bool)$p['whatsapp_enabled']
-                ];
-            }
-
-            $prefKey = null;
-            if ($type === 'NEW_MATCH') {
-                $prefKey = 'matching_scholarship_alerts';
-            } elseif ($type === 'SCHOLARSHIP_DEADLINE_SOON' || $type === 'SCHOLARSHIP_DEADLINE_TODAY') {
-                $prefKey = 'deadline_reminders';
-            } elseif ($type === 'DAILY_MATCH_DIGEST') {
-                $prefKey = 'daily_alerts';
-            } elseif ($type === 'WEEKLY_MATCH_DIGEST') {
-                $prefKey = 'weekly_digest';
-            }
-
-            $emailAlertsEnabled = false;
-            $whatsappAlertsEnabled = false;
-
-            if ($prefKey) {
-                $emailAlertsEnabled = $prefMap[$prefKey]['email'] ?? false;
-                $whatsappAlertsEnabled = $prefMap[$prefKey]['whatsapp'] ?? false;
+            if ($isTransactional) {
+                // Transactional notifications (e.g. Email Verification, Payment Confirmation) bypass optional marketing preferences
+                $sendEmail = ($channel === 'email');
+                $sendWhatsapp = ($channel === 'whatsapp');
             } else {
-                $emailAlertsEnabled = true;
+                $stmtPref = $db->prepare("SELECT * FROM notification_preferences WHERE user_id = :uid");
+                $stmtPref->execute(['uid' => $userId]);
+                $prefs = $stmtPref->fetchAll(PDO::FETCH_ASSOC);
+                
+                $prefMap = [];
+                foreach ($prefs as $p) {
+                    $prefMap[$p['notification_type']] = [
+                        'email' => (bool)$p['email_enabled'],
+                        'whatsapp' => (bool)$p['whatsapp_enabled']
+                    ];
+                }
+
+                $prefKey = null;
+                if ($type === 'NEW_MATCH') {
+                    $prefKey = 'matching_scholarship_alerts';
+                } elseif ($type === 'SCHOLARSHIP_DEADLINE_SOON' || $type === 'SCHOLARSHIP_DEADLINE_TODAY') {
+                    $prefKey = 'deadline_reminders';
+                } elseif ($type === 'DAILY_MATCH_DIGEST') {
+                    $prefKey = 'daily_alerts';
+                } elseif ($type === 'WEEKLY_MATCH_DIGEST') {
+                    $prefKey = 'weekly_digest';
+                }
+
+                $emailAlertsEnabled = false;
                 $whatsappAlertsEnabled = false;
+
+                if ($prefKey) {
+                    $emailAlertsEnabled = $prefMap[$prefKey]['email'] ?? false;
+                    $whatsappAlertsEnabled = $prefMap[$prefKey]['whatsapp'] ?? false;
+                } else {
+                    $emailAlertsEnabled = true;
+                    $whatsappAlertsEnabled = false;
+                }
+
+                $generalEmail = (bool)($prefMap['email_alerts']['email'] ?? true);
+                $generalWhatsapp = (bool)($prefMap['whatsapp_alerts']['whatsapp'] ?? false);
+
+                $sendEmail = $emailAlertsEnabled && $generalEmail && (bool)$user['email_opt_in'];
+                $sendWhatsapp = $whatsappAlertsEnabled && $generalWhatsapp && (bool)$user['whatsapp_opt_in'];
             }
-
-            $generalEmail = (bool)($prefMap['email_alerts']['email'] ?? true);
-            $generalWhatsapp = (bool)($prefMap['whatsapp_alerts']['whatsapp'] ?? false);
-
-            $sendEmail = $emailAlertsEnabled && $generalEmail && (bool)$user['email_opt_in'];
-            $sendWhatsapp = $whatsappAlertsEnabled && $generalWhatsapp && (bool)$user['whatsapp_opt_in'];
 
             if ($channel === 'email' && !$sendEmail) {
                 $this->updateQueueItemStatusToSkipped($item['id'], "Cancelled: User opted out of email channel before delivery.");
@@ -239,7 +277,7 @@ class NotificationQueueService {
 
             try {
                 if ($channel === 'email') {
-                    $subject = $item['subject'] ?? 'ScholarMatch Alert';
+                    $subject = $item['subject'] ?? 'ScholarPlanner Notification';
                     
                     // Build HTML email layout
                     $emailBody = $this->renderHtmlEmail($item['notification_type'], $payload);
@@ -253,7 +291,8 @@ class NotificationQueueService {
                     // Build sequential params array
                     $params = $this->buildWhatsAppTemplateParams($item['notification_type'], $payload);
                     
-                    $res = $whatsappService->sendMessage($recipient, $templateName, $params);
+                    $providerName = $item['provider'] ?? null;
+                    $res = $whatsappService->sendMessage($recipient, $templateName, $params, $providerName, $item['notification_type']);
                     $success = $res['success'];
                     $error = $res['error'] ?? null;
                     $providerMsgId = $res['message_id'] ?? null;
@@ -266,7 +305,7 @@ class NotificationQueueService {
                 $error = $ex->getMessage();
             }
 
-            $this->updateQueueItemStatus($item['id'], $item['attempts'], $success, $error, $providerMsgId, $retryAfter);
+            $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], $success, $error, $providerMsgId, $retryAfter);
             $processedCount++;
         }
 
@@ -295,6 +334,7 @@ class NotificationQueueService {
                 'provider_msg_id' => $providerMsgId,
                 'id' => $id
             ]);
+            \App\Services\Logger::info("Notification #$id successfully sent via queue worker (attempts: $attempts).");
         } else {
             // Determine retry status
             $isPermanent = $this->isPermanentError($error);
@@ -313,8 +353,11 @@ class NotificationQueueService {
                     'err' => $this->redactError($error),
                     'id' => $id
                 ]);
+                \App\Services\Logger::error("Notification #$id permanently failed after $attempts attempts: " . $this->redactError($error));
             } else {
-                $delay = $this->retryDelay;
+                // Exponential backoff delay: retryDelay * 2^(attempts-1)
+                $backoffMultiplier = (int)pow(2, max(0, $attempts - 1));
+                $delay = $this->retryDelay * $backoffMultiplier;
                 if ($retryAfter !== null && $retryAfter >= 10 && $retryAfter <= 86400) {
                     $delay = $retryAfter;
                 }
@@ -334,6 +377,7 @@ class NotificationQueueService {
                     'err' => $this->redactError($error),
                     'id' => $id
                 ]);
+                \App\Services\Logger::warning("Notification #$id scheduled for retry (attempt $attempts/$this->maxAttempts, next: $nextAvail): " . $this->redactError($error));
             }
         }
     }
@@ -356,19 +400,28 @@ class NotificationQueueService {
     }
 
     /**
-     * Retry a specific failed log record from Admin Dashboard
+     * Retry a specific failed log record from Admin Dashboard.
+     * Reuses the existing row, preserving all business identifiers and idempotency key.
+     * Preserves lifetime delivery attempt count without resetting it to 0.
+     * Rejects retry if the notification has already reached maximum attempts.
      */
     public function retryLog(int $id): bool {
         $stmt = $this->db->prepare("
             UPDATE notification_logs 
             SET status = 'pending', 
-                attempts = 0, 
                 available_at = NOW(), 
                 failed_at = NULL, 
-                error_message = NULL 
-            WHERE id = :id AND status IN ('failed', 'retrying')
+                error_message = NULL,
+                updated_at = NOW()
+            WHERE id = :id 
+              AND status IN ('failed', 'retrying')
+              AND attempts < :max_attempts
         ");
-        return $stmt->execute(['id' => $id]);
+        $stmt->execute([
+            'id' => $id,
+            'max_attempts' => $this->maxAttempts
+        ]);
+        return $stmt->rowCount() > 0;
     }
 
     private function isPermanentError(?string $error): bool {
@@ -395,12 +448,25 @@ class NotificationQueueService {
             case 'SCHOLARSHIP_DEADLINE_TODAY': return 'deadline_reminder_today';
             case 'DAILY_MATCH_DIGEST': return 'daily_match_digest';
             case 'WEEKLY_MATCH_DIGEST': return 'weekly_match_digest';
+            case 'PAYMENT_CONFIRMATION':
+            case 'PAYMENT_SUCCESS':
+            case 'SUBSCRIPTION_CONFIRMATION':
+                return 'confirmation_msg';
             default: return 'system_notification';
         }
     }
 
     private function buildWhatsAppTemplateParams(string $type, array $payload): array {
-        // Return sequential array of variable parameters mapped to WhatsApp components
+        if ($type === 'PAYMENT_CONFIRMATION' || $type === 'PAYMENT_SUCCESS' || $type === 'SUBSCRIPTION_CONFIRMATION') {
+            return [
+                $payload['user_name'] ?? 'Student',
+                $payload['plan_name'] ?? 'Premium Monthly',
+                $payload['amount'] ?? '',
+                $payload['currency'] ?? 'PKR',
+                $payload['reference'] ?? ''
+            ];
+        }
+
         return [
             $payload['title'] ?? '',
             $payload['provider'] ?? '',
@@ -414,6 +480,37 @@ class NotificationQueueService {
     }
 
     private function renderHtmlEmail(string $type, array $payload): string {
+        if ($type === NotificationTypes::EMAIL_VERIFICATION || $type === 'EMAIL_VERIFICATION') {
+            $otpCode = e($payload['otp_code'] ?? ($payload['code'] ?? ''));
+            $firstName = e($payload['first_name'] ?? 'Student');
+            return "
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset='utf-8'>
+                    <title>Verify your ScholarPlanner account</title>
+                </head>
+                <body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; line-height:1.6; color:#334155; margin:0; padding:20px; background:#f1f5f9;\">
+                    <div style='max-width:600px; margin:0 auto; background:#ffffff; padding:32px; border-radius:12px; box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1); border:1px solid #e2e8f0;'>
+                        <div style='text-align:center; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid #e2e8f0;'>
+                            <span style='font-size:1.5rem; font-weight:800; color:#2563eb;'>ScholarPlanner</span>
+                        </div>
+                        <h2 style='color:#0f172a; margin-top:0;'>Verify your email address</h2>
+                        <p style='color:#475569; font-size:16px;'>Hello $firstName,</p>
+                        <p style='color:#475569; font-size:16px;'>Thank you for joining ScholarPlanner! Please use the 6-digit verification code below to complete your registration:</p>
+                        <div style='text-align:center; margin:28px 0;'>
+                            <span style='font-size:32px; font-weight:700; color:#1e40af; letter-spacing:8px; padding:14px 28px; background:#eff6ff; border-radius:8px; border:2px dashed #93c5fd; display:inline-block;'>$otpCode</span>
+                        </div>
+                        <p style='color:#64748b; font-size:14px;'>This code is valid for <strong>10 minutes</strong> and is single-use. If you did not create a ScholarPlanner account, please ignore this email.</p>
+                        <div style='border-top:1px solid #e2e8f0; margin-top:32px; padding-top:16px; font-size:0.75rem; color:#94a3b8; text-align:center;'>
+                            &copy; " . date('Y') . " ScholarPlanner. All rights reserved.
+                        </div>
+                    </div>
+                </body>
+                </html>
+            ";
+        }
+
         $title = e($payload['title'] ?? '');
         $provider = e($payload['provider'] ?? '');
         $degree = e($payload['degree'] ?? '');
@@ -466,7 +563,7 @@ class NotificationQueueService {
         } else {
             // Digests and general notifications
             $contentHtml = "
-                <h2 style='color:#0f172a; margin-bottom:12px;'>ScholarMatch Alert</h2>
+                <h2 style='color:#0f172a; margin-bottom:12px;'>ScholarPlanner Alert</h2>
                 <p>$summary</p>
                 <div style='margin-top:24px;'>
                     <a href='" . e(url('/dashboard')) . "' style='background:#2563eb; color:#ffffff; padding:10px 20px; text-decoration:none; border-radius:6px; font-weight:600; display:inline-block;'>Go to Dashboard</a>
@@ -479,16 +576,16 @@ class NotificationQueueService {
             <html>
             <head>
                 <meta charset='utf-8'>
-                <title>ScholarMatch Alert</title>
+                <title>ScholarPlanner Alert</title>
             </head>
             <body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; line-height:1.6; color:#334155; margin:0; padding:20px; background:#f1f5f9;\">
                 <div style='max-width:600px; margin:0 auto; background:#ffffff; padding:32px; border-radius:12px; box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1);'>
                     <div style='border-bottom:1px solid #e2e8f0; padding-bottom:16px; margin-bottom:24px; text-align:center;'>
-                        <span style='font-size:1.5rem; font-weight:800; color:#2563eb;'>ScholarMatch</span>
+                        <span style='font-size:1.5rem; font-weight:800; color:#2563eb;'>ScholarPlanner</span>
                     </div>
                     $contentHtml
                     <div style='border-top:1px solid #e2e8f0; margin-top:32px; padding-top:16px; font-size:0.75rem; color:#64748b; text-align:center;'>
-                        You are receiving this because you signed up for alerts on ScholarMatch. 
+                        You are receiving this because you signed up for alerts on ScholarPlanner. 
                         You can update your alert channels in your <a href='" . e(url('/profile/edit')) . "' style='color:#2563eb;'>settings</a> at any time.
                     </div>
                 </div>

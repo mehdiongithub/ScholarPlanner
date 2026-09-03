@@ -25,6 +25,7 @@ class NotificationController {
 
         $status = $_GET['status'] ?? null;
         $channel = $_GET['channel'] ?? null;
+        $provider = $_GET['provider'] ?? null;
         $type = $_GET['type'] ?? null;
         $searchUser = $_GET['user'] ?? null;
         $date = $_GET['date'] ?? null;
@@ -49,6 +50,10 @@ class NotificationController {
         if ($channel !== null && $channel !== '') {
             $query .= " AND nl.channel = :channel";
             $params['channel'] = $channel;
+        }
+        if ($provider !== null && $provider !== '') {
+            $query .= " AND nl.provider = :provider";
+            $params['provider'] = $provider;
         }
         if ($type !== null && $type !== '') {
             $query .= " AND nl.notification_type = :type";
@@ -107,6 +112,7 @@ class NotificationController {
             'filters' => [
                 'status' => $status,
                 'channel' => $channel,
+                'provider' => $provider,
                 'type' => $type,
                 'user' => $searchUser,
                 'date' => $date
@@ -151,6 +157,20 @@ class NotificationController {
             exit();
         }
 
+        // Redact sensitive secrets/OTP codes from payload before rendering
+        if (!empty($log['payload'])) {
+            $payloadData = json_decode($log['payload'], true);
+            if (is_array($payloadData)) {
+                $sensitiveKeys = ['otp_code', 'code', 'token', 'token_hash', 'password', 'secret', 'key'];
+                array_walk_recursive($payloadData, function(&$value, $key) use ($sensitiveKeys) {
+                    if (in_array(strtolower($key), $sensitiveKeys, true)) {
+                        $value = '[REDACTED]';
+                    }
+                });
+                $log['payload'] = json_encode($payloadData, JSON_PRETTY_PRINT);
+            }
+        }
+
         view('admin.notification_detail', ['log' => $log]);
     }
 
@@ -185,10 +205,52 @@ class NotificationController {
         if ($success) {
             $_SESSION['notification_success'] = "Notification enqueued for processing successfully.";
         } else {
-            $_SESSION['notification_error'] = "Could not retry the notification. Only failed or retrying notifications can be retried.";
+            $_SESSION['notification_error'] = "Could not retry the notification. The maximum delivery attempts have been reached (3/3), or the notification is not in a retryable status.";
         }
 
         header("Location: " . url("/admin/notifications/$encId"));
+        exit();
+    }
+
+    /**
+     * POST /admin/notifications/providers/test
+     * Admin health connection test for WACRM or Gmail SMTP
+     */
+    public function testProvider(): void {
+        Auth::requireRole(['admin']);
+        Auth::requirePermission('notifications.view');
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['notification_error'] = 'CSRF verification failed. Please try again.';
+            header("Location: " . url("/admin/notifications"));
+            exit();
+        }
+
+        $provider = strtolower(trim($_POST['provider'] ?? ''));
+        $testEmail = trim($_POST['test_email'] ?? '');
+
+        if ($provider === 'wacrm') {
+            $wacrm = new \App\Services\WhatsApp\WacrmWhatsAppProvider();
+            $status = $wacrm->testConnection();
+            if ($status === 'CONNECTED') {
+                $_SESSION['notification_success'] = "WACRM WhatsApp Provider is CONNECTED and operational.";
+            } else {
+                $_SESSION['notification_error'] = "WACRM WhatsApp Provider connection failed (Status: NOT CONNECTED). Please verify your WACRM_BASE_URL and WACRM_API_KEY.";
+            }
+        } elseif ($provider === 'smtp' || $provider === 'gmail') {
+            $emailService = new \App\Services\EmailNotificationService();
+            $res = $emailService->testConnection();
+            if ($res['success']) {
+                $_SESSION['notification_success'] = "Gmail SMTP connection, TLS handshake, and SMTP authentication verified successfully (Status: AUTHENTICATED). Zero emails sent.";
+            } else {
+                $_SESSION['notification_error'] = "Gmail SMTP verification failed: " . ($res['error'] ?? 'Unknown SMTP error');
+            }
+        } else {
+            $_SESSION['notification_error'] = "Invalid provider selected for testing.";
+        }
+
+        header("Location: " . url("/admin/notifications"));
         exit();
     }
 }

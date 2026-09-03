@@ -1,8 +1,11 @@
 <?php
 /**
  * Cron Job: Notification Queue Worker
- * Runs periodically (e.g., every minute) via CLI to dispatch pending alerts.
- * Usage: php cron/queue_worker.php
+ * Runs periodically (e.g., every minute) via CLI to dispatch pending emails and alerts.
+ * 
+ * Usage:
+ *   php cron/queue_worker.php
+ *   php cron/queue_worker.php --batch-size=50
  */
 
 if (php_sapi_name() !== 'cli') {
@@ -36,16 +39,25 @@ try {
 }
 
 // Set Timezone
-date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'UTC');
+date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Asia/Karachi');
 
-echo "Running notification queue worker...\n";
+// Parse CLI options
+$options = getopt('', ['batch-size:']);
+$batchSize = isset($options['batch-size']) ? max(1, (int)$options['batch-size']) : 100;
+
+echo "==================================================\n";
+echo " ScholarPlanner — Notification Queue Worker        \n";
+echo " Batch Size: {$batchSize} | Time: " . date('Y-m-d H:i:s') . "\n";
+echo "==================================================\n";
 
 try {
     $queueService = new NotificationQueueService();
-    $processed = $queueService->processQueue(100);
-    echo "✔ Processed {$processed} notifications from outbox queue.\n";
+    $processed = $queueService->processQueue($batchSize);
+    echo "✔ Processed {$processed} notification(s) from outbox queue.\n";
 } catch (\Exception $e) {
     Logger::error("Queue Worker Exception: " . $e->getMessage());
     echo "❌ Execution failed: " . $e->getMessage() . "\n";
     exit(1);
 }
+
+exit(0);

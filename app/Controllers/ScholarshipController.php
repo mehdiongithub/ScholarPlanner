@@ -288,6 +288,8 @@ class ScholarshipController {
         // Fetch lookups from database
         $degrees = $db->query("SELECT * FROM degree_levels WHERE status = 'active' ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
         $fundings = $db->query("SELECT * FROM funding_types WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $states = $db->query("SELECT id, name FROM states ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $institutions = $db->query("SELECT id, name, institution_type FROM institutions WHERE status = 'approved' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
         view('admin.scholarships.create', [
             'countries' => $countries,
@@ -296,6 +298,8 @@ class ScholarshipController {
             'categories' => $categories,
             'degrees' => $degrees,
             'fundings' => $fundings,
+            'states' => $states,
+            'institutions' => $institutions,
             'csrf_token' => Security::csrfToken(),
             'errors' => [],
             'old' => []
@@ -342,6 +346,8 @@ class ScholarshipController {
         $prefNationalities = (array)($_POST['eligible_nationalities'] ?? []);
         $prefDegrees = (array)($_POST['preferred_degrees'] ?? []);
         $reqDocs = (array)($_POST['required_documents'] ?? []);
+        $targetStates = (array)($_POST['target_states'] ?? []);
+        $targetInstitutions = (array)($_POST['target_institutions'] ?? []);
 
         // Eligibility Rules parameters
         $minAge = !empty($_POST['minimum_age']) ? (int)$_POST['minimum_age'] : null;
@@ -533,6 +539,24 @@ class ScholarshipController {
                 }
             }
 
+            // 5b. Save Target States / Provinces
+            $targetStates = array_unique(array_filter(array_map('intval', $targetStates)));
+            if (!empty($targetStates)) {
+                $stmtSt = $db->prepare("INSERT INTO scholarship_states (scholarship_id, state_id) VALUES (:sid, :st_id)");
+                foreach ($targetStates as $stId) {
+                    $stmtSt->execute(['sid' => $scholarshipId, 'st_id' => $stId]);
+                }
+            }
+
+            // 5c. Save Target Specific Institutions
+            $targetInstitutions = array_unique(array_filter(array_map('intval', $targetInstitutions)));
+            if (!empty($targetInstitutions)) {
+                $stmtInst = $db->prepare("INSERT INTO scholarship_institutions (scholarship_id, institution_id) VALUES (:sid, :inst_id)");
+                foreach ($targetInstitutions as $instId) {
+                    $stmtInst->execute(['sid' => $scholarshipId, 'inst_id' => $instId]);
+                }
+            }
+
             // 6. Save Documents
             $reqDocs = array_unique(array_filter(array_map('intval', $reqDocs)));
             if (!empty($reqDocs)) {
@@ -692,6 +716,10 @@ class ScholarshipController {
         // Fetch lookups from database
         $degrees = $db->query("SELECT * FROM degree_levels WHERE status = 'active' ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
         $fundings = $db->query("SELECT * FROM funding_types WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $states = $db->query("SELECT id, name FROM states ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $institutions = $db->query("SELECT id, name, institution_type FROM institutions WHERE status = 'approved' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $selectedStates = $db->query("SELECT state_id FROM scholarship_states WHERE scholarship_id = $id")->fetchAll(PDO::FETCH_COLUMN);
+        $selectedInstitutions = $db->query("SELECT institution_id FROM scholarship_institutions WHERE scholarship_id = $id")->fetchAll(PDO::FETCH_COLUMN);
 
         view('admin.scholarships.edit', [
             'scholarship' => $scholarship,
@@ -704,10 +732,14 @@ class ScholarshipController {
             'selectedNationalities' => $selectedNationalities,
             'selectedDegrees' => $selectedDegrees,
             'selectedDocs' => $selectedDocs,
+            'selectedStates' => $selectedStates,
+            'selectedInstitutions' => $selectedInstitutions,
+            'states' => $states,
+            'institutions' => $institutions,
             'rules' => $rules,
             'benefits' => $benefits,
             'languages' => $languages,
-            'source' => $source,
+            'source' => $source ?? null,
             'degrees' => $degrees,
             'fundings' => $fundings,
             'csrf_token' => Security::csrfToken(),
@@ -768,6 +800,8 @@ class ScholarshipController {
         $prefNationalities = (array)($_POST['eligible_nationalities'] ?? []);
         $prefDegrees = (array)($_POST['preferred_degrees'] ?? []);
         $reqDocs = (array)($_POST['required_documents'] ?? []);
+        $targetStates = (array)($_POST['target_states'] ?? []);
+        $targetInstitutions = (array)($_POST['target_institutions'] ?? []);
 
         // Eligibility Rules parameters
         $minAge = !empty($_POST['minimum_age']) ? (int)$_POST['minimum_age'] : null;
@@ -967,6 +1001,26 @@ class ScholarshipController {
                 $stmtDeg = $db->prepare("INSERT INTO scholarship_degree_levels (scholarship_id, degree_level) VALUES (:sid, :lvl)");
                 foreach ($prefDegrees as $lvl) {
                     $stmtDeg->execute(['sid' => $id, 'lvl' => $lvl]);
+                }
+            }
+
+            // 5b. Sync Target States / Provinces
+            $db->prepare("DELETE FROM scholarship_states WHERE scholarship_id = :sid")->execute(['sid' => $id]);
+            $targetStates = array_unique(array_filter(array_map('intval', $targetStates)));
+            if (!empty($targetStates)) {
+                $stmtSt = $db->prepare("INSERT INTO scholarship_states (scholarship_id, state_id) VALUES (:sid, :st_id)");
+                foreach ($targetStates as $stId) {
+                    $stmtSt->execute(['sid' => $id, 'st_id' => $stId]);
+                }
+            }
+
+            // 5c. Sync Target Specific Institutions
+            $db->prepare("DELETE FROM scholarship_institutions WHERE scholarship_id = :sid")->execute(['sid' => $id]);
+            $targetInstitutions = array_unique(array_filter(array_map('intval', $targetInstitutions)));
+            if (!empty($targetInstitutions)) {
+                $stmtInst = $db->prepare("INSERT INTO scholarship_institutions (scholarship_id, institution_id) VALUES (:sid, :inst_id)");
+                foreach ($targetInstitutions as $instId) {
+                    $stmtInst->execute(['sid' => $id, 'inst_id' => $instId]);
                 }
             }
 

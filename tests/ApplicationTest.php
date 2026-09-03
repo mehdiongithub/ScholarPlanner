@@ -131,6 +131,19 @@ class ApplicationTest {
         ");
         $stmtPref->execute([$this->userId, $this->userId]);
 
+        $stmtUserPref = $this->db->prepare("
+            INSERT INTO user_preferences (user_id, deadline_reminder_scope, deadline_reminder_days, email_enabled, whatsapp_enabled, created_at, updated_at)
+            VALUES (?, 'all', '7,3,1', 1, 1, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE deadline_reminder_scope = 'all', deadline_reminder_days = '7,3,1', updated_at = NOW()
+        ");
+        $stmtUserPref->execute([$this->userId]);
+
+        $stmtMatch2 = $this->db->prepare("
+            INSERT INTO scholarship_matches (user_id, scholarship_id, match_score, eligibility_status)
+            VALUES (?, ?, ?, 'ELIGIBLE')
+        ");
+        $stmtMatch2->execute([$this->userId, $this->secondScholarshipId, 90]);
+
         $this->db->commit();
     }
 

@@ -169,6 +169,8 @@
             $countriesVal = $old['preferred_countries'] ?? $selectedCountries;
             $nationalitiesVal = $old['eligible_nationalities'] ?? $selectedNationalities;
             $docsVal = $old['required_documents'] ?? $selectedDocs;
+            $statesVal = $old['target_states'] ?? ($selectedStates ?? []);
+            $institutionsVal = $old['target_institutions'] ?? ($selectedInstitutions ?? []);
 
             $minAgeVal = $old['minimum_age'] ?? ($rules['minimum_age'] ?? '');
             $maxAgeVal = $old['maximum_age'] ?? ($rules['maximum_age'] ?? '');
@@ -334,6 +336,30 @@
                                 <label class="checkbox-label">
                                     <input type="checkbox" name="preferred_countries[]" value="<?= e($c['id']) ?>" <?= in_array($c['id'], $countriesVal) ? 'checked' : '' ?>>
                                     <span><?= e($c['name']) ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Target Provinces / States (Leave empty for all provinces / Pakistan-wide)</label>
+                        <div class="checkbox-group">
+                            <?php foreach ($states as $st): ?>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="target_states[]" value="<?= e($st['id']) ?>" <?= in_array($st['id'], $statesVal) ? 'checked' : '' ?>>
+                                    <span><?= e($st['name']) ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Target Specific Institutions (Leave empty for all schools/colleges/universities)</label>
+                        <div class="checkbox-group" style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                            <?php foreach ($institutions as $inst): ?>
+                                <label class="checkbox-label" style="margin-bottom: 6px;">
+                                    <input type="checkbox" name="target_institutions[]" value="<?= e($inst['id']) ?>" <?= in_array($inst['id'], $institutionsVal) ? 'checked' : '' ?>>
+                                    <span><?= e($inst['name']) ?> <small style="color: #64748b;">(<?= e(ucfirst($inst['institution_type'])) ?>)</small></span>
                                 </label>
                             <?php endforeach; ?>
                         </div>

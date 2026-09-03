@@ -297,6 +297,30 @@
                             <?php endforeach; ?>
                         </div>
                     </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Target Provinces / States (Leave empty for all provinces / Pakistan-wide)</label>
+                        <div class="checkbox-group">
+                            <?php foreach ($states as $st): ?>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="target_states[]" value="<?= e($st['id']) ?>" <?= in_array($st['id'], $old['target_states'] ?? []) ? 'checked' : '' ?>>
+                                    <span><?= e($st['name']) ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Target Specific Institutions (Leave empty for all schools/colleges/universities)</label>
+                        <div class="checkbox-group" style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                            <?php foreach ($institutions as $inst): ?>
+                                <label class="checkbox-label" style="margin-bottom: 6px;">
+                                    <input type="checkbox" name="target_institutions[]" value="<?= e($inst['id']) ?>" <?= in_array($inst['id'], $old['target_institutions'] ?? []) ? 'checked' : '' ?>>
+                                    <span><?= e($inst['name']) ?> <small style="color: #64748b;">(<?= e(ucfirst($inst['institution_type'])) ?>)</small></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Section 3: Eligibility Rules -->

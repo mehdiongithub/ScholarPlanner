@@ -213,6 +213,78 @@
                 </div>
             </div>
 
+            <?php if (!empty($_SESSION['notification_success'])): ?>
+                <div style="background-color:#dcfce7; border:1px solid #86efac; color:#166534; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:0.875rem; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="check-circle" style="width:18px; height:18px;"></i>
+                    <span><?= e($_SESSION['notification_success']) ?></span>
+                </div>
+                <?php unset($_SESSION['notification_success']); ?>
+            <?php endif; ?>
+
+            <?php if (!empty($_SESSION['notification_error'])): ?>
+                <div style="background-color:#fee2e2; border:1px solid #fca5a5; color:#991b1b; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:0.875rem; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="alert-triangle" style="width:18px; height:18px;"></i>
+                    <span><?= e($_SESSION['notification_error']) ?></span>
+                </div>
+                <?php unset($_SESSION['notification_error']); ?>
+            <?php endif; ?>
+
+            <!-- Provider Health & Connectivity Panel -->
+            <div style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:24px; box-shadow:var(--shadow-sm);">
+                <h3 style="font-size:1.1rem; font-weight:700; margin:0 0 16px 0; display:flex; align-items:center; gap:8px; color:#1e293b;">
+                    <i data-lucide="activity" style="width:20px; height:20px; color:#3b82f6;"></i>
+                    Delivery Providers Health & Connectivity
+                </h3>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+                    <!-- WACRM Card -->
+                    <div style="border:1px solid #e2e8f0; border-radius:8px; padding:16px; background:#f8fafc;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <strong>WACRM WhatsApp</strong>
+                            <span style="font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:600; background:#dbeafe; color:#1e40af;">Scholarships & Alerts</span>
+                        </div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:4px;">Endpoint: <?= !empty($_ENV['WACRM_BASE_URL']) ? e($_ENV['WACRM_BASE_URL']) : '<span style="color:#ef4444;">Not Configured</span>' ?></div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:12px;">Auth: <?= !empty($_ENV['WACRM_API_KEY']) ? 'wacrm_' . substr(md5($_ENV['WACRM_API_KEY']), 0, 8) . '***' : '<span style="color:#ef4444;">Missing API Key</span>' ?></div>
+                        <form method="POST" action="<?= url('/admin/notifications/providers/test') ?>">
+                            <input type="hidden" name="csrf_token" value="<?= e(\App\Helpers\Security::csrfToken()) ?>">
+                            <input type="hidden" name="provider" value="wacrm">
+                            <button type="submit" class="btn-page" style="width:100%; cursor:pointer; font-weight:600; text-align:center;">
+                                <i data-lucide="refresh-cw" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:4px;"></i> Test WACRM Connection
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Gmail SMTP Card -->
+                    <div style="border:1px solid #e2e8f0; border-radius:8px; padding:16px; background:#f8fafc;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <strong>Gmail SMTP</strong>
+                            <span style="font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:600; background:#dcfce7; color:#166534;">Email Delivery</span>
+                        </div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:4px;">Host: <?= e($_ENV['MAIL_HOST'] ?? 'smtp.gmail.com') ?>:<?= e($_ENV['MAIL_PORT'] ?? '587') ?> (<?= e($_ENV['MAIL_ENCRYPTION'] ?? 'TLS') ?>)</div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:12px;">From: <?= e($_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@scholarmatch.com') ?></div>
+                        <form method="POST" action="<?= url('/admin/notifications/providers/test') ?>">
+                            <input type="hidden" name="csrf_token" value="<?= e(\App\Helpers\Security::csrfToken()) ?>">
+                            <input type="hidden" name="provider" value="smtp">
+                            <button type="submit" class="btn-page" style="width:100%; cursor:pointer; font-weight:600; text-align:center;">
+                                <i data-lucide="check" style="width:14px; height:14px; display:inline; vertical-align:middle; margin-right:4px;"></i> Test SMTP Connection
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Meta WhatsApp Card -->
+                    <div style="border:1px solid #e2e8f0; border-radius:8px; padding:16px; background:#f8fafc;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <strong>Meta WhatsApp</strong>
+                            <span style="font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:600; background:#fef3c7; color:#92400e;">Payment Confirmations</span>
+                        </div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:4px;">Phone ID: <?= !empty($_ENV['WHATSAPP_PHONE_NUMBER_ID']) ? e(substr($_ENV['WHATSAPP_PHONE_NUMBER_ID'], 0, 6) . '***') : 'Not Configured' ?></div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:12px;">Status: Active Provider for Meta Payments</div>
+                        <div style="font-size:0.75rem; color:#64748b; text-align:center; padding:6px; background:#fff; border-radius:4px; border:1px solid #e2e8f0;">
+                            Meta API Dedicated for Checkout
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Filters -->
             <div class="filter-card">
                 <form method="GET" action="<?= url('/admin/notifications') ?>">
@@ -227,6 +299,15 @@
                                 <option value="">All Channels</option>
                                 <option value="email" <?= ($filters['channel'] ?? '') === 'email' ? 'selected' : '' ?>>Email</option>
                                 <option value="whatsapp" <?= ($filters['channel'] ?? '') === 'whatsapp' ? 'selected' : '' ?>>WhatsApp</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Provider</label>
+                            <select name="provider" class="form-control">
+                                <option value="">All Providers</option>
+                                <option value="wacrm" <?= ($filters['provider'] ?? '') === 'wacrm' ? 'selected' : '' ?>>WACRM</option>
+                                <option value="smtp" <?= ($filters['provider'] ?? '') === 'smtp' ? 'selected' : '' ?>>SMTP / Gmail</option>
+                                <option value="meta" <?= ($filters['provider'] ?? '') === 'meta' ? 'selected' : '' ?>>Meta WhatsApp</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -274,6 +355,7 @@
                             <tr>
                                 <th>Recipient</th>
                                 <th>Channel</th>
+                                <th>Provider</th>
                                 <th>Type</th>
                                 <th>Subject / Info</th>
                                 <th>Status</th>
@@ -301,6 +383,11 @@
                                                 <?php else: ?>
                                                     <i data-lucide="message-square" style="width:14px; height:14px; color:#10b981;"></i> WhatsApp
                                                 <?php endif; ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span style="font-size:0.75rem; font-weight:600; padding:2px 6px; border-radius:4px; background:#f1f5f9; color:#475569; text-transform:uppercase;">
+                                                <?= e($log['provider'] ?? 'Default') ?>
                                             </span>
                                         </td>
                                         <td>

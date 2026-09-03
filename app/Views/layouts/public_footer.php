@@ -40,11 +40,10 @@
 
                 <div class="footer-col">
                     <h4>Legal</h4>
-                    <a href="#">Privacy Policy</a>
-                    <a href="#">Terms of Service</a>
-                    <a href="#">Cookie Policy</a>
-                    <a href="#">Refund Policy</a>
-                    <a href="#">WhatsApp Policy</a>
+                    <a href="<?= url('/privacy') ?>">Privacy Policy</a>
+                    <a href="<?= url('/terms') ?>">Terms of Service</a>
+                    <a href="<?= url('/faq') ?>">FAQ & Help</a>
+                    <a href="<?= url('/contact') ?>">Support</a>
                 </div>
             </div>
 

@@ -21,9 +21,29 @@ $router->get('/scholarships/{slug}', ['App\Controllers\ScholarshipController', '
 $router->get('/how-it-works', [PlaceholderController::class, 'howItWorks']);
 $router->get('/features', [PlaceholderController::class, 'features']);
 $router->get('/pricing', [PlaceholderController::class, 'pricing']);
-$router->get('/about', [PlaceholderController::class, 'about']);
-$router->get('/faq', [PlaceholderController::class, 'faq']);
-$router->get('/contact', [PlaceholderController::class, 'contact']);
+
+// Public Legal and Content Pages
+$router->get('/privacy', ['App\Controllers\PageController', 'privacy']);
+$router->get('/privacy-policy', ['App\Controllers\PageController', 'privacy']);
+$router->get('/privacy-policy.php', ['App\Controllers\PageController', 'privacy']);
+
+$router->get('/terms', ['App\Controllers\PageController', 'terms']);
+$router->get('/terms-of-service', ['App\Controllers\PageController', 'terms']);
+$router->get('/term-services', ['App\Controllers\PageController', 'terms']);
+$router->get('/term-services.php', ['App\Controllers\PageController', 'terms']);
+
+$router->get('/faq', ['App\Controllers\PageController', 'faq']);
+$router->get('/faq.php', ['App\Controllers\PageController', 'faq']);
+
+$router->get('/about', ['App\Controllers\PageController', 'about']);
+$router->get('/about-us', ['App\Controllers\PageController', 'about']);
+$router->get('/about.php', ['App\Controllers\PageController', 'about']);
+
+$router->get('/contact', ['App\Controllers\PageController', 'contact']);
+$router->get('/contact-us', ['App\Controllers\PageController', 'contact']);
+$router->get('/contact-us.php', ['App\Controllers\PageController', 'contact']);
+$router->post('/contact', ['App\Controllers\PageController', 'submitContact']);
+
 // Authentication and User Account System Endpoints
 $router->get('/register', ['App\Controllers\AuthController', 'showRegister']);
 $router->post('/register', ['App\Controllers\AuthController', 'register']);
@@ -75,6 +95,8 @@ $router->post('/profile/education/update', ['App\Controllers\ProfileController',
 $router->post('/profile/education/delete', ['App\Controllers\ProfileController', 'deleteEducation']);
 
 $router->post('/profile/preferences/update', ['App\Controllers\ProfileController', 'updatePreferences']);
+$router->post('/profile/notifications/update', ['App\Controllers\ProfileController', 'updateNotificationSettings']);
+$router->post('/profile/scholarships/reminder/toggle', ['App\Controllers\ProfileController', 'toggleScholarshipReminder']);
 
 // AJAX Cascading Select APIs
 $router->get('/api/states', ['App\Controllers\ProfileController', 'getStates']);
@@ -98,6 +120,7 @@ $router->post('/admin/institutions/{id}/delete', ['App\Controllers\DashboardCont
 $router->get('/admin/notifications', ['App\Controllers\NotificationController', 'index']);
 $router->get('/admin/notifications/{id}', ['App\Controllers\NotificationController', 'show']);
 $router->post('/admin/notifications/{id}/retry', ['App\Controllers\NotificationController', 'retry']);
+$router->post('/admin/notifications/providers/test', ['App\Controllers\NotificationController', 'testProvider']);
 
 // Document Management Routes
 $router->get('/documents', ['App\Controllers\DocumentController', 'index']);
@@ -151,6 +174,7 @@ $router->post('/admin/billing/refund', ['App\Controllers\BillingController', 're
 $router->get('/checkout/mock-screen', ['App\Controllers\BillingController', 'mockScreen']);
 $router->get('/checkout/redirect', ['App\Controllers\BillingController', 'redirectRedirect']);
 $router->post('/api/payments/webhook', ['App\Controllers\BillingController', 'webhook']);
+$router->post('/api/payments/cashmaal/ipn', ['App\Controllers\BillingController', 'cashmaalIpn']);
 
 // Complete Professional Admin Control Center Routes
 $router->get('/admin/users', ['App\Controllers\AdminController', 'usersIndex']);

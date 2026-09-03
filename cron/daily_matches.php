@@ -85,7 +85,6 @@ foreach ($userBatches as $batchIndex => $batch) {
     }
 }
 
-// Process queue items immediately after enqueuing
-echo "Processing notification queue...\n";
-$processed = $queueService->processQueue();
-echo "Daily Matches process completed. Dispatched $processed pending notifications.\n";
+// Finished enqueuing matching notifications
+echo "Daily Matches process completed. Matching notifications enqueued successfully.\n";
+

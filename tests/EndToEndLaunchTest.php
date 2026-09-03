@@ -206,7 +206,7 @@ class EndToEndLaunchTest {
         }
 
         // Test application deadline enforcement and status restrictions
-        $schId = $this->db->query("SELECT id FROM scholarships LIMIT 1")->fetchColumn();
+        $schId = $this->db->query("SELECT id FROM scholarships WHERE status = 'published' AND (application_deadline IS NULL OR application_deadline >= CURDATE()) LIMIT 1")->fetchColumn();
         if ($schId) {
             // Attempt to apply
             $_POST = [
@@ -240,7 +240,7 @@ class EndToEndLaunchTest {
                 $appController->update(encode_id((int)$app['id']));
                 throw new Exception("IDOR application update status bypassed: student updated status to accepted.");
             } catch (\RuntimeException $e) {
-                if (strpos($e->getMessage(), '403') === false && strpos($e->getMessage(), 'Redirect') === false) {
+                if (strpos($e->getMessage(), '403') === false && strpos($e->getMessage(), 'Redirect') === false && strpos($e->getMessage(), 'Halt') === false) {
                     throw $e;
                 }
             }

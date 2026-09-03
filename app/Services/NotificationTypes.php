@@ -5,6 +5,7 @@ namespace App\Services;
 class NotificationTypes {
     public const NEW_MATCH = 'NEW_MATCH';
     public const DEADLINE_REMINDER = 'DEADLINE_REMINDER';
+    public const EMAIL_VERIFICATION = 'EMAIL_VERIFICATION';
 
     // Existing types (for backwards compatibility/existing code)
     public const SCHOLARSHIP_DEADLINE_SOON = 'SCHOLARSHIP_DEADLINE_SOON';

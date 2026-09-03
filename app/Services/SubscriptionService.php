@@ -166,4 +166,51 @@ class SubscriptionService {
 
         return $success;
     }
+
+    /**
+     * Calculate subscription expiry timestamp string based on plan configuration.
+     *
+     * @param array|int $plan Plan array or plan ID
+     * @param string|null $fromTime Base time string (default now)
+     * @return string MySQL datetime format
+     */
+    public static function calculatePlanExpiry($plan, ?string $fromTime = null): string {
+        $baseTime = $fromTime ? strtotime($fromTime) : time();
+        
+        $planData = is_array($plan) ? $plan : null;
+        if (!$planData && is_numeric($plan)) {
+            $db = Database::connection();
+            $stmt = $db->prepare("SELECT * FROM subscription_plans WHERE id = :id LIMIT 1");
+            $stmt->execute(['id' => (int)$plan]);
+            $planData = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
+
+        // 1. Explicit duration in days
+        if (!empty($planData['duration_days']) && (int)$planData['duration_days'] > 0) {
+            $days = (int)$planData['duration_days'];
+            return date('Y-m-d H:i:s', $baseTime + ($days * 86400));
+        }
+
+        // 2. Based on billing_interval
+        $interval = strtolower(trim((string)($planData['billing_interval'] ?? 'month')));
+        switch ($interval) {
+            case 'year':
+            case 'yearly':
+            case 'annual':
+                return date('Y-m-d H:i:s', strtotime('+1 year', $baseTime));
+            case 'quarter':
+            case 'quarterly':
+                return date('Y-m-d H:i:s', strtotime('+3 months', $baseTime));
+            case 'week':
+            case 'weekly':
+                return date('Y-m-d H:i:s', strtotime('+1 week', $baseTime));
+            case 'day':
+            case 'daily':
+                return date('Y-m-d H:i:s', strtotime('+1 day', $baseTime));
+            case 'month':
+            case 'monthly':
+            default:
+                return date('Y-m-d H:i:s', strtotime('+1 month', $baseTime));
+        }
+    }
 }

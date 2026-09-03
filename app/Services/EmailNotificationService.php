@@ -175,10 +175,94 @@ class EmailNotificationService {
         return $response;
     }
 
+    /**
+     * Test SMTP connectivity, TLS handshake, and SMTP Authentication without sending an email.
+     *
+     * @return array Structure: ['success' => bool, 'status' => string, 'message' => ?string, 'error' => ?string]
+     */
+    public function testConnection(): array {
+        $mailer = $this->config['mailer'] ?? 'smtp';
+
+        // In test mode with log driver
+        if ($mailer === 'log' && (defined('TESTING_MODE') && TESTING_MODE)) {
+            return [
+                'success' => true,
+                'status' => 'AUTHENTICATED',
+                'message' => 'SMTP configuration valid and authentication successful (Log Driver Mode).'
+            ];
+        }
+
+        $host = $this->config['host'] ?? '127.0.0.1';
+        $port = (int)($this->config['port'] ?? 25);
+        $username = $this->config['username'] ?? '';
+        $password = $this->config['password'] ?? '';
+        $encryption = strtolower($this->config['encryption'] ?? '');
+
+        $socketHost = $host;
+        if ($encryption === 'ssl') {
+            $socketHost = 'ssl://' . $host;
+        }
+
+        $socket = @fsockopen($socketHost, $port, $errno, $errstr, 10);
+        if (!$socket) {
+            return [
+                'success' => false,
+                'status' => 'CONNECTION_FAILED',
+                'error' => $this->redactError("Could not connect to SMTP host $host:$port ($errno: $errstr)")
+            ];
+        }
+
+        stream_set_timeout($socket, 10);
+
+        try {
+            // 1. Initial 220 banner
+            $this->readSmtpResponse($socket, 220);
+
+            // 2. EHLO
+            $this->writeSmtpCommand($socket, "EHLO " . ($_SERVER['SERVER_NAME'] ?? 'localhost'), 250);
+
+            // 3. STARTTLS if configured
+            if ($encryption === 'tls') {
+                $this->writeSmtpCommand($socket, "STARTTLS", 220);
+                if (!@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    throw new \Exception("TLS handshake negotiation failed on host $host:$port");
+                }
+                // EHLO after TLS
+                $this->writeSmtpCommand($socket, "EHLO " . ($_SERVER['SERVER_NAME'] ?? 'localhost'), 250);
+            }
+
+            // 4. SMTP Authentication
+            if (!empty($username) && !empty($password)) {
+                $this->writeSmtpCommand($socket, "AUTH LOGIN", 334);
+                $this->writeSmtpCommand($socket, base64_encode($username), 334);
+                $this->writeSmtpCommand($socket, base64_encode($password), 235);
+            }
+
+            // Clean QUIT without sending any email
+            $this->writeSmtpCommand($socket, "QUIT", 221);
+
+            return [
+                'success' => true,
+                'status' => 'AUTHENTICATED',
+                'message' => 'SMTP configuration valid and authentication successful.'
+            ];
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'status' => 'AUTH_FAILED',
+                'error' => $this->redactError($e->getMessage())
+            ];
+        } finally {
+            if (is_resource($socket)) {
+                fclose($socket);
+            }
+        }
+    }
+
     private function redactError(string $err): string {
         $patterns = [
             '/(password|pass|secret|token|key|auth|easypaisa|jazzcash)=[^&\s\n]+/i' => '$1=[REDACTED]',
-            '/(Authorization|Bearer)\s*:?\s*[a-zA-Z0-9_\-\.]+/i' => '$1 [REDACTED]',
+            '/(Authorization|Bearer)\s*:?\s*(Bearer\s*)?[a-zA-Z0-9_\-\.]+/i' => '$1 [REDACTED]',
             '/[a-zA-Z0-9+\/]{40,}/' => '[REDACTED_BASE64_STRING]'
         ];
         return preg_replace(array_keys($patterns), array_values($patterns), $err);

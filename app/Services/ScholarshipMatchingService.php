@@ -27,6 +27,7 @@ class ScholarshipMatchingService {
             $prefFields = $preloadedUserData['prefFields'];
             $prefDegrees = $preloadedUserData['prefDegrees'];
             $userFieldId = $preloadedUserData['userFieldId'];
+            $userInstStateId = $preloadedUserData['userInstStateId'] ?? null;
         } else {
             $stmt = $this->db->prepare("SELECT * FROM student_profiles WHERE user_id = :user_id LIMIT 1");
             $stmt->execute(['user_id' => $userId]);
@@ -37,13 +38,17 @@ class ScholarshipMatchingService {
             }
 
             $stmtEdu = $this->db->prepare("
-                SELECT * FROM education_records 
-                WHERE user_id = :user_id 
-                ORDER BY is_current DESC, end_date DESC, start_date DESC 
+                SELECT er.*, inst.state_id as inst_state_id 
+                FROM education_records er
+                LEFT JOIN institutions inst ON er.institution_id = inst.id
+                WHERE er.user_id = :user_id 
+                ORDER BY er.is_current DESC, er.end_date DESC, er.start_date DESC 
                 LIMIT 1
             ");
             $stmtEdu->execute(['user_id' => $userId]);
             $education = $stmtEdu->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            $userInstStateId = $education['inst_state_id'] ?? null;
 
             $stmtPref = $this->db->prepare("SELECT * FROM user_preferences WHERE user_id = :user_id LIMIT 1");
             $stmtPref->execute(['user_id' => $userId]);
@@ -83,6 +88,8 @@ class ScholarshipMatchingService {
             $schDegrees = $preloadedSchData['degrees'];
             $schNationalities = $preloadedSchData['nationalities'];
             $schLanguages = $preloadedSchData['languages'];
+            $schStates = $preloadedSchData['states'] ?? [];
+            $schInstitutions = $preloadedSchData['institutions'] ?? [];
         } else {
             $stmtSch = $this->db->prepare("SELECT * FROM scholarships WHERE id = :id LIMIT 1");
             $stmtSch->execute(['id' => $scholarshipId]);
@@ -101,6 +108,8 @@ class ScholarshipMatchingService {
             $schDegrees = $this->db->query("SELECT degree_level FROM scholarship_degree_levels WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
             $schNationalities = $this->db->query("SELECT country_id FROM scholarship_eligible_nationalities WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
             $schLanguages = $this->db->query("SELECT * FROM scholarship_languages WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_ASSOC);
+            $schStates = $this->db->query("SELECT state_id FROM scholarship_states WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
+            $schInstitutions = $this->db->query("SELECT institution_id FROM scholarship_institutions WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
         }
 
         if (!$scholarship || $scholarship['status'] !== 'published') {
@@ -117,47 +126,55 @@ class ScholarshipMatchingService {
         $natRes = $this->evaluateNationality($profile, $schNationalities);
         $evaluations['nationality'] = $natRes;
 
-        // Evaluator 2: Age
+        // Evaluator 2: Geographic Province / State
+        $stateRes = $this->evaluateState($profile, $education, $schStates, $userInstStateId);
+        $evaluations['state'] = $stateRes;
+
+        // Evaluator 3: Education Level / Study Level
+        $degRes = $this->evaluateEducationLevel($education, $schDegrees);
+        $evaluations['degree'] = $degRes;
+
+        // Evaluator 4: Specific Educational Institution
+        $instRes = $this->evaluateInstitution($education, $schInstitutions);
+        $evaluations['institution'] = $instRes;
+
+        // Evaluator 5: Age
         $ageRes = $this->evaluateAge($profile, $rules['minimum_age'] ?? null, $rules['maximum_age'] ?? null);
         $evaluations['age'] = $ageRes;
 
-        // Evaluator 3: Degree
-        $degRes = $this->evaluateDegree($education, $schDegrees);
-        $evaluations['degree'] = $degRes;
-
-        // Evaluator 4: Field of study
+        // Evaluator 6: Field of study
         $fieldRes = $this->evaluateField($education, $schFields, $userFieldId);
         $evaluations['field'] = $fieldRes;
 
-        // Evaluator 5: CGPA & scale
+        // Evaluator 7: CGPA & scale
         $cgpaRes = $this->evaluateCgpa($education, $rules['minimum_cgpa'] ?? null, $rules['cgpa_scale'] ?? null);
         $evaluations['cgpa'] = $cgpaRes;
 
-        // Evaluator 6: Percentage
+        // Evaluator 8: Percentage
         $pctRes = $this->evaluatePercentage($education, $rules['minimum_percentage'] ?? null);
         $evaluations['percentage'] = $pctRes;
 
-        // Evaluator 7: Gender
+        // Evaluator 9: Gender
         $genderRes = $this->evaluateGender($profile, $rules['gender_requirement'] ?? null);
         $evaluations['gender'] = $genderRes;
 
-        // Evaluator 8: Language tests (IELTS, TOEFL, PTE, Duolingo)
+        // Evaluator 10: Language tests (IELTS, TOEFL, PTE, Duolingo)
         $langRes = $this->evaluateLanguages($profile, $schLanguages);
         $evaluations['languages'] = $langRes;
 
-        // Evaluator 9: Deadline
+        // Evaluator 11: Deadline
         $deadlineRes = $this->evaluateDeadline($scholarship['application_deadline']);
         $evaluations['deadline'] = $deadlineRes;
 
-        // Evaluator 10: Country match preference (Soft)
+        // Evaluator 12: Country match preference (Soft)
         $countryPrefRes = $this->evaluateCountryPreference($scholarship, $prefCountries, $schCountries);
         $evaluations['country_pref'] = $countryPrefRes;
 
-        // Evaluator 11: Field match preference (Soft)
+        // Evaluator 13: Field match preference (Soft)
         $fieldPrefRes = $this->evaluateFieldPreference($schFields, $prefFields);
         $evaluations['field_pref'] = $fieldPrefRes;
 
-        // Evaluator 12: Funding preference (Soft)
+        // Evaluator 14: Funding preference (Soft)
         $fundingPrefRes = $this->evaluateFundingPreference($scholarship, $profile, $preferences);
         $evaluations['funding_pref'] = $fundingPrefRes;
 
@@ -172,8 +189,8 @@ class ScholarshipMatchingService {
             }
         }
 
-        // 5. Determine eligibility status
-        $hardKeys = ['nationality', 'age', 'degree', 'field', 'cgpa', 'percentage', 'gender', 'languages', 'deadline'];
+        // 5. Determine eligibility status using strict AND logic across all hard criteria
+        $hardKeys = ['nationality', 'state', 'degree', 'institution', 'age', 'field', 'cgpa', 'percentage', 'gender', 'languages', 'deadline'];
         $hasFailedHard = false;
         $hasMissingHard = false;
 
@@ -196,30 +213,30 @@ class ScholarshipMatchingService {
         // 6. Calculate Score based on weights (Eligibility: 70%, Preferences: 30%)
         $score = 0;
 
-        if ($natRes['status'] === 'MATCHED') $score += 12;
-        if ($ageRes['status'] === 'MATCHED') $score += 12;
-        if ($degRes['status'] === 'MATCHED') $score += 12;
-        if ($fieldRes['status'] === 'MATCHED') $score += 12;
+        if ($natRes['status'] === 'MATCHED') $score += 10;
+        if ($stateRes['status'] === 'MATCHED') $score += 10;
+        if ($degRes['status'] === 'MATCHED') $score += 10;
+        if ($instRes['status'] === 'MATCHED') $score += 10;
+        if ($ageRes['status'] === 'MATCHED') $score += 10;
+        if ($fieldRes['status'] === 'MATCHED') $score += 10;
 
         if ($cgpaRes['status'] === 'MATCHED' || $pctRes['status'] === 'MATCHED') {
-            $score += 12;
+            $score += 10;
         }
-
-        if ($langRes['status'] === 'MATCHED') $score += 10;
 
         if ($countryPrefRes['status'] === 'MATCHED') $score += 10;
         if ($fieldPrefRes['status'] === 'MATCHED') $score += 10;
         if ($fundingPrefRes['status'] === 'MATCHED') $score += 10;
 
         // If NOT_ELIGIBLE, final score is capped to 0
-        $finalScore = ($eligibilityStatus === 'NOT_ELIGIBLE') ? 0 : $score;
+        $finalScore = ($eligibilityStatus === 'NOT_ELIGIBLE') ? 0 : min(100, $score);
 
         // 7. Recommendation Level
         $recLevel = 'NOT_RECOMMENDED';
         if ($eligibilityStatus === 'ELIGIBLE') {
-            if ($finalScore >= 85) {
+            if ($finalScore >= 80) {
                 $recLevel = 'HIGHLY_RECOMMENDED';
-            } elseif ($finalScore >= 70) {
+            } elseif ($finalScore >= 65) {
                 $recLevel = 'RECOMMENDED';
             } else {
                 $recLevel = 'POSSIBLE_MATCH';
@@ -302,13 +319,17 @@ class ScholarshipMatchingService {
         }
 
         $stmtEdu = $this->db->prepare("
-            SELECT * FROM education_records 
-            WHERE user_id = :user_id 
-            ORDER BY is_current DESC, end_date DESC, start_date DESC 
+            SELECT er.*, inst.state_id as inst_state_id 
+            FROM education_records er
+            LEFT JOIN institutions inst ON er.institution_id = inst.id
+            WHERE er.user_id = :user_id 
+            ORDER BY er.is_current DESC, er.end_date DESC, er.start_date DESC 
             LIMIT 1
         ");
         $stmtEdu->execute(['user_id' => $userId]);
         $education = $stmtEdu->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $userInstStateId = $education['inst_state_id'] ?? null;
 
         $stmtPref = $this->db->prepare("SELECT * FROM user_preferences WHERE user_id = :user_id LIMIT 1");
         $stmtPref->execute(['user_id' => $userId]);
@@ -341,7 +362,8 @@ class ScholarshipMatchingService {
             'prefCountries' => $prefCountries,
             'prefFields' => $prefFields,
             'prefDegrees' => $prefDegrees,
-            'userFieldId' => $userFieldId
+            'userFieldId' => $userFieldId,
+            'userInstStateId' => $userInstStateId
         ];
 
         // 2. Preload scholarship data in bulk
@@ -396,6 +418,20 @@ class ScholarshipMatchingService {
             $languagesMap[$l['scholarship_id']][] = $l;
         }
 
+        // Preload states (provinces)
+        $rawStates = $this->db->query("SELECT * FROM scholarship_states WHERE scholarship_id IN ($schIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+        $statesMap = [];
+        foreach ($rawStates as $st) {
+            $statesMap[$st['scholarship_id']][] = (int)$st['state_id'];
+        }
+
+        // Preload institutions
+        $rawInstitutions = $this->db->query("SELECT * FROM scholarship_institutions WHERE scholarship_id IN ($schIdsString)")->fetchAll(PDO::FETCH_ASSOC);
+        $institutionsMap = [];
+        foreach ($rawInstitutions as $inst) {
+            $institutionsMap[$inst['scholarship_id']][] = (int)$inst['institution_id'];
+        }
+
         // 3. Execute matching and save results in bulk
         $this->db->beginTransaction();
         try {
@@ -408,7 +444,9 @@ class ScholarshipMatchingService {
                     'fields' => $fieldsMap[$sid] ?? [],
                     'degrees' => $degreesMap[$sid] ?? [],
                     'nationalities' => $nationalitiesMap[$sid] ?? [],
-                    'languages' => $languagesMap[$sid] ?? []
+                    'languages' => $languagesMap[$sid] ?? [],
+                    'states' => $statesMap[$sid] ?? [],
+                    'institutions' => $institutionsMap[$sid] ?? []
                 ];
 
                 $match = $this->matchUserAndScholarship($userId, $sid, $userData, $schData);
@@ -423,6 +461,99 @@ class ScholarshipMatchingService {
 
     // --- Core Rule Evaluators ---
 
+    /**
+     * Evaluates geographic province / state eligibility
+     */
+    private function evaluateState(array $profile, ?array $education, array $schStates, ?int $userInstStateId = null): array {
+        if (empty($schStates)) {
+            return ['status' => 'MATCHED', 'message' => 'Open to all provinces/regions (Pakistan-wide/Global).'];
+        }
+
+        $userStateId = !empty($profile['residence_state_id']) ? (int)$profile['residence_state_id'] : null;
+
+        // Check user residence state
+        if ($userStateId !== null && in_array($userStateId, $schStates, true)) {
+            return ['status' => 'MATCHED', 'message' => 'Your province/state of residence meets the geographic criteria.'];
+        }
+
+        // Check user institution state
+        if ($userInstStateId !== null && in_array((int)$userInstStateId, $schStates, true)) {
+            return ['status' => 'MATCHED', 'message' => 'Your educational institution province/state meets the geographic criteria.'];
+        }
+
+        if ($userStateId === null && $userInstStateId === null) {
+            return ['status' => 'MISSING', 'message' => 'Province/State is not specified in your profile.'];
+        }
+
+        return ['status' => 'FAILED', 'message' => 'Your province/state does not meet the geographic restrictions for this opportunity.'];
+    }
+
+    /**
+     * Evaluates education level / study level eligibility (School, College, University)
+     */
+    private function evaluateEducationLevel(?array $education, array $schDegrees): array {
+        if (empty($schDegrees)) {
+            return ['status' => 'MATCHED', 'message' => 'Open to all education levels.'];
+        }
+        if (!$education || empty($education['degree_level'])) {
+            return ['status' => 'MISSING', 'message' => 'Education level is not specified in your profile.'];
+        }
+
+        $userDegree = trim($education['degree_level']);
+
+        // Check exact match
+        if (in_array($userDegree, $schDegrees, true)) {
+            return ['status' => 'MATCHED', 'message' => "Education level ($userDegree) matches the required study level."];
+        }
+
+        // Canonical mapping groups
+        $schoolGroup = ['School', 'High School', 'Matric', 'Matriculation', 'O-Level', 'Secondary School', 'Middle School'];
+        $collegeGroup = ['College', 'Intermediate', 'HSSC', 'FSc', 'FA', 'ICS', 'ICom', 'A-Level', 'Higher Secondary', 'Intermediate / College'];
+        $undergradGroup = ['Bachelor\'s', 'Undergraduate', 'Associate Degree', 'BS', 'BSc', 'BBA', 'MBBS', 'B.Ed', 'LLB'];
+        $mastersGroup = ['Master\'s', 'MPhil', 'Graduate', 'Postgraduate', 'MS', 'MSc', 'MBA', 'LLM', 'M.Ed'];
+        $phdGroup = ['PhD', 'Doctorate', 'Postdoctoral'];
+
+        foreach ($schDegrees as $reqDegree) {
+            $req = trim($reqDegree);
+            if (in_array($req, $schoolGroup, true) && in_array($userDegree, $schoolGroup, true)) {
+                return ['status' => 'MATCHED', 'message' => "School education level ($userDegree) matches requirement ($req)."];
+            }
+            if (in_array($req, $collegeGroup, true) && in_array($userDegree, $collegeGroup, true)) {
+                return ['status' => 'MATCHED', 'message' => "College education level ($userDegree) matches requirement ($req)."];
+            }
+            if (in_array($req, $undergradGroup, true) && in_array($userDegree, $undergradGroup, true)) {
+                return ['status' => 'MATCHED', 'message' => "Undergraduate education level ($userDegree) matches requirement ($req)."];
+            }
+            if (in_array($req, $mastersGroup, true) && in_array($userDegree, $mastersGroup, true)) {
+                return ['status' => 'MATCHED', 'message' => "Master's/MPhil education level ($userDegree) matches requirement ($req)."];
+            }
+            if (in_array($req, $phdGroup, true) && in_array($userDegree, $phdGroup, true)) {
+                return ['status' => 'MATCHED', 'message' => "Doctoral education level ($userDegree) matches requirement ($req)."];
+            }
+        }
+
+        return ['status' => 'FAILED', 'message' => "Your education level ($userDegree) is not eligible for this opportunity."];
+    }
+
+    /**
+     * Evaluates specific school / college / university institution restriction
+     */
+    private function evaluateInstitution(?array $education, array $schInstitutions): array {
+        if (empty($schInstitutions)) {
+            return ['status' => 'MATCHED', 'message' => 'Open to all educational institutions.'];
+        }
+        if (!$education || empty($education['institution_id'])) {
+            return ['status' => 'MISSING', 'message' => 'Educational institution is not specified in your profile.'];
+        }
+
+        $userInstId = (int)$education['institution_id'];
+        if (in_array($userInstId, $schInstitutions, true)) {
+            return ['status' => 'MATCHED', 'message' => 'Your educational institution meets the specific institution requirement.'];
+        }
+
+        return ['status' => 'FAILED', 'message' => 'This opportunity is restricted to students of specific educational institutions.'];
+    }
+
     private function evaluateNationality(array $profile, array $eligibleNationalities): array {
         if (empty($eligibleNationalities)) {
             return ['status' => 'MATCHED', 'message' => 'Open to all nationalities.'];
@@ -430,7 +561,7 @@ class ScholarshipMatchingService {
         if (empty($profile['nationality_country_id'])) {
             return ['status' => 'MISSING', 'message' => 'Nationality is not provided.'];
         }
-        if (in_array((int)$profile['nationality_country_id'], $eligibleNationalities)) {
+        if (in_array((int)$profile['nationality_country_id'], $eligibleNationalities, true)) {
             return ['status' => 'MATCHED', 'message' => 'Your nationality meets the eligibility requirements.'];
         }
         return ['status' => 'FAILED', 'message' => 'Your nationality is not eligible for this scholarship.'];
@@ -459,21 +590,6 @@ class ScholarshipMatchingService {
         return ['status' => 'MATCHED', 'message' => "Age ($age) is within the eligible range."];
     }
 
-    private function evaluateDegree(?array $education, array $requiredDegrees): array {
-        if (empty($requiredDegrees)) {
-            return ['status' => 'MATCHED', 'message' => 'Open to all degree levels.'];
-        }
-        if (!$education) {
-            return ['status' => 'MISSING', 'message' => 'Education history is not provided.'];
-        }
-
-        if (in_array($education['degree_level'], $requiredDegrees)) {
-            return ['status' => 'MATCHED', 'message' => "Current degree level ({$education['degree_level']}) matches target degrees."];
-        }
-
-        return ['status' => 'FAILED', 'message' => "Degree level ({$education['degree_level']}) does not match requirements."];
-    }
-
     private function evaluateField(?array $education, array $requiredFields, ?int $userFieldId): array {
         if (empty($requiredFields)) {
             return ['status' => 'MATCHED', 'message' => 'Open to all fields of study.'];
@@ -482,7 +598,7 @@ class ScholarshipMatchingService {
             return ['status' => 'MISSING', 'message' => 'Education history is not provided.'];
         }
 
-        if ($userFieldId !== null && in_array($userFieldId, $requiredFields)) {
+        if ($userFieldId !== null && in_array($userFieldId, $requiredFields, true)) {
             return ['status' => 'MATCHED', 'message' => "Your field of study ({$education['field_of_study']}) is eligible."];
         }
 
@@ -631,12 +747,12 @@ class ScholarshipMatchingService {
             return ['status' => 'MATCHED', 'message' => 'No country destination preferences set.'];
         }
 
-        if (in_array((int)$scholarship['country_id'], $prefCountries)) {
+        if (in_array((int)$scholarship['country_id'], $prefCountries, true)) {
             return ['status' => 'MATCHED', 'message' => 'Host country matches your preferred destinations.'];
         }
 
         foreach ($schCountries as $cid) {
-            if (in_array((int)$cid, $prefCountries)) {
+            if (in_array((int)$cid, $prefCountries, true)) {
                 return ['status' => 'MATCHED', 'message' => 'Host country matches preferred destinations.'];
             }
         }
@@ -650,7 +766,7 @@ class ScholarshipMatchingService {
         }
 
         foreach ($schFields as $fid) {
-            if (in_array((int)$fid, $prefFields)) {
+            if (in_array((int)$fid, $prefFields, true)) {
                 return ['status' => 'MATCHED', 'message' => 'Scholarship matches your preferred disciplines.'];
             }
         }
@@ -670,7 +786,7 @@ class ScholarshipMatchingService {
             return ['status' => 'MATCHED', 'message' => 'No funding mode preferences set.'];
         }
 
-        if (strtolower($scholarship['funding_type']) === strtolower($pref)) {
+        if (strtolower($scholarship['funding_type'] ?? '') === strtolower($pref)) {
             return ['status' => 'MATCHED', 'message' => "Funding mode matches your preference ($pref)."];
         }
 
@@ -704,6 +820,8 @@ class ScholarshipMatchingService {
         $schDegrees = $this->db->query("SELECT degree_level FROM scholarship_degree_levels WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
         $schNationalities = $this->db->query("SELECT country_id FROM scholarship_eligible_nationalities WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
         $schLanguages = $this->db->query("SELECT * FROM scholarship_languages WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_ASSOC);
+        $schStates = $this->db->query("SELECT state_id FROM scholarship_states WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
+        $schInstitutions = $this->db->query("SELECT institution_id FROM scholarship_institutions WHERE scholarship_id = $scholarshipId")->fetchAll(PDO::FETCH_COLUMN);
 
         $schData = [
             'scholarship' => $scholarship,
@@ -712,7 +830,9 @@ class ScholarshipMatchingService {
             'fields' => $schFields,
             'degrees' => $schDegrees,
             'nationalities' => $schNationalities,
-            'languages' => $schLanguages
+            'languages' => $schLanguages,
+            'states' => $schStates,
+            'institutions' => $schInstitutions
         ];
 
         // 2. Fetch all visitor user IDs and emails
@@ -745,16 +865,18 @@ class ScholarshipMatchingService {
                 $profilesMap[$p['user_id']] = $p;
             }
 
-            // Preload educations
+            // Preload educations with institution state
             $educations = $this->db->query("
-                SELECT * FROM education_records 
-                WHERE user_id IN ($userIdsString)
-                ORDER BY is_current DESC, end_date DESC, start_date DESC
+                SELECT er.*, inst.state_id as inst_state_id 
+                FROM education_records er
+                LEFT JOIN institutions inst ON er.institution_id = inst.id
+                WHERE er.user_id IN ($userIdsString)
+                ORDER BY er.is_current DESC, er.end_date DESC, er.start_date DESC
             ")->fetchAll(PDO::FETCH_ASSOC);
             $eduMap = [];
             foreach ($educations as $e) {
                 if (!isset($eduMap[$e['user_id']])) {
-                    $eduMap[$e['user_id']] = $e; // keep only the latest/current
+                    $eduMap[$e['user_id']] = $e; // keep only latest/current
                 }
             }
 
@@ -818,19 +940,21 @@ class ScholarshipMatchingService {
                         'prefCountries' => $prefCountriesMap[$uid] ?? [],
                         'prefFields' => $prefFieldsMap[$uid] ?? [],
                         'prefDegrees' => $prefDegreesMap[$uid] ?? [],
-                        'userFieldId' => $userFieldIds[$uid] ?? null
+                        'userFieldId' => $userFieldIds[$uid] ?? null,
+                        'userInstStateId' => $eduMap[$uid]['inst_state_id'] ?? null
                     ];
 
                     $match = $this->matchUserAndScholarship($uid, $scholarshipId, $userData, $schData);
                     
-                    if ($match['eligibility_status'] === 'eligible') {
+                    if ($match['eligibility_status'] === 'ELIGIBLE') {
                         $match['user_id'] = $uid;
                         $match['scholarship_id'] = $scholarshipId;
                         $this->saveMatch($match);
                         $matchedCount++;
 
-                        // Enqueue notification. Queue handler filters preferences and plans.
-                        $notifQueue->enqueue(
+                        // Enqueue notification with deterministic idempotency key
+                        $idempotencyKey = "new_match_{$uid}_{$scholarshipId}";
+                        $enqueued = $notifQueue->enqueue(
                             $uid,
                             $scholarshipId,
                             'NEW_MATCH',
@@ -842,10 +966,15 @@ class ScholarshipMatchingService {
                                 'provider' => $scholarship['provider_name'],
                                 'country' => $scholarship['country_name'] ?? 'Multi-Country',
                                 'deadline' => $scholarship['application_deadline'],
-                            ]
+                                'score' => $match['match_score'],
+                                'detail_url' => url('/scholarships/' . $scholarship['slug'])
+                            ],
+                            $idempotencyKey
                         );
-                        $queuedCount++;
-                        $emailsSent++;
+                        if ($enqueued) {
+                            $queuedCount++;
+                            $emailsSent++;
+                        }
                     }
                 }
                 $this->db->commit();

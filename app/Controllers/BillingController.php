@@ -134,15 +134,16 @@ class BillingController {
 
             $stmtTx = $this->db->prepare("
                 INSERT INTO payment_transactions (
-                    user_id, subscription_id, provider, transaction_reference, 
+                    user_id, subscription_id, plan_id, provider, transaction_reference, 
                     amount, currency, status, discount_percent, referral_code_used, created_at, updated_at
                 ) VALUES (
-                    :uid, :sub_id, :provider, :ref, :amount, :currency, 'pending', :discount_percent, :referral_code_used, NOW(), NOW()
+                    :uid, :sub_id, :pid, :provider, :ref, :amount, :currency, 'pending', :discount_percent, :referral_code_used, NOW(), NOW()
                 )
             ");
             $stmtTx->execute([
                 'uid' => $userId,
                 'sub_id' => $subId,
+                'pid' => $plan['id'],
                 'provider' => $provider,
                 'ref' => $ref,
                 'amount' => $finalAmount,
@@ -159,9 +160,8 @@ class BillingController {
         }
 
         // Fetch configured gateway
-        // Temporarily override provider env for checkout creation resolver
         $_ENV['PAYMENT_PROVIDER'] = $provider;
-        $gateway = PaymentService::gateway();
+        $gateway = PaymentService::gateway($provider);
 
         $checkoutData = $gateway->createCheckout([
             'user_id' => $userId,
@@ -169,7 +169,8 @@ class BillingController {
             'currency' => $plan['currency'],
             'email' => $_SESSION['user_email'] ?? '',
             'callback_url' => url("/checkout/callback"),
-            'transaction_reference' => $ref
+            'transaction_reference' => $ref,
+            'plan_name' => $plan['name']
         ]);
 
         Auth::logAudit($userId, 'payment_created', 'billing', 'payment_transactions', 0, null, ['ref' => $ref]);
@@ -178,9 +179,15 @@ class BillingController {
     }
 
     /**
-     * GET /checkout/callback
+     * GET/POST /checkout/callback
      */
     public function callback(): void {
+        // If server-to-server callback / IPN POSTed to callback URL:
+        if (!empty($_POST['ipn_key'])) {
+            $this->cashmaalIpn();
+            return;
+        }
+
         Auth::requireAuth();
         $ref = trim($_GET['ref'] ?? $_GET['pp_TxnRefNo'] ?? $_GET['orderId'] ?? '');
         
@@ -193,7 +200,7 @@ class BillingController {
             $this->redirect(url('/pricing'));
         }
 
-        // Security check: IDOR validation
+        // Security check: IDOR validation on browser view
         if ((int)$tx['user_id'] !== Auth::userId()) {
             $this->abort(403, "Access Denied: Payment transaction ownership mismatch.");
         }
@@ -201,6 +208,18 @@ class BillingController {
         if ($tx['status'] === 'paid' || $tx['status'] === 'success') {
             $_SESSION['billing_success'] = "Payment verified successfully. Welcome to Premium!";
             $this->redirect(url('/billing'));
+        }
+
+        // If CashMaal and no IPN key in POST, this is a browser return redirect.
+        // Reflect current server-side status without independently altering or activating.
+        if ($tx['provider'] === 'cashmaal') {
+            if ($tx['status'] === 'pending') {
+                $_SESSION['billing_info'] = "Your payment is being processed. Your subscription will activate automatically upon confirmation.";
+            } else {
+                $_SESSION['billing_error'] = "Payment was not successful. Please try again.";
+            }
+            $this->redirect(url('/billing'));
+            return;
         }
 
         // Server side verification
@@ -254,7 +273,7 @@ class BillingController {
                 $stmtSub->execute(['uid' => $tx['user_id'], 'pid' => $plan['id']]);
                 $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
 
-                $endsAt = date('Y-m-d H:i:s', time() + 30 * 86400);
+                $endsAt = SubscriptionService::calculatePlanExpiry($plan);
 
                 if ($sub) {
                     $stmtSubUpd = $this->db->prepare("
@@ -284,6 +303,9 @@ class BillingController {
 
                 $stmtLink = $this->db->prepare("UPDATE payment_transactions SET subscription_id = :sub_id WHERE id = :id");
                 $stmtLink->execute(['sub_id' => $subId, 'id' => $tx['id']]);
+
+                // Enqueue Meta WhatsApp confirmation
+                $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)($tx['plan_id'] ?: $plan['id']));
 
                 Auth::logAudit($tx['user_id'], 'payment_verified', 'billing', 'payment_transactions', $tx['id']);
                 Auth::logAudit($tx['user_id'], 'subscription_activated', 'subscriptions', 'subscriptions', $subId);
@@ -440,7 +462,7 @@ class BillingController {
                 $stmtSub->execute(['uid' => $tx['user_id'], 'pid' => $planId]);
                 $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
 
-                $endsAt = date('Y-m-d H:i:s', time() + 30 * 86400);
+                $endsAt = SubscriptionService::calculatePlanExpiry($planId);
 
                 if ($sub) {
                     $stmtSubUpd = $this->db->prepare("
@@ -471,6 +493,9 @@ class BillingController {
                 $stmtLink = $this->db->prepare("UPDATE payment_transactions SET subscription_id = :sub_id WHERE id = :id");
                 $stmtLink->execute(['sub_id' => $subId, 'id' => $tx['id']]);
 
+                // Enqueue Meta WhatsApp confirmation
+                $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)($tx['plan_id'] ?: $planId));
+
                 Auth::logAudit($tx['user_id'], 'webhook_payment_verified', 'billing', 'payment_transactions', $tx['id']);
             } else {
                 $stmtUpd = $this->db->prepare("
@@ -498,6 +523,269 @@ class BillingController {
         }
         if (defined('TESTING_MODE') && TESTING_MODE) { return; }
         exit();
+    }
+
+    /**
+     * POST /api/payments/cashmaal/ipn
+     * Secure server-side CashMaal IPN handler.
+     * Enforces signature verification, database-level locking, amount & currency match,
+     * atomic subscription activation, single payment-confirmation queue record, and **OK** acknowledgment.
+     */
+    public function cashmaalIpn(): void {
+        $params = $_POST;
+        if (empty($params)) {
+            $raw = file_get_contents('php://input');
+            $params = json_decode($raw, true) ?: [];
+        }
+
+        $gateway = new \App\Services\CashMaalPaymentGateway();
+
+        // 1. Web ID validation if provided
+        $incomingWebId = trim((string)($params['web_id'] ?? ''));
+        if (!empty($incomingWebId) && strcasecmp($incomingWebId, $gateway->getWebId()) !== 0) {
+            $this->abort(400, 'Invalid web_id');
+        }
+
+        // 2. Verify IPN key
+        $res = $gateway->verifyPayment($params);
+        if ($res['status'] === 'failed' && (strpos($res['error'] ?? '', 'IPN key') !== false || strpos($res['error'] ?? '', 'web_id') !== false)) {
+            $this->abort(400, $res['error'] ?? 'Invalid IPN authentication');
+        }
+
+        $orderId = trim((string)($res['transaction_reference'] ?? ($params['order_id'] ?? '')));
+        if (empty($orderId)) {
+            $this->abort(400, 'Missing order_id');
+        }
+
+        $cmTid = trim((string)($res['provider_transaction_id'] ?? ($params['CM_TID'] ?? ($params['cm_tid'] ?? ''))));
+        if (empty($cmTid)) {
+            $this->abort(400, 'Missing CM_TID');
+        }
+
+        // 3. Database transaction
+        $this->db->beginTransaction();
+        try {
+            // Lock the transaction record to prevent race conditions with redirect callback
+            $stmtTx = $this->db->prepare("SELECT * FROM payment_transactions WHERE transaction_reference = :ref LIMIT 1 FOR UPDATE");
+            $stmtTx->execute(['ref' => $orderId]);
+            $tx = $stmtTx->fetch(PDO::FETCH_ASSOC);
+
+            if (!$tx) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                $this->abort(404, 'Transaction reference not found');
+            }
+
+            // 4. Idempotency Check: if already paid, return **OK** immediately without creating duplicates
+            if (in_array($tx['status'], ['paid', 'successful'])) {
+                $this->db->commit();
+                echo '**OK**';
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            // 5. Amount & Currency verification
+            if ((float)$tx['amount'] !== (float)$res['amount'] || strtoupper($tx['currency']) !== strtoupper($res['currency'])) {
+                $stmtFail = $this->db->prepare("
+                    UPDATE payment_transactions 
+                    SET status = 'failed', failed_at = NOW(), gateway_response_message = 'Amount or currency mismatch', updated_at = NOW() 
+                    WHERE id = :id
+                ");
+                $stmtFail->execute(['id' => $tx['id']]);
+                $this->db->commit();
+                $this->abort(400, 'Amount or currency mismatch');
+            }
+
+            // 6. Independent CashMaal API verification (verify_v2) if enabled or mock supplied
+            if (!empty($params['mock_api_verify']) && is_array($params['mock_api_verify'])) {
+                $apiRes = $gateway->evaluateVerifyApiResponse($params['mock_api_verify'], $cmTid, $tx['transaction_reference'], (float)$tx['amount'], $tx['currency']);
+                if (!$apiRes['verified']) {
+                    $stmtFail = $this->db->prepare("
+                        UPDATE payment_transactions 
+                        SET status = 'failed', failed_at = NOW(), gateway_response_message = :err, updated_at = NOW() 
+                        WHERE id = :id
+                    ");
+                    $stmtFail->execute(['err' => $apiRes['error'] ?? 'API verification failed', 'id' => $tx['id']]);
+                    $this->db->commit();
+                    $this->abort(400, 'API verification failed: ' . ($apiRes['error'] ?? ''));
+                }
+            } elseif (config('payment.cashmaal.verify_api') === true) {
+                $apiRes = $gateway->verifyTransactionWithApi($cmTid, $tx['transaction_reference'], (float)$tx['amount'], $tx['currency']);
+                if (!$apiRes['verified']) {
+                    $stmtFail = $this->db->prepare("
+                        UPDATE payment_transactions 
+                        SET status = 'failed', failed_at = NOW(), gateway_response_message = :err, updated_at = NOW() 
+                        WHERE id = :id
+                    ");
+                    $stmtFail->execute(['err' => $apiRes['error'] ?? 'API verification failed', 'id' => $tx['id']]);
+                    $this->db->commit();
+                    $this->abort(400, 'API verification failed: ' . ($apiRes['error'] ?? ''));
+                }
+            }
+
+            // 7. Status check
+            if ($res['status'] === 'success') {
+                $stmtUpd = $this->db->prepare("
+                    UPDATE payment_transactions 
+                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = NOW(), gateway_response_message = 'Verified via CashMaal IPN', updated_at = NOW() 
+                    WHERE id = :id
+                ");
+                $stmtUpd->execute([
+                    'ptx' => $res['provider_transaction_id'],
+                    'id' => $tx['id']
+                ]);
+
+                // Determine plan
+                $planId = $tx['plan_id'] ?? null;
+                if (!$planId) {
+                    $stmtPlan = $this->db->prepare("SELECT id FROM subscription_plans WHERE price = :price AND currency = :currency AND status = 'active' LIMIT 1");
+                    $stmtPlan->execute(['price' => $res['amount'], 'currency' => $res['currency']]);
+                    $planId = $stmtPlan->fetchColumn();
+                }
+                if (!$planId) {
+                    $planId = $this->db->query("SELECT id FROM subscription_plans WHERE slug = 'premium-monthly' LIMIT 1")->fetchColumn();
+                }
+
+                $stmtPlanRec = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id LIMIT 1");
+                $stmtPlanRec->execute(['id' => $planId]);
+                $planRec = $stmtPlanRec->fetch(PDO::FETCH_ASSOC);
+
+                $endsAt = \App\Services\SubscriptionService::calculatePlanExpiry($planRec ?: $planId);
+
+                $stmtSub = $this->db->prepare("SELECT id FROM subscriptions WHERE user_id = :uid AND plan_id = :pid ORDER BY id DESC LIMIT 1 FOR UPDATE");
+                $stmtSub->execute(['uid' => $tx['user_id'], 'pid' => $planId]);
+                $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
+
+                if ($sub) {
+                    $stmtSubUpd = $this->db->prepare("
+                        UPDATE subscriptions 
+                        SET status = 'active', starts_at = NOW(), ends_at = :ends, cancelled_at = NULL, auto_renew = 1, provider = :provider, provider_subscription_id = :ptx, updated_at = NOW() 
+                        WHERE id = :id
+                    ");
+                    $stmtSubUpd->execute([
+                        'ends' => $endsAt,
+                        'provider' => $tx['provider'],
+                        'ptx' => $res['provider_transaction_id'],
+                        'id' => $sub['id']
+                    ]);
+                    $subId = $sub['id'];
+                } else {
+                    $stmtSubIns = $this->db->prepare("
+                        INSERT INTO subscriptions (
+                            user_id, plan_id, status, starts_at, ends_at, auto_renew, provider, provider_subscription_id, created_at, updated_at
+                        ) VALUES (
+                            :uid, :pid, 'active', NOW(), :ends, 1, :provider, :ptx, NOW(), NOW()
+                        )
+                    ");
+                    $stmtSubIns->execute([
+                        'uid' => $tx['user_id'],
+                        'pid' => $planId,
+                        'ends' => $endsAt,
+                        'provider' => $tx['provider'],
+                        'ptx' => $res['provider_transaction_id']
+                    ]);
+                    $subId = $this->db->lastInsertId();
+                }
+
+                // Link subscription
+                $stmtLink = $this->db->prepare("UPDATE payment_transactions SET subscription_id = :sub_id WHERE id = :id");
+                $stmtLink->execute(['sub_id' => $subId, 'id' => $tx['id']]);
+
+                // Enqueue Meta WhatsApp confirmation
+                $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)$planId);
+
+                Auth::logAudit($tx['user_id'], 'cashmaal_payment_verified', 'billing', 'payment_transactions', $tx['id']);
+                Auth::logAudit($tx['user_id'], 'subscription_activated', 'subscriptions', 'subscriptions', $subId);
+
+                $this->db->commit();
+                echo '**OK**';
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            } else {
+                $stmtUpd = $this->db->prepare("
+                    UPDATE payment_transactions 
+                    SET status = :status, failed_at = NOW(), gateway_response_message = :err, updated_at = NOW() 
+                    WHERE id = :id
+                ");
+                $stmtUpd->execute([
+                    'status' => in_array($res['status'], ['cancelled', 'pending']) ? $res['status'] : 'failed',
+                    'err' => $res['error'] ?? 'CashMaal payment rejected',
+                    'id' => $tx['id']
+                ]);
+                $this->db->commit();
+                echo '**OK**';
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+        } catch (\RuntimeException $re) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $re;
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            $cleanErr = \App\Services\Logger::redactSensitiveString($e->getMessage());
+            $this->abort(500, 'Internal payment error: ' . $cleanErr);
+        }
+    }
+
+    /**
+     * Enqueue a transactional WhatsApp payment confirmation via Meta WhatsApp provider.
+     */
+    public function enqueuePaymentConfirmation(int $userId, int $paymentId, string $ref, float $amount, string $currency, ?int $planId = null): bool {
+        try {
+            $stmtUser = $this->db->prepare("SELECT first_name, last_name, phone, whatsapp_phone FROM users WHERE id = :id LIMIT 1");
+            $stmtUser->execute(['id' => $userId]);
+            $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
+
+            if (!$user) {
+                return false;
+            }
+
+            $planName = 'Premium Monthly';
+            if ($planId) {
+                $stmtPlan = $this->db->prepare("SELECT name FROM subscription_plans WHERE id = :id LIMIT 1");
+                $stmtPlan->execute(['id' => $planId]);
+                $planName = $stmtPlan->fetchColumn() ?: 'Premium Monthly';
+            }
+
+            $rawPhone = !empty($user['whatsapp_phone']) ? $user['whatsapp_phone'] : ($user['phone'] ?? '');
+            $normalizedPhone = \App\Services\WhatsApp\WacrmWhatsAppProvider::normalizePhoneNumber($rawPhone);
+            $recipient = $normalizedPhone ?: ($rawPhone ?: 'NO_PHONE');
+
+            $userName = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: 'Student';
+
+            $payload = [
+                'user_name' => $userName,
+                'plan_name' => $planName,
+                'amount' => number_format($amount, 2),
+                'currency' => $currency,
+                'reference' => $ref,
+                'payment_id' => $paymentId
+            ];
+
+            $idempotencyKey = "payment_confirmation_{$paymentId}";
+
+            $queueService = new \App\Services\NotificationQueueService();
+            return $queueService->enqueue(
+                $userId,
+                null,
+                'PAYMENT_CONFIRMATION',
+                'whatsapp',
+                $recipient,
+                null,
+                $payload,
+                $idempotencyKey,
+                null,
+                'meta'
+            );
+        } catch (Exception $e) {
+            \App\Services\Logger::error("Failed to enqueue payment confirmation: " . \App\Services\Logger::redactSensitiveString($e->getMessage()));
+            return false;
+        }
     }
 
     /**

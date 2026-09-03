@@ -133,6 +133,7 @@ class AuthController {
             return;
         }
 
+        $db->beginTransaction();
         try {
             $visitorRoleId = $db->query("SELECT id FROM roles WHERE name = 'visitor'")->fetchColumn();
             if (!$visitorRoleId) {
@@ -141,7 +142,7 @@ class AuthController {
 
             $passwordHash = password_hash($password, PASSWORD_BCRYPT);
             
-            // Insert user
+            // 1. Insert user
             $stmt = $db->prepare("
                 INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referred_by_code) 
                 VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'pending', :referred_by_code)
@@ -155,9 +156,9 @@ class AuthController {
                 'referred_by_code' => !empty($referralCode) ? $referralCode : null
             ]);
             
-            $userId = $db->lastInsertId();
+            $userId = (int)$db->lastInsertId();
 
-            // Insert into referral_signups if referred
+            // 2. Insert into referral_signups if referred
             if ($partnerId) {
                 $stmtSignup = $db->prepare("
                     INSERT INTO referral_signups (partner_id, referred_user_id, referral_code) 
@@ -170,7 +171,7 @@ class AuthController {
                 ]);
             }
 
-            // Create student profile
+            // 3. Create student profile
             $stmtProfile = $db->prepare("
                 INSERT INTO student_profiles (user_id, profile_completion_percentage) 
                 VALUES (:user_id, 0)
@@ -179,7 +180,7 @@ class AuthController {
                 'user_id' => $userId
             ]);
 
-            // Create default user preferences
+            // 4. Create default user preferences
             $stmtPref = $db->prepare("
                 INSERT INTO user_preferences (user_id) 
                 VALUES (:user_id)
@@ -187,6 +188,49 @@ class AuthController {
             $stmtPref->execute([
                 'user_id' => $userId
             ]);
+
+            // 5. Generate secure 6-digit verification code
+            $otpCode = (string)random_int(100000, 999999);
+            self::$lastGeneratedCode = $otpCode;
+            $tokenHash = hash('sha256', $otpCode);
+
+            // 6. Insert verification token (expires in 10 minutes)
+            $stmtToken = $db->prepare("
+                INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) 
+                VALUES (:user_id, :token_hash, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+            ");
+            $stmtToken->execute([
+                'user_id' => $userId,
+                'token_hash' => $tokenHash
+            ]);
+
+            // 7. Enqueue verification email into asynchronous notification queue
+            $queueService = new \App\Services\NotificationQueueService();
+            $idempotencyKey = "verify_{$userId}_{$tokenHash}";
+            $payloadData = [
+                'first_name' => $firstName,
+                'otp_code' => $otpCode,
+                'email' => $email,
+                'token_hash' => $tokenHash
+            ];
+
+            $enqueued = $queueService->enqueue(
+                $userId,
+                null,
+                \App\Services\NotificationTypes::EMAIL_VERIFICATION,
+                'email',
+                $email,
+                "Verify your ScholarPlanner account",
+                $payloadData,
+                $idempotencyKey
+            );
+
+            if (!$enqueued) {
+                throw new Exception("Failed to enqueue email verification notification.");
+            }
+
+            // 8. Commit database transaction
+            $db->commit();
 
             Auth::logAudit($userId, 'registration_success', 'auth', 'users', $userId);
 
@@ -200,46 +244,13 @@ class AuthController {
             $_SESSION['user_name'] = $firstName . ' ' . $lastName;
             $_SESSION['user_email'] = $email;
 
-            // Generate secure 6-digit verification code
-            $otpCode = (string)random_int(100000, 999999);
-            self::$lastGeneratedCode = $otpCode;
-            $tokenHash = hash('sha256', $otpCode);
-
-            // Insert verification token
-            $stmtToken = $db->prepare("
-                INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) 
-                VALUES (:user_id, :token_hash, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
-            ");
-            $stmtToken->execute([
-                'user_id' => $userId,
-                'token_hash' => $tokenHash
-            ]);
-
-            // Send verification email
-            $emailService = new \App\Services\EmailNotificationService();
-            $subject = "Verify your ScholarMatch account";
-            $bodyHTML = '
-            <div style="font-family: \'Inter\', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <h2 style="color: #2563eb; margin: 0;">ScholarMatch</h2>
-                </div>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 20px;">
-                <h3 style="color: #0f172a; margin-top: 0;">Verify your email</h3>
-                <p style="color: #475569; font-size: 16px; line-height: 1.6;">Use the verification code below to verify your ScholarMatch account.</p>
-                <div style="text-align: center; margin: 30px 0;">
-                    <span style="font-size: 32px; font-weight: 700; color: #2563eb; letter-spacing: 6px; padding: 12px 24px; background: #eff6ff; border-radius: 8px; border: 1px dashed #bfdbfe;">' . $otpCode . '</span>
-                </div>
-                <p style="color: #64748b; font-size: 14px; line-height: 1.6;">This code is valid for <strong>10 minutes</strong>. If you did not request this code, please ignore this email.</p>
-                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px; margin-bottom: 20px;">
-                <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">&copy; ' . date("Y") . ' ScholarMatch. All rights reserved.</p>
-            </div>';
-            
-            $emailService->sendEmail($email, $subject, $bodyHTML);
-
             header("Location: " . url('/verify-email'));
             $this->halt("Redirect to verify-email");
 
         } catch (Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             if ($e instanceof \RuntimeException) {
                 throw $e;
             }
@@ -617,16 +628,26 @@ class AuthController {
             $errors['code'] = "The verification code must be exactly 6 digits.";
         }
 
+        $db = Database::connection();
+        $userId = Auth::userId();
+
         if (session_status() === PHP_SESSION_NONE) {
             Security::startSession();
         }
-        $_SESSION['verify_attempts'] = ($_SESSION['verify_attempts'] ?? 0) + 1;
-        if ($_SESSION['verify_attempts'] > 5) {
+
+        // Multi-layered brute-force rate limit (session counter + persistent user audit log in last 15 minutes)
+        $stmtAuditAttempts = $db->prepare("
+            SELECT COUNT(*) FROM audit_logs 
+            WHERE user_id = :uid 
+              AND action = 'verify_code_failed' 
+              AND created_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+        ");
+        $stmtAuditAttempts->execute(['uid' => $userId]);
+        $dbFailedAttempts = (int)$stmtAuditAttempts->fetchColumn();
+
+        if ($dbFailedAttempts >= 5 || ($_SESSION['verify_attempts'] ?? 0) >= 5) {
             $errors['code'] = "Too many incorrect attempts. Please request a new code or try again later.";
         }
-
-        $db = Database::connection();
-        $userId = Auth::userId();
 
         if (empty($errors)) {
             $stmt = $db->prepare("
@@ -641,8 +662,12 @@ class AuthController {
 
             if (!$token || strtotime($token['expires_at']) < time()) {
                 $errors['code'] = "The verification code is invalid or has expired.";
+                $_SESSION['verify_attempts'] = ($_SESSION['verify_attempts'] ?? 0) + 1;
+                Auth::logAudit($userId, 'verify_code_failed', 'auth', 'users', $userId);
             } elseif (!hash_equals($token['token_hash'], hash('sha256', $code))) {
                 $errors['code'] = "The verification code is invalid or has expired.";
+                $_SESSION['verify_attempts'] = ($_SESSION['verify_attempts'] ?? 0) + 1;
+                Auth::logAudit($userId, 'verify_code_failed', 'auth', 'users', $userId);
             }
 
             if (empty($errors)) {
@@ -777,61 +802,118 @@ class AuthController {
             }
         }
 
-        $otpCode = (string)random_int(100000, 999999);
-        self::$lastGeneratedCode = $otpCode;
-        $tokenHash = hash('sha256', $otpCode);
-
         $db = Database::connection();
         $userId = Auth::userId();
 
-        // Invalidate old tokens
-        $stmtInvalidate = $db->prepare("UPDATE email_verification_tokens SET used_at = NOW() WHERE user_id = :user_id AND used_at IS NULL");
-        $stmtInvalidate->execute(['user_id' => $userId]);
+        $db->beginTransaction();
+        try {
+            // Invalidate old tokens
+            $stmtInvalidate = $db->prepare("UPDATE email_verification_tokens SET used_at = NOW() WHERE user_id = :user_id AND used_at IS NULL");
+            $stmtInvalidate->execute(['user_id' => $userId]);
 
-        // Insert new token
-        $stmtToken = $db->prepare("
-            INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) 
-            VALUES (:user_id, :token_hash, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
-        ");
-        $stmtToken->execute([
-            'user_id' => $userId,
-            'token_hash' => $tokenHash
-        ]);
+            // Cancel / supersede previous pending email verification notifications
+            $stmtCancel = $db->prepare("
+                UPDATE notification_logs 
+                SET status = 'skipped', error_message = 'Superseded by resend', updated_at = NOW() 
+                WHERE user_id = :user_id 
+                  AND notification_type = :type 
+                  AND status IN ('pending', 'retrying')
+            ");
+            $stmtCancel->execute([
+                'user_id' => $userId,
+                'type' => \App\Services\NotificationTypes::EMAIL_VERIFICATION
+            ]);
 
-        $_SESSION['last_resend_time'] = time();
+            // Generate new secure 6-digit verification code
+            $otpCode = (string)random_int(100000, 999999);
+            self::$lastGeneratedCode = $otpCode;
+            $tokenHash = hash('sha256', $otpCode);
 
-        // Send email
-        $email = $user['email'];
-        $emailService = new \App\Services\EmailNotificationService();
-        $subject = "Verify your ScholarMatch account";
-        $bodyHTML = '
-        <div style="font-family: \'Inter\', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h2 style="color: #2563eb; margin: 0;">ScholarMatch</h2>
-            </div>
-            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 20px;">
-            <h3 style="color: #0f172a; margin-top: 0;">Verify your email</h3>
-            <p style="color: #475569; font-size: 16px; line-height: 1.6;">Use the verification code below to verify your ScholarMatch account.</p>
-            <div style="text-align: center; margin: 30px 0;">
-                <span style="font-size: 32px; font-weight: 700; color: #2563eb; letter-spacing: 6px; padding: 12px 24px; background: #eff6ff; border-radius: 8px; border: 1px dashed #bfdbfe;">' . $otpCode . '</span>
-            </div>
-            <p style="color: #64748b; font-size: 14px; line-height: 1.6;">This code is valid for <strong>10 minutes</strong>. If you did not request this code, please ignore this email.</p>
-            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px; margin-bottom: 20px;">
-            <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">&copy; ' . date("Y") . ' ScholarMatch. All rights reserved.</p>
-        </div>';
-        
-        $emailService->sendEmail($email, $subject, $bodyHTML);
+            // Insert new token (expires in 10 minutes)
+            $stmtToken = $db->prepare("
+                INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) 
+                VALUES (:user_id, :token_hash, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+            ");
+            $stmtToken->execute([
+                'user_id' => $userId,
+                'token_hash' => $tokenHash
+            ]);
 
-        $successMsg = "Verification code sent. Please check your email.";
+            // Enqueue new verification email into notification queue
+            $email = $user['email'];
+            $queueService = new \App\Services\NotificationQueueService();
+            $idempotencyKey = "verify_{$userId}_{$tokenHash}";
+            $payloadData = [
+                'first_name' => $user['first_name'] ?? 'Student',
+                'otp_code' => $otpCode,
+                'email' => $email,
+                'token_hash' => $tokenHash
+            ];
 
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => true, 'message' => $successMsg]);
-            $this->halt();
-        } else {
-            $_SESSION['verify_success'] = $successMsg;
-            header("Location: " . url('/verify-email'));
-            $this->halt("Redirect to verify-email");
+            $enqueued = $queueService->enqueue(
+                $userId,
+                null,
+                \App\Services\NotificationTypes::EMAIL_VERIFICATION,
+                'email',
+                $email,
+                "Verify your ScholarPlanner account",
+                $payloadData,
+                $idempotencyKey
+            );
+
+            if (!$enqueued) {
+                throw new Exception("Failed to enqueue resend verification email notification.");
+            }
+
+            $db->commit();
+            $_SESSION['last_resend_time'] = time();
+
+            $successMsg = "Verification code requested. Please check your email.";
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => $successMsg]);
+                $this->halt();
+            } else {
+                $_SESSION['verify_success'] = $successMsg;
+                header("Location: " . url('/verify-email'));
+                $this->halt("Redirect to verify-email");
+            }
+        } catch (Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            if ($e instanceof \RuntimeException) {
+                throw $e;
+            }
+            Logger::error("Resend Verification Exception: " . $e->getMessage());
+            
+            $err = "Could not request a new verification code. Please try again.";
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $err]);
+                $this->halt();
+            } else {
+                $obfuscatedEmail = '';
+                if (!empty($user['email'])) {
+                    $parts = explode('@', $user['email']);
+                    $name = $parts[0];
+                    $domain = $parts[1] ?? '';
+                    $len = strlen($name);
+                    if ($len <= 2) {
+                        $obfuscatedEmail = substr($name, 0, 1) . '***@' . $domain;
+                    } else {
+                        $obfuscatedEmail = substr($name, 0, 1) . str_repeat('*', $len - 2) . substr($name, -1) . '@' . $domain;
+                    }
+                }
+                view('auth.verify-email', [
+                    'csrf_token' => Security::csrfToken(),
+                    'email' => $obfuscatedEmail,
+                    'errors' => ['resend' => $err],
+                    'success_message' => null
+                ]);
+                return;
+            }
         }
     }
 }

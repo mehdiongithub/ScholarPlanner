@@ -20,6 +20,218 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
     }
 
     /**
+     * Determine if an IP address is a safe, routable, public IP.
+     * Rejects private, loopback, link-local, reserved, multicast, and unspecified IPv4/IPv6.
+     */
+    public static function isSafeIp(string $ip): bool {
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        // Native PHP filter check for private and reserved ranges
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return false;
+        }
+
+        // Strict IPv4 subnet checks
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            $long = ip2long($ip);
+            if ($long === false) return false;
+
+            // 0.0.0.0/8 (Current network)
+            if (($long & 0xFF000000) === 0x00000000) return false;
+            // 127.0.0.0/8 (Loopback)
+            if (($long & 0xFF000000) === 0x7F000000) return false;
+            // 10.0.0.0/8 (Private)
+            if (($long & 0xFF000000) === 0x0A000000) return false;
+            // 172.16.0.0/12 (Private)
+            if (($long & 0xFFF00000) === 0xAC100000) return false;
+            // 192.168.0.0/16 (Private)
+            if (($long & 0xFFFF0000) === 0xC0A80000) return false;
+            // 169.254.0.0/16 (Link-local)
+            if (($long & 0xFFFF0000) === 0xA9FE0000) return false;
+            // 100.64.0.0/10 (Carrier-grade NAT)
+            if (($long & 0xFFC00000) === 0x64400000) return false;
+            // 198.18.0.0/15 (Benchmarking)
+            if (($long & 0xFFFE0000) === 0xC6120000) return false;
+            // 224.0.0.0/4 (Multicast) and 240.0.0.0/4 (Reserved)
+            if ((($long >> 28) & 0x0F) >= 14) return false;
+
+            return true;
+        }
+
+        // Strict IPv6 subnet checks
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $bin = inet_pton($ip);
+            if ($bin === false) return false;
+
+            // :: (unspecified)
+            if ($bin === str_repeat("\0", 16)) return false;
+            // ::1 (loopback)
+            if ($bin === (str_repeat("\0", 15) . "\1")) return false;
+
+            $b0 = ord($bin[0]);
+            $b1 = ord($bin[1]);
+
+            // fe80::/10 (link-local)
+            if ($b0 === 0xfe && ($b1 & 0xc0) === 0x80) return false;
+            // fc00::/7 (unique local / private)
+            if (($b0 & 0xfe) === 0xfc) return false;
+            // fec0::/10 (site-local)
+            if ($b0 === 0xfe && ($b1 & 0xc0) === 0xc0) return false;
+            // ff00::/8 (multicast)
+            if ($b0 === 0xff) return false;
+
+            // ::ffff:0:0/96 (IPv4-mapped IPv6)
+            if (substr($bin, 0, 10) === str_repeat("\0", 10) && substr($bin, 10, 2) === "\xff\xff") {
+                $mappedIpv4 = inet_ntop(substr($bin, 12, 4));
+                return self::isSafeIp($mappedIpv4);
+            }
+
+            // 64:ff9b::/96 (IPv4/IPv6 translation)
+            if (substr($bin, 0, 4) === "\x00\x64\xff\x9b") {
+                $mappedIpv4 = inet_ntop(substr($bin, 12, 4));
+                return self::isSafeIp($mappedIpv4);
+            }
+
+            // 2001:db8::/32 (documentation)
+            if (substr($bin, 0, 4) === "\x20\x01\x0d\xb8") return false;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolve and validate a WACRM URL for production SSRF protection and DNS rebinding mitigation.
+     *
+     * @param string $url The endpoint URL
+     * @param bool $strictProduction If true, enforces production HTTPS & DNS checks regardless of test mode
+     * @param callable|null $dnsResolver Optional resolver callback for behavioral testing: fn(string $host): array
+     * @return array Structure: ['safe' => bool, 'pinned_ip' => ?string, 'port' => int, 'host' => string, 'error' => ?string]
+     */
+    public static function resolveAndValidate(string $url, bool $strictProduction = false, ?callable $dnsResolver = null): array {
+        $defaultPort = 443;
+        if (empty($url)) {
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $defaultPort, 'host' => '', 'error' => 'URL is empty.'];
+        }
+
+        $parts = parse_url($url);
+        if (!$parts || empty($parts['scheme']) || empty($parts['host'])) {
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $defaultPort, 'host' => '', 'error' => 'Malformed URL structure.'];
+        }
+
+        $scheme = strtolower($parts['scheme']);
+        $port = (int)($parts['port'] ?? ($scheme === 'http' ? 80 : 443));
+        $isTesting = defined('TESTING_MODE') && TESTING_MODE && !$strictProduction;
+
+        // In production, scheme MUST strictly be https://
+        if (!$isTesting && $scheme !== 'https') {
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $parts['host'], 'error' => 'Production WACRM URL must use HTTPS.'];
+        }
+
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $parts['host'], 'error' => 'Scheme must be http or https.'];
+        }
+
+        $rawHost = strtolower(trim($parts['host'], '[]'));
+
+        // Reject colon or malformed IPv6 host string
+        if ($rawHost === '' || $rawHost === ':' || (strpos($rawHost, ':') !== false && !filter_var($rawHost, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6))) {
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => 'Invalid hostname format.'];
+        }
+
+        // Reject explicit localhost or loopback strings
+        if ($rawHost === 'localhost' || $rawHost === '127.0.0.1' || $rawHost === '::1' || $rawHost === '0.0.0.0') {
+            if ($isTesting) {
+                return ['safe' => true, 'pinned_ip' => $rawHost, 'port' => $port, 'host' => $rawHost, 'error' => null];
+            }
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => 'Localhost and loopback addresses are prohibited.'];
+        }
+
+        // Direct IP address provided in URL
+        if (filter_var($rawHost, FILTER_VALIDATE_IP)) {
+            $isSafe = self::isSafeIp($rawHost);
+            if (!$isSafe) {
+                if ($isTesting) {
+                    return ['safe' => true, 'pinned_ip' => $rawHost, 'port' => $port, 'host' => $rawHost, 'error' => null];
+                }
+                return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => 'Direct private or reserved IP addresses are prohibited.'];
+            }
+            return ['safe' => true, 'pinned_ip' => $rawHost, 'port' => $port, 'host' => $rawHost, 'error' => null];
+        }
+
+        // Hostname syntax check
+        if (!preg_match('/^[a-zA-Z0-9_\-\.]+$/', $rawHost)) {
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => 'Invalid characters in hostname.'];
+        }
+
+        // Resolve DNS records (IPv4 A and IPv6 AAAA)
+        if ($dnsResolver !== null) {
+            $ips = (array)$dnsResolver($rawHost);
+        } else {
+            $ips = [];
+            $records = @dns_get_record($rawHost, DNS_A + DNS_AAAA);
+            if (is_array($records)) {
+                foreach ($records as $r) {
+                    if ($r['type'] === 'A' && !empty($r['ip'])) {
+                        $ips[] = $r['ip'];
+                    } elseif ($r['type'] === 'AAAA' && !empty($r['ipv6'])) {
+                        $ips[] = $r['ipv6'];
+                    }
+                }
+            }
+            if (empty($ips)) {
+                $v4s = @gethostbynamel($rawHost);
+                if (is_array($v4s)) {
+                    $ips = array_merge($ips, $v4s);
+                }
+            }
+        }
+
+        // If resolution yielded no records
+        if (empty($ips)) {
+            if ($isTesting) {
+                // In test mode, allow mock hostnames if not strict
+                return ['safe' => true, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => null];
+            }
+            return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => 'DNS resolution failed. Fail closed in production.'];
+        }
+
+        // ALL resolved addresses must be safe. If ANY resolved IP is private/unsafe, REJECT!
+        foreach ($ips as $resolvedIp) {
+            if (!self::isSafeIp($resolvedIp)) {
+                if ($isTesting) {
+                    return ['safe' => true, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => null];
+                }
+                return [
+                    'safe' => false,
+                    'pinned_ip' => null,
+                    'port' => $port,
+                    'host' => $rawHost,
+                    'error' => "Hostname resolves to private/reserved IP: $resolvedIp."
+                ];
+            }
+        }
+
+        return [
+            'safe' => true,
+            'pinned_ip' => $ips[0] ?? null,
+            'port' => $port,
+            'host' => $rawHost,
+            'error' => null
+        ];
+    }
+
+    /**
+     * Anti-SSRF URL validation helper.
+     */
+    public static function isSafeUrl(string $url, bool $strictProduction = false, ?callable $dnsResolver = null): bool {
+        return self::resolveAndValidate($url, $strictProduction, $dnsResolver)['safe'];
+    }
+
+    /**
      * Normalize and validate phone numbers to E.164 format.
      */
     public static function normalizePhoneNumber(string $phone): ?string {
@@ -51,6 +263,15 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
                 'success' => false,
                 'message_id' => null,
                 'error' => 'WACRM configuration is incomplete (missing base URL or API key).'
+            ];
+        }
+
+        $validation = self::resolveAndValidate($this->baseUrl);
+        if (!$validation['safe']) {
+            return [
+                'success' => false,
+                'message_id' => null,
+                'error' => 'Invalid or unsafe WACRM base URL: ' . ($validation['error'] ?? 'SSRF/DNS validation failed.')
             ];
         }
 
@@ -96,6 +317,12 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
 
+        // Pin validated IP to mitigate DNS rebinding / TOCTOU attacks
+        if (!empty($validation['pinned_ip']) && !empty($validation['host']) && filter_var($validation['pinned_ip'], FILTER_VALIDATE_IP)) {
+            $pinnedEntry = sprintf("%s:%d:%s", $validation['host'], $validation['port'], $validation['pinned_ip']);
+            curl_setopt($ch, CURLOPT_RESOLVE, [$pinnedEntry]);
+        }
+
         // Capture headers for Rate Limiter (Retry-After)
         curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($curl, $header) use (&$retryAfter) {
             $len = strlen($header);
@@ -120,7 +347,11 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
             ];
         }
 
-        $resData = json_decode($response, true);
+        if ($response === false || $response === null || $response === '') {
+            $resData = null;
+        } else {
+            $resData = json_decode((string)$response, true);
+        }
         if ($resData === null && json_last_error() !== JSON_ERROR_NONE) {
             return [
                 'success' => false,
@@ -163,6 +394,11 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
             return 'NOT CONNECTED';
         }
 
+        $validation = self::resolveAndValidate($this->baseUrl);
+        if (!$validation['safe']) {
+            return 'NOT CONNECTED';
+        }
+
         $url = rtrim($this->baseUrl, '/') . '/api/v1/me';
         
         $ch = curl_init($url);
@@ -173,12 +409,17 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
             'Content-Type: application/json'
         ]);
 
+        if (!empty($validation['pinned_ip']) && !empty($validation['host']) && filter_var($validation['pinned_ip'], FILTER_VALIDATE_IP)) {
+            $pinnedEntry = sprintf("%s:%d:%s", $validation['host'], $validation['port'], $validation['pinned_ip']);
+            curl_setopt($ch, CURLOPT_RESOLVE, [$pinnedEntry]);
+        }
+
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($httpCode === 200) {
-            $data = json_decode($response, true);
+        if ($httpCode === 200 && !empty($response)) {
+            $data = json_decode((string)$response, true);
             if (isset($data['data']['account']['id'])) {
                 return 'CONNECTED';
             }

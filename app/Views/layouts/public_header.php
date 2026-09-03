@@ -41,6 +41,7 @@ $user = \App\Services\Auth::currentUser();
                 <a href="<?= url('/pricing') ?>">Pricing</a>
                 <a href="<?= url('/about') ?>">About Us</a>
                 <a href="<?= url('/faq') ?>">FAQ</a>
+                <a href="<?= url('/contact') ?>">Contact</a>
             </nav>
 
             <div class="header-actions">
@@ -78,6 +79,7 @@ $user = \App\Services\Auth::currentUser();
             <a href="<?= url('/pricing') ?>">Pricing</a>
             <a href="<?= url('/about') ?>">About Us</a>
             <a href="<?= url('/faq') ?>">FAQ</a>
+            <a href="<?= url('/contact') ?>">Contact</a>
             <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
             <?php if ($user): ?>
                 <a href="<?= url($user['role_name'] === 'visitor' ? '/dashboard' : '/admin') ?>" class="btn btn-primary" style="justify-content:center">Dashboard</a>

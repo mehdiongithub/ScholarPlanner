@@ -5,35 +5,73 @@ namespace App\Services;
 use App\Services\WhatsApp\WhatsAppProviderInterface;
 use App\Services\WhatsApp\LogWhatsAppProvider;
 use App\Services\WhatsApp\MetaWhatsAppProvider;
+use App\Services\WhatsApp\WacrmWhatsAppProvider;
 
 class WhatsAppNotificationService {
-    private WhatsAppProviderInterface $provider;
+    private ?WhatsAppProviderInterface $provider;
 
-    public function __construct() {
-        $providerType = strtolower($_ENV['WHATSAPP_PROVIDER'] ?? 'log');
-        if ($providerType === 'meta') {
-            $this->provider = new MetaWhatsAppProvider();
-        } elseif ($providerType === 'wacrm') {
-            $this->provider = new WhatsApp\WacrmWhatsAppProvider();
+    public function __construct(?WhatsAppProviderInterface $provider = null) {
+        $this->provider = $provider;
+    }
+
+    /**
+     * Resolve the appropriate WhatsApp provider for a given provider name or notification type.
+     */
+    public function getProviderFor(?string $providerName = null, ?string $notificationType = null): WhatsAppProviderInterface {
+        if ($this->provider !== null) {
+            return $this->provider;
+        }
+
+        // Explicit provider request takes precedence
+        if ($providerName !== null && $providerName !== '') {
+            $p = strtolower(trim($providerName));
+            if ($p === 'meta') {
+                return new MetaWhatsAppProvider();
+            }
+            if ($p === 'wacrm') {
+                return new WacrmWhatsAppProvider();
+            }
+            if ($p === 'log') {
+                return new LogWhatsAppProvider();
+            }
+        }
+
+        // Notification type routing:
+        // Payment success confirmation routes to Meta WhatsApp Provider
+        if ($notificationType !== null && (
+            strpos($notificationType, 'PAYMENT') !== false ||
+            strpos($notificationType, 'CASHMAAL') !== false ||
+            strpos($notificationType, 'SUBSCRIPTION_CONFIRMATION') !== false
+        )) {
+            return new MetaWhatsAppProvider();
+        }
+
+        // Scholarship notifications route to WACRM (or log if configured in environment)
+        $envProvider = strtolower($_ENV['WHATSAPP_PROVIDER'] ?? 'wacrm');
+        if ($envProvider === 'meta') {
+            return new MetaWhatsAppProvider();
+        } elseif ($envProvider === 'log') {
+            return new LogWhatsAppProvider();
         } else {
-            $this->provider = new LogWhatsAppProvider();
+            return new WacrmWhatsAppProvider();
         }
     }
 
     /**
-     * Send a template message through the selected WhatsApp provider.
+     * Send a template message through the resolved WhatsApp provider.
      */
-    public function sendMessage(string $recipient, string $templateName, array $parameters): array {
-        // Clean recipient phone number (retain digits only)
-        $cleanPhone = preg_replace('/[^0-9]/', '', $recipient);
-        if (empty($cleanPhone)) {
+    public function sendMessage(string $recipient, string $templateName, array $parameters, ?string $providerName = null, ?string $notificationType = null): array {
+        // Clean and normalize recipient phone number
+        $normalizedPhone = WacrmWhatsAppProvider::normalizePhoneNumber($recipient);
+        if ($normalizedPhone === null) {
             return [
                 'success' => false,
                 'message_id' => null,
-                'error' => 'Missing recipient phone number.'
+                'error' => 'Invalid or missing recipient phone number format.'
             ];
         }
 
-        return $this->provider->sendTemplateMessage('+' . $cleanPhone, $templateName, $parameters);
+        $provider = $this->getProviderFor($providerName, $notificationType);
+        return $provider->sendTemplateMessage($normalizedPhone, $templateName, $parameters);
     }
 }

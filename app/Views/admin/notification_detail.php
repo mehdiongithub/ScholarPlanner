@@ -157,6 +157,10 @@
                         <span class="meta-value" style="text-transform:uppercase;"><?= e($log['channel']) ?></span>
                     </div>
                     <div class="meta-item">
+                        <span class="meta-label">Provider</span>
+                        <span class="meta-value" style="text-transform:uppercase;"><?= e($log['provider'] ?? 'Default') ?></span>
+                    </div>
+                    <div class="meta-item">
                         <span class="meta-label">Notification Type</span>
                         <span class="meta-value"><?= e($log['notification_type']) ?></span>
                     </div>

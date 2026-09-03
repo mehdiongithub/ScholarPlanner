@@ -100,36 +100,81 @@ class NotificationService {
             }
         }
 
-        // 4. Enqueue Email Channel
-        if ($sendEmail && !empty($user['email'])) {
-            $subject = $payloadData['subject'] ?? $this->getDefaultSubject($type, $payloadData);
-            $this->queueService->enqueue(
-                $userId,
-                $scholarshipId,
-                $type,
-                'email',
-                $user['email'],
-                $subject,
-                $payloadData,
-                $idempotencyKey ? $idempotencyKey . '_email' : null,
-                $availableAt
-            );
-        }
+        // 4. Fetch user preferences (preferred channel and multi-channel flag)
+        $stmtUp = $this->db->prepare("SELECT preferred_channel, allow_multi_channel FROM user_preferences WHERE user_id = :uid LIMIT 1");
+        $stmtUp->execute(['uid' => $userId]);
+        $userPref = $stmtUp->fetch(PDO::FETCH_ASSOC);
 
-        // 5. Enqueue WhatsApp Channel
+        $preferredChannel = $userPref['preferred_channel'] ?? 'email';
+        $allowMultiChannel = (bool)($userPref['allow_multi_channel'] ?? 0);
+
         $whatsappRecipient = $user['whatsapp_phone'] ?: $user['phone'];
-        if ($sendWhatsapp && !empty($whatsappRecipient)) {
-            $this->queueService->enqueue(
-                $userId,
-                $scholarshipId,
-                $type,
-                'whatsapp',
-                $whatsappRecipient,
-                null,
-                $payloadData,
-                $idempotencyKey ? $idempotencyKey . '_whatsapp' : null,
-                $availableAt
-            );
+        $emailPossible = $sendEmail && !empty($user['email']);
+        $whatsappPossible = $sendWhatsapp && !empty($whatsappRecipient);
+
+        // If multi-channel delivery is NOT explicitly enabled (DEFAULT = OFF):
+        // Deliver via exactly ONE preferred channel with strict business event idempotency
+        if (!$allowMultiChannel) {
+            $chosenChannel = null;
+            $chosenRecipient = null;
+            $chosenSubject = null;
+
+            if ($preferredChannel === 'whatsapp' && $whatsappPossible) {
+                $chosenChannel = 'whatsapp';
+                $chosenRecipient = $whatsappRecipient;
+            } elseif ($emailPossible) {
+                $chosenChannel = 'email';
+                $chosenRecipient = $user['email'];
+                $chosenSubject = $payloadData['subject'] ?? $this->getDefaultSubject($type, $payloadData);
+            } elseif ($whatsappPossible) {
+                $chosenChannel = 'whatsapp';
+                $chosenRecipient = $whatsappRecipient;
+            }
+
+            if ($chosenChannel !== null) {
+                // Single event key (e.g. "new_match_{userId}_{scholarshipId}")
+                $this->queueService->enqueue(
+                    $userId,
+                    $scholarshipId,
+                    $type,
+                    $chosenChannel,
+                    $chosenRecipient,
+                    $chosenSubject,
+                    $payloadData,
+                    $idempotencyKey,
+                    $availableAt
+                );
+            }
+        } else {
+            // Multi-channel delivery explicitly enabled by user
+            if ($emailPossible) {
+                $subject = $payloadData['subject'] ?? $this->getDefaultSubject($type, $payloadData);
+                $this->queueService->enqueue(
+                    $userId,
+                    $scholarshipId,
+                    $type,
+                    'email',
+                    $user['email'],
+                    $subject,
+                    $payloadData,
+                    $idempotencyKey ? $idempotencyKey . '_email' : null,
+                    $availableAt
+                );
+            }
+
+            if ($whatsappPossible) {
+                $this->queueService->enqueue(
+                    $userId,
+                    $scholarshipId,
+                    $type,
+                    'whatsapp',
+                    $whatsappRecipient,
+                    null,
+                    $payloadData,
+                    $idempotencyKey ? $idempotencyKey . '_whatsapp' : null,
+                    $availableAt
+                );
+            }
         }
     }
 
