@@ -13,6 +13,9 @@ use App\Services\WhatsApp\LogWhatsAppProvider;
 use App\Services\WhatsApp\WhatsAppProviderInterface;
 use App\Controllers\NotificationController;
 
+require_once __DIR__ . '/Step1QueueVerificationTest.php';
+require_once __DIR__ . '/Step2MatchingAndPreferencesTest.php';
+
 class Step3MockWhatsAppProvider implements WhatsAppProviderInterface {
     public int $callCount = 0;
     public array $lastCall = [];
@@ -195,8 +198,8 @@ class Step3NotificationDeliveryTest {
     private function createTestScholarship(string $title): int {
         $slug = 'step3-sch-' . bin2hex(random_bytes(6));
         $stmt = $this->db->prepare("
-            INSERT INTO scholarships (title, slug, provider_name, description, country_id, status, application_deadline, created_at, updated_at)
-            VALUES (:title, :slug, 'Step 3 Foundation', 'Description', :cid, 'published', DATE_ADD(CURDATE(), INTERVAL 10 DAY), NOW(), NOW())
+            INSERT INTO scholarships (title, slug, provider_name, description, country_id, status, verification_status, application_deadline, created_at, updated_at)
+            VALUES (:title, :slug, 'Step 3 Foundation', 'Description', :cid, 'published', 'verified', DATE_ADD(CURDATE(), INTERVAL 10 DAY), NOW(), NOW())
         ");
         $stmt->execute(['title' => $title, 'slug' => $slug, 'cid' => $this->pakistanCountryId]);
         return (int)$this->db->lastInsertId();
@@ -458,10 +461,10 @@ class Step3NotificationDeliveryTest {
         $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'whatsapp', '+923001234567', null, ['title' => 'T22'], $key, null, 'wacrm');
         $id = (int)$this->db->query("SELECT id FROM notification_logs WHERE idempotency_key = '$key'")->fetchColumn();
 
-        $this->db->exec("UPDATE notification_logs SET status = 'failed', attempts = 3 WHERE id = $id");
+        $this->db->exec("UPDATE notification_logs SET status = 'failed', attempts = 5 WHERE id = $id");
 
         $res = $this->queueService->retryLog($id);
-        $this->assert($res === false, "retryLog must return false when attempts >= 3");
+        $this->assert($res === false, "retryLog must return false when attempts >= 5");
 
         $status = $this->db->query("SELECT status FROM notification_logs WHERE id = $id")->fetchColumn();
         $this->assert($status === 'failed', "Status must remain failed");
@@ -489,8 +492,8 @@ class Step3NotificationDeliveryTest {
         $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'whatsapp', '+923001234567', null, ['title' => 'T24'], $key, null, 'wacrm');
         $id = (int)$this->db->query("SELECT id FROM notification_logs WHERE idempotency_key = '$key'")->fetchColumn();
 
-        $this->db->exec("UPDATE notification_logs SET status = 'failed', attempts = 3 WHERE id = $id");
-        $this->assert($this->queueService->retryLog($id) === false, "Retry at attempt 3 must be rejected");
+        $this->db->exec("UPDATE notification_logs SET status = 'failed', attempts = 5 WHERE id = $id");
+        $this->assert($this->queueService->retryLog($id) === false, "Retry at attempt 5 must be rejected");
         echo "PASS\n";
     }
 
@@ -566,8 +569,8 @@ class Step3NotificationDeliveryTest {
         $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'whatsapp', '+923001234567', null, ['title' => 'T29'], $key, null, 'wacrm');
         $id = (int)$this->db->query("SELECT id FROM notification_logs WHERE idempotency_key = '$key'")->fetchColumn();
 
-        // Failed at 3 attempts
-        $this->db->exec("UPDATE notification_logs SET status = 'failed', attempts = 3 WHERE id = $id");
+        // Failed at 5 attempts
+        $this->db->exec("UPDATE notification_logs SET status = 'failed', attempts = 5 WHERE id = $id");
 
         // Click retry 5 times
         for ($i = 0; $i < 5; $i++) {
@@ -576,7 +579,7 @@ class Step3NotificationDeliveryTest {
         }
 
         $attempts = (int)$this->db->query("SELECT attempts FROM notification_logs WHERE id = $id")->fetchColumn();
-        $this->assert($attempts === 3, "Attempts must strictly remain 3");
+        $this->assert($attempts === 5, "Attempts must strictly remain 5");
         echo "PASS\n";
     }
 

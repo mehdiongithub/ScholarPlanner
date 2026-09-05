@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\Database;
 use App\Services\Auth;
+use App\Services\ReferralService;
 use App\Helpers\Security;
 use App\Helpers\View;
 use PDO;
@@ -12,108 +13,79 @@ class ReferralPartnerController {
     
     /**
      * GET /referral-partner
-     * Partner dashboard overview (metrics & link)
+     * Partner dashboard overview (summary metrics, referral link, monthly overview)
      */
     public function index(): void {
         Auth::requireRole('referral_partner');
         
         $partner = Auth::currentUser();
         $db = Database::connection();
-        $refCode = $partner['referral_code'];
+        $partnerId = (int)$partner['id'];
         
-        // Attributed Signups Count
-        $stmtSignups = $db->prepare("SELECT COUNT(*) FROM users WHERE referred_by_code = :ref");
-        $stmtSignups->execute(['ref' => $refCode]);
-        $totalSignups = (int)$stmtSignups->fetchColumn();
-        
-        // Paid Conversions Count
-        $stmtConversions = $db->prepare("
-            SELECT COUNT(DISTINCT user_id) 
-            FROM payment_transactions 
-            WHERE referral_code_used = :ref AND status IN ('paid', 'success')
-        ");
-        $stmtConversions->execute(['ref' => $refCode]);
-        $conversions = (int)$stmtConversions->fetchColumn();
-        
-        // Dynamically compute commission
-        $commission = $conversions * 20.00;
-        
+        $month = trim($_GET['month'] ?? date('Y-m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = date('Y-m');
+        }
+
+        // Fetch authoritative metrics from ReferralService
+        $metrics = ReferralService::getPartnerSummaryMetrics($partnerId, $month, $db);
+
+        // Fetch monthly payments/commissions preview
+        $monthlyData = ReferralService::getPartnerMonthlyPayments($partnerId, $month, 1, 10, $db);
+
         view('referral_partner.dashboard', [
             'title' => 'Overview Dashboard',
             'partner' => $partner,
-            'total_signups' => $totalSignups,
-            'conversions' => $conversions,
-            'commission' => number_format($commission, 2),
+            'total_signups' => $metrics['total_referred_users'],
+            'total_paid_users' => $metrics['total_paid_referred_users'],
+            'current_month_paid_users' => $metrics['current_month_paid_users'],
+            'current_month_payments' => $metrics['current_month_payments'],
+            'current_month_commission' => $metrics['current_month_commission'],
+            'total_earned_commission' => $metrics['total_earned_commission'],
+            'selected_month' => $month,
+            'monthly_records' => $monthlyData['records'],
             'csrf_token' => Security::csrfToken()
         ]);
     }
 
     /**
      * GET /referral-partner/students
-     * Privacy-compliant referred students list with basic pagination
+     * Monthly paid customers and referred students list with pagination
+     * Filterable by month; unpaid users are excluded from monthly paid view
      */
     public function students(): void {
         Auth::requireRole('referral_partner');
         
         $partner = Auth::currentUser();
         $db = Database::connection();
-        $refCode = $partner['referral_code'];
+        $partnerId = (int)$partner['id'];
 
-        // Get total count for paging
-        $stmtCount = $db->prepare("SELECT COUNT(*) FROM users WHERE referred_by_code = :ref");
-        $stmtCount->execute(['ref' => $refCode]);
-        $totalItems = (int)$stmtCount->fetchColumn();
-
-        // Pagination variables
-        $currentPage = max(1, (int)($_GET['page'] ?? 1));
-        $perPage = 10;
-        $offset = ($currentPage - 1) * $perPage;
-        $totalPages = ceil($totalItems / $perPage);
-        
-        // Fetch users
-        $stmtUsers = $db->prepare("
-            SELECT u.first_name, u.last_name, u.email, u.created_at,
-                   (
-                       SELECT s.status 
-                       FROM subscriptions s 
-                       WHERE s.user_id = u.id AND s.status = 'active' AND (s.ends_at IS NULL OR s.ends_at > NOW())
-                       ORDER BY s.id DESC LIMIT 1
-                   ) AS active_sub_status
-            FROM users u
-            WHERE u.referred_by_code = :ref
-            ORDER BY u.created_at DESC
-            LIMIT :limit OFFSET :offset
-        ");
-        
-        $stmtUsers->bindValue(':ref', $refCode, PDO::PARAM_STR);
-        $stmtUsers->bindValue(':limit', $perPage, PDO::PARAM_INT);
-        $stmtUsers->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmtUsers->execute();
-        $referredStudents = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Format names with last initial for privacy and map status
-        foreach ($referredStudents as &$s) {
-            $lastInitial = !empty($s['last_name']) ? ' ' . strtoupper($s['last_name'][0]) . '.' : '';
-            $s['display_name'] = trim(($s['first_name'] ?? '')) . $lastInitial;
-            $s['sub_status'] = $s['active_sub_status'] ? 'Active' : 'Inactive';
-            unset($s['first_name'], $s['last_name'], $s['active_sub_status']);
+        $month = trim($_GET['month'] ?? date('Y-m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $month = date('Y-m');
         }
-        
+
+        $currentPage = max(1, (int)($_GET['page'] ?? 1));
+        $perPage = 15;
+
+        $monthlyData = ReferralService::getPartnerMonthlyPayments($partnerId, $month, $currentPage, $perPage, $db);
+
         view('referral_partner.students', [
-            'title' => 'Referred Students',
-            'students' => $referredStudents,
-            'current_page' => $currentPage,
-            'per_page' => $perPage,
-            'total_items' => $totalItems,
-            'total_pages' => $totalPages,
-            'offset' => $offset,
+            'title' => 'Monthly Customer Payments',
+            'partner' => $partner,
+            'payments' => $monthlyData['records'],
+            'current_page' => $monthlyData['current_page'],
+            'per_page' => $monthlyData['per_page'],
+            'total_items' => $monthlyData['total_items'],
+            'total_pages' => $monthlyData['total_pages'],
+            'selected_month' => $month,
             'csrf_token' => Security::csrfToken()
         ]);
     }
 
     /**
      * GET /referral-partner/profile
-     * Minimal profile options (Change Password)
+     * Partner profile settings
      */
     public function profile(): void {
         Auth::requireRole('referral_partner');
@@ -138,8 +110,7 @@ class ReferralPartnerController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['partner_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/referral-partner/profile"));
-            exit();
+            $this->redirect(url("/referral-partner/profile"));
         }
 
         $currentPassword = $_POST['current_password'] ?? '';
@@ -148,8 +119,7 @@ class ReferralPartnerController {
 
         if (empty($currentPassword) || empty($newPassword) || empty($confirmPassword)) {
             $_SESSION['partner_errors'] = 'All password fields are required.';
-            header("Location: " . url("/referral-partner/profile"));
-            exit();
+            $this->redirect(url("/referral-partner/profile"));
         }
 
         // Verify current password hash
@@ -159,20 +129,17 @@ class ReferralPartnerController {
 
         if (!password_verify($currentPassword, $userHash)) {
             $_SESSION['partner_errors'] = 'Incorrect current password.';
-            header("Location: " . url("/referral-partner/profile"));
-            exit();
+            $this->redirect(url("/referral-partner/profile"));
         }
 
         if (strlen($newPassword) < 8) {
             $_SESSION['partner_errors'] = 'New password must be at least 8 characters long.';
-            header("Location: " . url("/referral-partner/profile"));
-            exit();
+            $this->redirect(url("/referral-partner/profile"));
         }
 
         if ($newPassword !== $confirmPassword) {
             $_SESSION['partner_errors'] = 'New passwords do not match.';
-            header("Location: " . url("/referral-partner/profile"));
-            exit();
+            $this->redirect(url("/referral-partner/profile"));
         }
 
         // Save new hashed password
@@ -181,7 +148,20 @@ class ReferralPartnerController {
         $stmtUpd->execute(['hash' => $newHash, 'id' => $partner['id']]);
 
         $_SESSION['partner_success'] = 'Password changed successfully.';
-        header("Location: " . url("/referral-partner/profile"));
+        $this->redirect(url("/referral-partner/profile"));
+    }
+
+    private function halt(string $message = 'Halt execution'): void {
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            throw new \RuntimeException($message);
+        }
         exit();
+    }
+
+    private function redirect(string $url, string $message = 'Redirect'): void {
+        if (!headers_sent()) {
+            header("Location: " . $url);
+        }
+        $this->halt($message);
     }
 }

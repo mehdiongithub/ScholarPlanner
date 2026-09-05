@@ -115,8 +115,8 @@ class NotificationSchedulerTest {
 
         // Create test scholarship
         $stmtSch = $this->db->prepare("
-            INSERT INTO scholarships (title, slug, status, provider_name, country_id, funding_type, application_deadline, description, created_at)
-            VALUES ('Sched Match Scholarship', 'notif-sched-match-scholarship', 'published', 'Global Fund', 1, 'Fully Funded', DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Description', NOW())
+            INSERT INTO scholarships (title, slug, status, verification_status, provider_name, country_id, funding_type, application_deadline, description, created_at)
+            VALUES ('Sched Match Scholarship', 'notif-sched-match-scholarship', 'published', 'verified', 'Global Fund', 1, 'Fully Funded', DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Description', NOW())
         ");
         $stmtSch->execute();
         $this->schId = $this->db->lastInsertId();

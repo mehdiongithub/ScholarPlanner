@@ -268,8 +268,8 @@ class Step2MatchingAndPreferencesTest {
         $deadlineStr = $deadline ?? date('Y-m-d', strtotime('+30 days'));
 
         $stmt = $this->db->prepare("
-            INSERT INTO scholarships (title, slug, provider_name, description, country_id, status, application_deadline, created_at, updated_at)
-            VALUES (:title, :slug, 'Step 2 Test Foundation', 'Test Description', :cid, 'published', :deadline, NOW(), NOW())
+            INSERT INTO scholarships (title, slug, provider_name, description, country_id, status, verification_status, application_deadline, created_at, updated_at)
+            VALUES (:title, :slug, 'Step 2 Test Foundation', 'Test Description', :cid, 'published', 'verified', :deadline, NOW(), NOW())
         ");
         $stmt->execute([
             'title' => $title,

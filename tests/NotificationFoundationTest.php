@@ -105,8 +105,8 @@ class NotificationFoundationTest {
 
         // 3. Create test scholarship
         $stmtSch = $this->db->prepare("
-            INSERT INTO scholarships (title, slug, status, provider_name, country_id, funding_type, application_deadline, description, created_at)
-            VALUES ('Notif Match Scholarship', 'notif-found-match-scholarship', 'published', 'Wacrm Inc', 1, 'Fully Funded', DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Description', NOW())
+            INSERT INTO scholarships (title, slug, status, verification_status, provider_name, country_id, funding_type, application_deadline, description, created_at)
+            VALUES ('Notif Match Scholarship', 'notif-found-match-scholarship', 'published', 'verified', 'Wacrm Inc', 1, 'Fully Funded', DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Description', NOW())
         ");
         $stmtSch->execute();
         $this->schId = $this->db->lastInsertId();
@@ -380,8 +380,8 @@ class NotificationFoundationTest {
 
         // Create a second matching scholarship
         $stmtSch2 = $this->db->prepare("
-            INSERT INTO scholarships (title, slug, status, provider_name, country_id, funding_type, application_deadline, description, created_at)
-            VALUES ('Second match', 'notif-found-match-2', 'published', 'Wacrm Inc', 1, 'Fully Funded', DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Description', NOW())
+            INSERT INTO scholarships (title, slug, status, verification_status, provider_name, country_id, funding_type, application_deadline, description, created_at)
+            VALUES ('Second match', 'notif-found-match-2', 'published', 'verified', 'Wacrm Inc', 1, 'Fully Funded', DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Description', NOW())
         ");
         $stmtSch2->execute();
         $sch2Id = $this->db->lastInsertId();

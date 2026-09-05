@@ -22,7 +22,9 @@ class BillingController {
      * Helper to safely redirect, throwing exception in tests to prevent process exit.
      */
     private function redirect(string $url): void {
-        header("Location: " . $url);
+        if (!headers_sent()) {
+            header("Location: " . $url);
+        }
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new RuntimeException("Redirect to " . $url);
         }
@@ -33,7 +35,9 @@ class BillingController {
      * Helper to safely abort/respond with error code.
      */
     private function abort(int $code, string $message = ''): void {
-        http_response_code($code);
+        if (!headers_sent()) {
+            http_response_code($code);
+        }
         echo $message;
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new RuntimeException("Abort $code: $message");
@@ -101,32 +105,18 @@ class BillingController {
         $userId = Auth::userId();
         $ref = 'TXN_' . strtoupper(bin2hex(random_bytes(8)));
 
-        // Check if user is referred by a partner
-        $stmtRef = $this->db->prepare("
-            SELECT u.referral_code, u.discount_percent 
-            FROM users u
-            JOIN roles r ON u.role_id = r.id
-            JOIN users referred ON referred.referred_by_code = u.referral_code
-            WHERE referred.id = :uid AND u.referral_code IS NOT NULL AND r.name = 'referral_partner' AND u.status = 'active'
-            LIMIT 1
-        ");
-        $stmtRef->execute(['uid' => $userId]);
-        $referralInfo = $stmtRef->fetch(PDO::FETCH_ASSOC);
-
-        $discountPercent = 0.00;
-        $referralCodeUsed = null;
-        $finalAmount = $plan['price'];
-
-        if ($referralInfo) {
-            $discountPercent = (float)$referralInfo['discount_percent'];
-            $referralCodeUsed = $referralInfo['referral_code'];
-            $discountAmount = round(($plan['price'] * ($discountPercent / 100)), 2);
-            $finalAmount = max(0.00, $plan['price'] - $discountAmount);
-        }
-
-        // Create transaction record
+        // Create transaction record with atomic first-payment discount reservation
         $this->db->beginTransaction();
         try {
+            // Atomic reservation of first-payment discount with row lock
+            $discountCalc = \App\Services\ReferralService::calculateDiscount($userId, $plan['price'], $plan['currency'], $this->db, true);
+            $finalAmount = $discountCalc['final_amount'];
+            $originalAmount = $discountCalc['original_amount'];
+            $discountPercent = $discountCalc['discount_percent'];
+            $discountAmount = $discountCalc['discount_amount'];
+            $referralCodeUsed = $discountCalc['referral_code'];
+            $referralPartnerId = $discountCalc['partner_id'];
+
             // Check if user already has an active subscription for this plan to link it
             $stmtSub = $this->db->prepare("SELECT id FROM subscriptions WHERE user_id = :uid AND plan_id = :pid ORDER BY id DESC LIMIT 1");
             $stmtSub->execute(['uid' => $userId, 'pid' => $plan['id']]);
@@ -135,9 +125,12 @@ class BillingController {
             $stmtTx = $this->db->prepare("
                 INSERT INTO payment_transactions (
                     user_id, subscription_id, plan_id, provider, transaction_reference, 
-                    amount, currency, status, discount_percent, referral_code_used, created_at, updated_at
+                    amount, original_amount, referral_discount_amount, discount_percent, 
+                    referral_code_used, referral_partner_id, currency, status, created_at, updated_at
                 ) VALUES (
-                    :uid, :sub_id, :pid, :provider, :ref, :amount, :currency, 'pending', :discount_percent, :referral_code_used, NOW(), NOW()
+                    :uid, :sub_id, :pid, :provider, :ref, 
+                    :amount, :orig_amount, :disc_amount, :discount_percent, 
+                    :referral_code_used, :partner_id, :currency, 'pending', NOW(), NOW()
                 )
             ");
             $stmtTx->execute([
@@ -147,14 +140,24 @@ class BillingController {
                 'provider' => $provider,
                 'ref' => $ref,
                 'amount' => $finalAmount,
-                'currency' => $plan['currency'],
+                'orig_amount' => $originalAmount,
+                'disc_amount' => $discountAmount,
                 'discount_percent' => $discountPercent,
-                'referral_code_used' => $referralCodeUsed
+                'referral_code_used' => $referralCodeUsed,
+                'partner_id' => $referralPartnerId,
+                'currency' => $plan['currency']
             ]);
+            $txId = (int)$this->db->lastInsertId();
+
+            // Link reservation claim to this newly created transaction
+            if ($discountCalc['has_discount']) {
+                \App\Services\ReferralService::linkDiscountClaimToTransaction($userId, $txId, $this->db);
+            }
 
             $this->db->commit();
         } catch (Exception $e) {
             $this->db->rollBack();
+            \App\Services\ReferralService::releaseDiscountClaimForUser($userId, $this->db);
             $cleanMsg = \App\Services\Logger::redactSensitiveString($e->getMessage());
             $this->redirect(url('/pricing?error=Database failure creating transaction: ' . urlencode($cleanMsg)));
         }
@@ -252,14 +255,22 @@ class BillingController {
                     'id' => $tx['id']
                 ]);
 
-                // Activate/create subscription
-                $stmtPlan = $this->db->prepare("
-                    SELECT p.* FROM subscription_plans p 
-                    WHERE p.price = :price AND p.currency = :currency AND p.status = 'active'
-                    LIMIT 1
-                ");
-                $stmtPlan->execute(['price' => $res['amount'], 'currency' => $res['currency']]);
-                $plan = $stmtPlan->fetch(PDO::FETCH_ASSOC);
+                // Subscription activation
+                $plan = null;
+                if (!empty($tx['plan_id'])) {
+                    $stmtPlan = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id AND status = 'active' LIMIT 1");
+                    $stmtPlan->execute(['id' => (int)$tx['plan_id']]);
+                    $plan = $stmtPlan->fetch(PDO::FETCH_ASSOC);
+                }
+                if (!$plan) {
+                    $stmtPlan = $this->db->prepare("
+                        SELECT * FROM subscription_plans 
+                        WHERE price = :price AND currency = :currency AND status = 'active' 
+                        LIMIT 1
+                    ");
+                    $stmtPlan->execute(['price' => $res['amount'], 'currency' => $res['currency']]);
+                    $plan = $stmtPlan->fetch(PDO::FETCH_ASSOC);
+                }
 
                 if (!$plan) {
                     $plan = $this->db->query("SELECT * FROM subscription_plans WHERE slug = 'premium-monthly' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
@@ -273,15 +284,36 @@ class BillingController {
                 $stmtSub->execute(['uid' => $tx['user_id'], 'pid' => $plan['id']]);
                 $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
 
-                $endsAt = SubscriptionService::calculatePlanExpiry($plan);
+                $baseTime = null;
+                $isOngoing = false;
+                if ($sub && in_array($sub['status'], ['active', 'cancelled']) && !empty($sub['ends_at'])) {
+                    if (strtotime($sub['ends_at']) > time()) {
+                        $baseTime = $sub['ends_at'];
+                        $isOngoing = !empty($sub['starts_at']);
+                    }
+                }
+
+                $endsAt = SubscriptionService::calculatePlanExpiry($plan, $baseTime);
 
                 if ($sub) {
                     $stmtSubUpd = $this->db->prepare("
                         UPDATE subscriptions 
-                        SET status = 'active', starts_at = NOW(), ends_at = :ends, cancelled_at = NULL, auto_renew = 1, updated_at = NOW() 
+                        SET status = 'active', 
+                            starts_at = " . ($isOngoing ? ":starts" : "NOW()") . ", 
+                            ends_at = :ends, 
+                            cancelled_at = NULL, 
+                            auto_renew = 1, 
+                            updated_at = NOW() 
                         WHERE id = :id
                     ");
-                    $stmtSubUpd->execute(['ends' => $endsAt, 'id' => $sub['id']]);
+                    $paramsSub = [
+                        'ends' => $endsAt,
+                        'id' => $sub['id']
+                    ];
+                    if ($isOngoing) {
+                        $paramsSub['starts'] = $sub['starts_at'];
+                    }
+                    $stmtSubUpd->execute($paramsSub);
                     $subId = $sub['id'];
                 } else {
                     $stmtSubIns = $this->db->prepare("
@@ -307,11 +339,18 @@ class BillingController {
                 // Enqueue Meta WhatsApp confirmation
                 $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)($tx['plan_id'] ?: $plan['id']));
 
+                // Record qualifying referral commission (idempotent, 6-month window, minor-unit arithmetic)
+                \App\Services\ReferralService::calculateAndRecordCommission((int)$tx['id'], $this->db);
+                \App\Services\ReferralService::consumeDiscountClaim((int)$tx['id'], $this->db);
+
                 Auth::logAudit($tx['user_id'], 'payment_verified', 'billing', 'payment_transactions', $tx['id']);
                 Auth::logAudit($tx['user_id'], 'subscription_activated', 'subscriptions', 'subscriptions', $subId);
 
                 $_SESSION['billing_success'] = "Payment verified successfully. Welcome to Premium!";
             } else {
+                // Safely release reservation if payment failed so user remains eligible
+                \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
+
                 $stmtUpd = $this->db->prepare("
                     UPDATE payment_transactions 
                     SET status = 'failed', failed_at = NOW(), updated_at = NOW() 
@@ -430,8 +469,12 @@ class BillingController {
                 exit();
             }
 
-            // Amount & Currency Verification
-            if ((float)$tx['amount'] !== (float)$res['amount'] || $tx['currency'] !== $res['currency']) {
+            // Deterministic Amount & Currency Verification
+            $expectedCurrency = strtoupper(trim((string)$tx['currency']));
+            $receivedCurrency = strtoupper(trim((string)$res['currency']));
+            $amountsMatch = PaymentService::amountsEqual($tx['amount'], $res['amount'], 2);
+
+            if (!$amountsMatch || $expectedCurrency !== $receivedCurrency) {
                 $stmtFail = $this->db->prepare("UPDATE payment_webhook_logs SET processing_status = 'failed', failure_reason = 'Amount or currency mismatch' WHERE id = :id");
                 $stmtFail->execute(['id' => $webhookLogId]);
                 $this->db->commit();
@@ -496,8 +539,14 @@ class BillingController {
                 // Enqueue Meta WhatsApp confirmation
                 $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)($tx['plan_id'] ?: $planId));
 
+                // Record qualifying referral commission (idempotent, 6-month window, minor-unit arithmetic)
+                \App\Services\ReferralService::calculateAndRecordCommission((int)$tx['id'], $this->db);
+                \App\Services\ReferralService::consumeDiscountClaim((int)$tx['id'], $this->db);
+
                 Auth::logAudit($tx['user_id'], 'webhook_payment_verified', 'billing', 'payment_transactions', $tx['id']);
             } else {
+                \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
+
                 $stmtUpd = $this->db->prepare("
                     UPDATE payment_transactions 
                     SET status = 'failed', failed_at = NOW(), updated_at = NOW() 
@@ -585,21 +634,41 @@ class BillingController {
                 exit();
             }
 
-            // 5. Amount & Currency verification
-            if ((float)$tx['amount'] !== (float)$res['amount'] || strtoupper($tx['currency']) !== strtoupper($res['currency'])) {
+            // 5. Strict currency & deterministic monetary amount verification (no floating-point arithmetic)
+            $expectedCurrency = strtoupper(trim((string)$tx['currency']));
+            $receivedCurrency = strtoupper(trim((string)$res['currency']));
+
+            if ($expectedCurrency !== $receivedCurrency) {
                 $stmtFail = $this->db->prepare("
                     UPDATE payment_transactions 
-                    SET status = 'failed', failed_at = NOW(), gateway_response_message = 'Amount or currency mismatch', updated_at = NOW() 
+                    SET status = 'failed', failed_at = NOW(), gateway_response_message = 'Currency mismatch', updated_at = NOW() 
                     WHERE id = :id
                 ");
                 $stmtFail->execute(['id' => $tx['id']]);
+                \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
+                $this->db->commit();
+                $this->abort(400, 'Amount or currency mismatch');
+            }
+
+            // Strict deterministic integer minor units comparison
+            $normExpected = \App\Services\CashMaalPaymentGateway::normalizeToMinorUnits($tx['amount'], 2);
+            $normReceived = \App\Services\CashMaalPaymentGateway::normalizeToMinorUnits($res['amount'], 2);
+
+            if ($normExpected === null || $normReceived === null || $normExpected !== $normReceived) {
+                $stmtFail = $this->db->prepare("
+                    UPDATE payment_transactions 
+                    SET status = 'failed', failed_at = NOW(), gateway_response_message = 'Amount mismatch', updated_at = NOW() 
+                    WHERE id = :id
+                ");
+                $stmtFail->execute(['id' => $tx['id']]);
+                \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
                 $this->db->commit();
                 $this->abort(400, 'Amount or currency mismatch');
             }
 
             // 6. Independent CashMaal API verification (verify_v2) if enabled or mock supplied
             if (!empty($params['mock_api_verify']) && is_array($params['mock_api_verify'])) {
-                $apiRes = $gateway->evaluateVerifyApiResponse($params['mock_api_verify'], $cmTid, $tx['transaction_reference'], (float)$tx['amount'], $tx['currency']);
+                $apiRes = $gateway->evaluateVerifyApiResponse($params['mock_api_verify'], $cmTid, $tx['transaction_reference'], $tx['amount'], $tx['currency']);
                 if (!$apiRes['verified']) {
                     $stmtFail = $this->db->prepare("
                         UPDATE payment_transactions 
@@ -607,11 +676,12 @@ class BillingController {
                         WHERE id = :id
                     ");
                     $stmtFail->execute(['err' => $apiRes['error'] ?? 'API verification failed', 'id' => $tx['id']]);
+                    \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
                     $this->db->commit();
                     $this->abort(400, 'API verification failed: ' . ($apiRes['error'] ?? ''));
                 }
             } elseif (config('payment.cashmaal.verify_api') === true) {
-                $apiRes = $gateway->verifyTransactionWithApi($cmTid, $tx['transaction_reference'], (float)$tx['amount'], $tx['currency']);
+                $apiRes = $gateway->verifyTransactionWithApi($cmTid, $tx['transaction_reference'], $tx['amount'], $tx['currency']);
                 if (!$apiRes['verified']) {
                     $stmtFail = $this->db->prepare("
                         UPDATE payment_transactions 
@@ -619,6 +689,7 @@ class BillingController {
                         WHERE id = :id
                     ");
                     $stmtFail->execute(['err' => $apiRes['error'] ?? 'API verification failed', 'id' => $tx['id']]);
+                    \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
                     $this->db->commit();
                     $this->abort(400, 'API verification failed: ' . ($apiRes['error'] ?? ''));
                 }
@@ -636,39 +707,79 @@ class BillingController {
                     'id' => $tx['id']
                 ]);
 
-                // Determine plan
-                $planId = $tx['plan_id'] ?? null;
+                // Determine plan strictly from payment transaction
+                $planId = !empty($tx['plan_id']) ? (int)$tx['plan_id'] : null;
                 if (!$planId) {
-                    $stmtPlan = $this->db->prepare("SELECT id FROM subscription_plans WHERE price = :price AND currency = :currency AND status = 'active' LIMIT 1");
-                    $stmtPlan->execute(['price' => $res['amount'], 'currency' => $res['currency']]);
-                    $planId = $stmtPlan->fetchColumn();
-                }
-                if (!$planId) {
-                    $planId = $this->db->query("SELECT id FROM subscription_plans WHERE slug = 'premium-monthly' LIMIT 1")->fetchColumn();
+                    $stmtFail = $this->db->prepare("
+                        UPDATE payment_transactions 
+                        SET status = 'failed', failed_at = NOW(), gateway_response_message = 'Payment transaction missing plan_id', updated_at = NOW() 
+                        WHERE id = :id
+                    ");
+                    $stmtFail->execute(['id' => $tx['id']]);
+                    \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
+                    $this->db->commit();
+                    $this->abort(400, 'Payment transaction missing bound plan_id');
                 }
 
-                $stmtPlanRec = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id LIMIT 1");
+                $stmtPlanRec = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id AND status = 'active' LIMIT 1");
                 $stmtPlanRec->execute(['id' => $planId]);
                 $planRec = $stmtPlanRec->fetch(PDO::FETCH_ASSOC);
+                if (!$planRec) {
+                    $stmtFail = $this->db->prepare("
+                        UPDATE payment_transactions 
+                        SET status = 'failed', failed_at = NOW(), gateway_response_message = 'Subscription plan not found or inactive', updated_at = NOW() 
+                        WHERE id = :id
+                    ");
+                    $stmtFail->execute(['id' => $tx['id']]);
+                    \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
+                    $this->db->commit();
+                    $this->abort(400, 'Bound subscription plan not found or inactive');
+                }
 
-                $endsAt = \App\Services\SubscriptionService::calculatePlanExpiry($planRec ?: $planId);
-
-                $stmtSub = $this->db->prepare("SELECT id FROM subscriptions WHERE user_id = :uid AND plan_id = :pid ORDER BY id DESC LIMIT 1 FOR UPDATE");
+                $stmtSub = $this->db->prepare("
+                    SELECT id, status, starts_at, ends_at 
+                    FROM subscriptions 
+                    WHERE user_id = :uid AND plan_id = :pid 
+                    ORDER BY id DESC LIMIT 1 FOR UPDATE
+                ");
                 $stmtSub->execute(['uid' => $tx['user_id'], 'pid' => $planId]);
                 $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
+
+                // If user currently has an active subscription with unexpired time, extend from current ends_at!
+                $baseTime = null;
+                $isOngoing = false;
+                if ($sub && in_array($sub['status'], ['active', 'cancelled']) && !empty($sub['ends_at'])) {
+                    if (strtotime($sub['ends_at']) > time()) {
+                        $baseTime = $sub['ends_at'];
+                        $isOngoing = !empty($sub['starts_at']);
+                    }
+                }
+
+                $endsAt = \App\Services\SubscriptionService::calculatePlanExpiry($planRec, $baseTime);
 
                 if ($sub) {
                     $stmtSubUpd = $this->db->prepare("
                         UPDATE subscriptions 
-                        SET status = 'active', starts_at = NOW(), ends_at = :ends, cancelled_at = NULL, auto_renew = 1, provider = :provider, provider_subscription_id = :ptx, updated_at = NOW() 
+                        SET status = 'active', 
+                            starts_at = " . ($isOngoing ? ":starts" : "NOW()") . ", 
+                            ends_at = :ends, 
+                            cancelled_at = NULL, 
+                            auto_renew = 1, 
+                            provider = :provider, 
+                            provider_subscription_id = :ptx, 
+                            updated_at = NOW() 
                         WHERE id = :id
                     ");
-                    $stmtSubUpd->execute([
+                    $paramsSub = [
                         'ends' => $endsAt,
                         'provider' => $tx['provider'],
                         'ptx' => $res['provider_transaction_id'],
                         'id' => $sub['id']
-                    ]);
+                    ];
+                    if ($isOngoing) {
+                        $paramsSub['starts'] = $sub['starts_at'];
+                    }
+                    $stmtSubUpd->execute($paramsSub);
                     $subId = $sub['id'];
                 } else {
                     $stmtSubIns = $this->db->prepare("
@@ -695,6 +806,10 @@ class BillingController {
                 // Enqueue Meta WhatsApp confirmation
                 $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)$planId);
 
+                // Record qualifying referral commission (idempotent, 6-month window, minor-unit arithmetic)
+                \App\Services\ReferralService::calculateAndRecordCommission((int)$tx['id'], $this->db);
+                \App\Services\ReferralService::consumeDiscountClaim((int)$tx['id'], $this->db);
+
                 Auth::logAudit($tx['user_id'], 'cashmaal_payment_verified', 'billing', 'payment_transactions', $tx['id']);
                 Auth::logAudit($tx['user_id'], 'subscription_activated', 'subscriptions', 'subscriptions', $subId);
 
@@ -713,6 +828,7 @@ class BillingController {
                     'err' => $res['error'] ?? 'CashMaal payment rejected',
                     'id' => $tx['id']
                 ]);
+                \App\Services\ReferralService::releaseDiscountClaim((int)$tx['id'], $this->db);
                 $this->db->commit();
                 echo '**OK**';
                 if (defined('TESTING_MODE') && TESTING_MODE) return;

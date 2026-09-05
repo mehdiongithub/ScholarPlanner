@@ -5,47 +5,45 @@
         background: white;
         border: 1px solid var(--border-slate-200);
         border-radius: 12px;
-        padding: 28px;
+        padding: 24px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    .card-title {
-        font-size: 1.125rem;
-        font-weight: 700;
-        margin-top: 0;
-        margin-bottom: 16px;
-    }
-    .students-table {
+    .data-table {
         width: 100%;
         border-collapse: collapse;
     }
-    .students-table th, .students-table td {
-        padding: 14px 16px;
+    .data-table th, .data-table td {
+        padding: 12px 14px;
         text-align: left;
         border-bottom: 1px solid var(--border-slate-200);
+        font-size: 0.875rem;
     }
-    .students-table th {
+    .data-table th {
         background-color: var(--bg-slate-50);
         font-weight: 600;
         color: #475569;
-        font-size: 0.8125rem;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
     .badge {
         display: inline-block;
-        padding: 4px 8px;
-        border-radius: 12px;
+        padding: 3px 8px;
+        border-radius: 9999px;
         font-size: 0.75rem;
         font-weight: 600;
     }
     .badge-active { background: #d1fae5; color: #065f46; }
-    .badge-inactive { background: #f1f5f9; color: #475569; }
+    .badge-expired { background: #fee2e2; color: #991b1b; }
+    .badge-earned { background: #e0e7ff; color: #3730a3; }
     
     .pagination-bar {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-top: 24px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+        gap: 12px;
     }
     .pagination-links {
         display: flex;
@@ -64,7 +62,6 @@
         text-decoration: none;
         font-size: 0.875rem;
         font-weight: 500;
-        transition: all 0.2s;
     }
     .page-link:hover {
         background-color: var(--bg-slate-50);
@@ -82,58 +79,74 @@
     }
 </style>
 
-<div style="margin-bottom: 24px;">
-    <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Attributed Referred Students</h1>
-    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">A privacy-compliant log of all students who registered using your referral link.</p>
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Monthly Paid Customers</h1>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Referred users who made a successful payment in <?= e($selected_month) ?> during their 6-month attribution window.</p>
+    </div>
+    <div>
+        <form method="GET" action="<?= url('/referral-partner/students') ?>" style="display: flex; gap: 8px; align-items: center;">
+            <label for="month" style="font-size: 0.875rem; color: #64748b; font-weight: 500;">Month:</label>
+            <input type="month" name="month" id="month" value="<?= e($selected_month) ?>" class="form-input" style="padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px;" onchange="this.form.submit()">
+        </form>
+    </div>
 </div>
 
 <div class="card">
     <div style="overflow-x: auto;">
-        <?php if (empty($students)): ?>
+        <?php if (empty($payments)): ?>
             <p style="text-align: center; color: #64748b; padding: 40px 0; margin: 0; font-size: 0.875rem;">
-                No students registered under your referral code yet.
+                No paid conversions recorded for <?= e($selected_month) ?>.
             </p>
         <?php else: ?>
-            <table class="students-table">
+            <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Student Name</th>
-                        <th>Registration Date</th>
-                        <th>Subscription Status</th>
+                        <th>Date</th>
+                        <th>Referred Customer</th>
+                        <th>Plan</th>
+                        <th>Original Price</th>
+                        <th>Referral Discount</th>
+                        <th>Actual Paid</th>
+                        <th>Commission</th>
+                        <th>Status</th>
+                        <th>Attribution Window</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($students as $s): ?>
+                    <?php foreach ($payments as $p): ?>
                         <tr>
+                            <td><?= e(date('M d, Y H:i', strtotime($p['payment_date']))) ?></td>
+                            <td><strong style="color: #0f172a;"><?= e($p['display_name']) ?></strong></td>
+                            <td><?= e($p['plan_name']) ?></td>
+                            <td>Rs <?= e($p['original_plan_amount']) ?></td>
+                            <td><?= e($p['referral_discount_percentage']) ?>% (Rs <?= e($p['referral_discount_amount']) ?>)</td>
+                            <td><strong>Rs <?= e($p['actual_paid_amount']) ?></strong></td>
+                            <td style="color: #10b981; font-weight: 600;">Rs <?= e($p['commission_amount']) ?></td>
+                            <td><span class="badge badge-earned"><?= e(ucfirst($p['status'])) ?></span></td>
                             <td>
-                                <strong style="color: #0f172a;"><?= e($s['display_name']) ?></strong>
-                            </td>
-                            <td style="color: #475569; font-size: 0.875rem;">
-                                <?= e(date('M d, Y', strtotime($s['created_at']))) ?>
-                            </td>
-                            <td>
-                                <?php $badgeClass = $s['sub_status'] === 'Active' ? 'badge-active' : 'badge-inactive'; ?>
-                                <span class="badge <?= $badgeClass ?>"><?= e($s['sub_status']) ?></span>
+                                <?php if ($p['is_attribution_active']): ?>
+                                    <span class="badge badge-active">Active</span>
+                                <?php else: ?>
+                                    <span class="badge badge-expired">Expired</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
 
-            <!-- Basic Pagination Controls -->
             <?php if ($total_pages > 1): ?>
                 <div class="pagination-bar">
                     <span style="font-size: 0.875rem; color: #64748b;">
-                        Showing <?= $offset + 1 ?> to <?= min($offset + $per_page, $total_items) ?> of <?= $total_items ?> students
+                        Showing <?= (($current_page - 1) * $per_page) + 1 ?> to <?= min($current_page * $per_page, $total_items) ?> of <?= $total_items ?> entries
                     </span>
                     <div class="pagination-links">
-                        <a href="?page=<?= max(1, $current_page - 1) ?>" class="page-link <?= $current_page <= 1 ? 'disabled' : '' ?>">Prev</a>
-                        
+                        <a href="?month=<?= urlencode($selected_month) ?>&page=<?= max(1, $current_page - 1) ?>" class="page-link <?= $current_page <= 1 ? 'disabled' : '' ?>">Prev</a>
                         <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                            <a href="?page=<?= $i ?>" class="page-link <?= $current_page === $i ? 'active' : '' ?>"><?= $i ?></a>
+                            <a href="?month=<?= urlencode($selected_month) ?>&page=<?= $i ?>" class="page-link <?= $current_page === $i ? 'active' : '' ?>"><?= $i ?></a>
                         <?php endfor; ?>
-                        
-                        <a href="?page=<?= min($total_pages, $current_page + 1) ?>" class="page-link <?= $current_page >= $total_pages ? 'disabled' : '' ?>">Next</a>
+                        <a href="?month=<?= urlencode($selected_month) ?>&page=<?= min($total_pages, $current_page + 1) ?>" class="page-link <?= $current_page >= $total_pages ? 'disabled' : '' ?>">Next</a>
                     </div>
                 </div>
             <?php endif; ?>

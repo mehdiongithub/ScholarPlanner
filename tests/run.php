@@ -35,6 +35,9 @@ require_once __DIR__ . '/Step1QueueVerificationTest.php';
 require_once __DIR__ . '/Step2MatchingAndPreferencesTest.php';
 require_once __DIR__ . '/Step3NotificationDeliveryTest.php';
 require_once __DIR__ . '/Step4PaymentIntegrationTest.php';
+require_once __DIR__ . '/Step5ReferralSystemTest.php';
+require_once __DIR__ . '/Step6NotificationAutomationTest.php';
+require_once __DIR__ . '/ScholarshipMessageFormatterTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -157,6 +160,18 @@ try {
     // 29. Step 4 CashMaal Subscription Payments + Meta WhatsApp Payment Confirmation Verification
     $step4Test = new Step4PaymentIntegrationTest();
     $step4Test->run();
+
+    // 30. Step 5 Referral Partner System & Production Integration Verification
+    $step5Test = new Step5ReferralSystemTest();
+    $step5Test->run();
+
+    // 31. Step 6 Automated Scholarship Notifications via WhatsApp + Gmail Verification
+    $step6Test = new Step6NotificationAutomationTest();
+    $step6Test->run();
+
+    // 32. Step 7 Professional Scholarship Message Formatter Verification
+    $formatterTest = new \Tests\ScholarshipMessageFormatterTest();
+    $formatterTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

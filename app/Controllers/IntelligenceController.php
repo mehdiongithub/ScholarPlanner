@@ -918,7 +918,9 @@ class IntelligenceController {
      */
     private function redirectBackToIntelligence(string $tab): void {
         $url = url('/admin/intelligence?tab=' . $tab);
-        header("Location: " . $url);
+        if (!headers_sent()) {
+            header("Location: " . $url);
+        }
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new RuntimeException("Redirect to intelligence page");
         }
@@ -1035,7 +1037,9 @@ class IntelligenceController {
     }
 
     private function dieWithError(int $code, string $message): void {
-        http_response_code($code);
+        if (!headers_sent()) {
+            http_response_code($code);
+        }
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new \RuntimeException($message, $code);
         }

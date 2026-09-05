@@ -71,6 +71,7 @@ class EmailNotificationService {
 
         return [
             'success' => true,
+            'message_id' => 'mail_log_' . uniqid('', true),
             'error' => null
         ];
     }
@@ -128,6 +129,8 @@ class EmailNotificationService {
             // DATA
             $this->writeSmtpCommand($socket, "DATA", 354);
 
+            $messageId = "<" . uniqid('', true) . "@" . ($host ?: 'localhost') . ">";
+
             // Build Email Headers & Body
             $headers = [
                 "MIME-Version: 1.0",
@@ -136,7 +139,7 @@ class EmailNotificationService {
                 "To: <$to>",
                 "Subject: =?utf-8?B?" . base64_encode($subject) . "?=",
                 "Date: " . date('r'),
-                "Message-ID: <" . uniqid('', true) . "@" . ($host ?: 'localhost') . ">"
+                "Message-ID: " . $messageId
             ];
 
             $emailData = implode("\r\n", $headers) . "\r\n\r\n" . $body . "\r\n.";
@@ -151,6 +154,7 @@ class EmailNotificationService {
 
         return [
             'success' => true,
+            'message_id' => $messageId,
             'error' => null
         ];
     }

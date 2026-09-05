@@ -38,10 +38,19 @@ class ApplicationController {
         exit();
     }
 
+    private function redirect(string $url): void {
+        if (!headers_sent()) {
+            header("Location: " . $url);
+        }
+        $this->halt();
+    }
+
     private function dieWithError(int $code, string $message): void {
-        http_response_code($code);
+        if (!headers_sent()) {
+            http_response_code($code);
+        }
         if (defined('TESTING_MODE') && TESTING_MODE) {
-            throw new RuntimeException($message);
+            throw new RuntimeException($message, $code);
         }
         die($message);
     }
@@ -238,8 +247,7 @@ class ApplicationController {
 
         if (!empty($errors)) {
             $_SESSION['application_errors'] = $errors;
-            header("Location: " . url('/scholarships/' . ($sch['slug'] ?? '')));
-            $this->halt();
+            $this->redirect(url('/scholarships/' . ($sch['slug'] ?? '')));
         }
 
         $this->db->beginTransaction();
@@ -280,15 +288,13 @@ class ApplicationController {
             $this->db->rollBack();
             if ($e->getCode() === '23000' || strpos($e->getMessage(), '1062 Duplicate entry') !== false) {
                 $_SESSION['application_errors'] = ['scholarship_id' => 'This scholarship is already in your application tracker.'];
-                header("Location: " . url('/scholarships/' . ($sch['slug'] ?? '')));
-                $this->halt();
+                $this->redirect(url('/scholarships/' . ($sch['slug'] ?? '')));
             }
             throw $e;
         }
 
         $_SESSION['application_success'] = 'Scholarship added to tracker successfully.';
-        header("Location: " . url('/applications'));
-        $this->halt();
+        $this->redirect(url('/applications'));
     }
 
     /**
@@ -393,8 +399,7 @@ class ApplicationController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['application_errors'] = ['csrf' => 'CSRF verification failed. Please try again.'];
-            header("Location: " . url('/applications/' . $encId));
-            $this->halt();
+            $this->redirect(url('/applications/' . $encId));
         }
 
         // Fetch existing
@@ -491,8 +496,7 @@ class ApplicationController {
 
         if (!empty($errors)) {
             $_SESSION['application_errors'] = $errors;
-            header("Location: " . url('/applications/' . $encId));
-            $this->halt();
+            $this->redirect(url('/applications/' . $encId));
         }
 
         $this->db->beginTransaction();
@@ -541,8 +545,7 @@ class ApplicationController {
         }
 
         $_SESSION['application_success'] = 'Application tracker updated successfully.';
-        header("Location: " . url('/applications/' . $encId));
-        $this->halt();
+        $this->redirect(url('/applications/' . $encId));
     }
 
     /**
@@ -562,8 +565,7 @@ class ApplicationController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['application_errors'] = ['csrf' => 'CSRF verification failed. Please try again.'];
-            header("Location: " . url('/applications/' . $encId));
-            $this->halt();
+            $this->redirect(url('/applications/' . $encId));
         }
 
         $this->db->beginTransaction();
@@ -592,8 +594,7 @@ class ApplicationController {
         }
 
         $_SESSION['application_success'] = 'Application removed from tracker successfully.';
-        header("Location: " . url('/applications'));
-        $this->halt();
+        $this->redirect(url('/applications'));
     }
 
     /**
@@ -872,8 +873,7 @@ class ApplicationController {
         );
 
         $_SESSION['admin_app_success'] = 'Application status updated successfully.';
-        header("Location: " . url('/admin/applications'));
-        $this->halt();
+        $this->redirect(url('/admin/applications'));
     }
 
     public function applicationsData(): void {

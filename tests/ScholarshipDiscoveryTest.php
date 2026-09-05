@@ -422,7 +422,9 @@ class ScholarshipDiscoveryTest {
         } catch (RuntimeException $e) {
             // Expected
         }
-        ob_end_clean();
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
 
         // 2. IDOR unsave: Student B cannot delete Student A's saved bookmark
         $this->db->exec("INSERT INTO saved_scholarships (user_id, scholarship_id) VALUES ({$this->studentId}, {$this->scholarshipId1})");

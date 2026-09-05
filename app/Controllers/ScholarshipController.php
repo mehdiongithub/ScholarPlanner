@@ -2343,9 +2343,7 @@ class ScholarshipController {
             $this->abort404();
         }
 
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
+        \App\Helpers\Security::startSession();
 
         $compareIds = $_SESSION['compare_ids'] ?? [];
         if (in_array($id, $compareIds)) {
@@ -2539,10 +2537,9 @@ class ScholarshipController {
 
     private function redirectBackToDiscovery(): void {
         $referer = $_SERVER['HTTP_REFERER'] ?? '';
-        if (!empty($referer)) {
-            header("Location: " . $referer);
-        } else {
-            header("Location: " . url('/scholarships'));
+        $target = !empty($referer) ? $referer : url('/scholarships');
+        if (!headers_sent()) {
+            header("Location: " . $target);
         }
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new \RuntimeException("Redirect to discovery");
@@ -2551,10 +2548,9 @@ class ScholarshipController {
     }
 
     private function abort404(): void {
-        while (ob_get_level() > 0) {
-            ob_end_flush();
+        if (!headers_sent()) {
+            http_response_code(404);
         }
-        http_response_code(404);
         view('errors.404');
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new \RuntimeException("404 Not Found");

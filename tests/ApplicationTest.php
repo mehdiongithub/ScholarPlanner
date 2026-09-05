@@ -101,14 +101,14 @@ class ApplicationTest {
 
         // 5. Create Scholarships
         $this->db->exec("
-            INSERT INTO scholarships (title, provider_name, description, application_deadline, status, slug, funding_type)
-            VALUES ('App Scholarship Alpha', 'Alpha Provider', 'Desc Alpha', '" . date('Y-m-d', strtotime('+7 days')) . "', 'published', 'app-scholarship-alpha', 'Full')
+            INSERT INTO scholarships (title, provider_name, description, application_deadline, status, slug, funding_type, verification_status)
+            VALUES ('App Scholarship Alpha', 'Alpha Provider', 'Desc Alpha', '" . date('Y-m-d', strtotime('+7 days')) . "', 'published', 'app-scholarship-alpha', 'Full', 'verified')
         ");
         $this->scholarshipId = (int)$this->db->lastInsertId();
 
         $this->db->exec("
-            INSERT INTO scholarships (title, provider_name, description, application_deadline, status, slug, funding_type)
-            VALUES ('App Scholarship Beta', 'Beta Provider', 'Desc Beta', '" . date('Y-m-d', strtotime('+3 days')) . "', 'published', 'app-scholarship-beta', 'Partial')
+            INSERT INTO scholarships (title, provider_name, description, application_deadline, status, slug, funding_type, verification_status)
+            VALUES ('App Scholarship Beta', 'Beta Provider', 'Desc Beta', '" . date('Y-m-d', strtotime('+3 days')) . "', 'published', 'app-scholarship-beta', 'Partial', 'verified')
         ");
         $this->secondScholarshipId = (int)$this->db->lastInsertId();
 

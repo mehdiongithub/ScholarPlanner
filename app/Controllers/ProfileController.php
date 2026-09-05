@@ -366,13 +366,16 @@ class ProfileController {
 
             $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
             if ($isAjax) {
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode(['success' => true, 'message' => 'Profile updated successfully.', 'completion' => $completion]);
                 $this->halt("AJAX success response");
             }
 
-
-            header("Location: " . url('/profile/edit?success=Profile updated successfully.'));
+            if (!headers_sent()) {
+                header("Location: " . url('/profile/edit?success=Profile updated successfully.'));
+            }
             $this->halt("Redirect profile update success");
 
 
@@ -596,7 +599,9 @@ class ProfileController {
 
                 $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
 
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode([
                     'success' => true, 
                     'message' => 'Education record added successfully.',
@@ -606,8 +611,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
-
-            header("Location: " . url('/profile/edit?success=Education record added successfully.'));
+            if (!headers_sent()) {
+                header("Location: " . url('/profile/edit?success=Education record added successfully.'));
+            }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
             }
@@ -847,7 +853,9 @@ class ProfileController {
 
                 $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
 
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode([
                     'success' => true, 
                     'message' => 'Education record updated successfully.',
@@ -857,8 +865,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
-
-            header("Location: " . url('/profile/edit?success=Education record updated successfully.'));
+            if (!headers_sent()) {
+                header("Location: " . url('/profile/edit?success=Education record updated successfully.'));
+            }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
             }
@@ -920,7 +929,9 @@ class ProfileController {
 
                 $education = $stmtEdu->fetchAll(PDO::FETCH_ASSOC);
 
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode([
                     'success' => true, 
                     'message' => 'Education record deleted successfully.',
@@ -930,8 +941,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
-
-            header("Location: " . url('/profile/edit?success=Education record deleted successfully.'));
+            if (!headers_sent()) {
+                header("Location: " . url('/profile/edit?success=Education record deleted successfully.'));
+            }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
             }
@@ -1054,12 +1066,19 @@ class ProfileController {
 
             $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
             if ($isAjax) {
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode(['success' => true, 'message' => 'Preferences updated successfully.', 'completion' => $completion]);
                 $this->halt("AJAX success response");
             }
 
-            header("Location: " . url('/profile/edit?success=Preferences updated successfully.'));
+            if (!headers_sent()) {
+                header("Location: " . url('/profile/edit?success=Preferences updated successfully.'));
+            }
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                return;
+            }
             exit();
 
         } catch (Exception $e) {
@@ -1246,12 +1265,16 @@ class ProfileController {
     private function redirectBackWithErrors(array $errors): void {
         $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
         if ($isAjax) {
-            header('Content-Type: application/json');
+            if (!headers_sent()) {
+                header('Content-Type: application/json');
+            }
             echo json_encode(['success' => false, 'errors' => $errors]);
             $this->halt("AJAX errors response");
         }
         $_SESSION['profile_errors'] = $errors;
-        header("Location: " . url('/profile/edit'));
+        if (!headers_sent()) {
+            header("Location: " . url('/profile/edit'));
+        }
         $this->halt("Redirect back with errors");
     }
 

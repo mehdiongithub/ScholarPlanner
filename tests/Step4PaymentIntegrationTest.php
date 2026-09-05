@@ -18,6 +18,7 @@ class Step4PaymentIntegrationTest {
     private BillingController $billingController;
     private NotificationQueueService $queueService;
     private int $planPremiumId;
+    private int $planPrecisionId;
     private string $testIpnKey = 'test_secret_ipn_key_step4';
     private string $testWebId = '99999';
 
@@ -29,7 +30,7 @@ class Step4PaymentIntegrationTest {
 
     public function run(): void {
         echo "=================================================================\n";
-        echo " RUNNING STEP 4 PAYMENT INTEGRATION TEST SUITE (60 TESTS)\n";
+        echo " RUNNING STEP 4 PAYMENT INTEGRATION TEST SUITE (85 TESTS)\n";
         echo "=================================================================\n\n";
 
         $this->setUp();
@@ -115,8 +116,39 @@ class Step4PaymentIntegrationTest {
             $this->test59_browserSuccessRedirectCannotActivateUnpaidTransaction();
             $this->test60_cashmaalVerificationForAnotherTransactionCannotActivateLocalTransaction();
 
+            // Group 11: Critical Renewal & Monetary Precision (61-71)
+            $this->test61_subscriptionRenewalPreservesRemainingTime();
+            $this->test62_exactIntegerAmount_A();
+            $this->test63_equivalentFormatting_B();
+            $this->test64_exactDecimalAmount_C();
+            $this->test65_oneCentOverpaymentRejected_D();
+            $this->test66_oneCentUnderpaymentRejected_E();
+            $this->test67_floatingPointEdgeCase_F();
+            $this->test68_pkrVerifyV2ExactMatching_G();
+            $this->test69_usdVerifyV2ExactMatching_H();
+            $this->test70_verifyV2AmountMismatchOneMinorUnitRejected_I();
+            $this->test71_ipnAmountMismatchOneMinorUnitRejected_J();
+
+            // Group 12: Amount Field Semantics & Fee-Isolation (72-77)
+            $this->test72_pkrUsesOnlyPkrAmountAndIgnoresFeeInclusiveField();
+            $this->test73_pkrAmountWithFeeCannotRescueUnderpayment();
+            $this->test74_usdUsesOnlyUsdAmountAndIgnoresFeeInclusiveField();
+            $this->test75_usdAmountWithFeeCannotRescueUnderpayment();
+            $this->test76_missingPkrAmountFailsEvenIfFeeFieldExists();
+            $this->test77_missingUsdAmountFailsEvenIfFeeFieldExists();
+
+            // Group 13: Normalizer Hardening & Integer Safety (78-85)
+            $this->test78_validNormalAmount();
+            $this->test79_malformedCommaAmount();
+            $this->test80_malformedGrouping();
+            $this->test81_validMachineFormatAmount();
+            $this->test82_excessiveIntegerValue();
+            $this->test83_negativeAmount();
+            $this->test84_nonNumericValue();
+            $this->test85_whitespaceHandling();
+
             echo "\n=================================================================\n";
-            echo " ✔ ALL 60 STEP 4 PAYMENT INTEGRATION TESTS PASSED SUCCESSFULLY!\n";
+            echo " ✔ ALL 85 STEP 4 PAYMENT INTEGRATION TESTS PASSED SUCCESSFULLY!\n";
             echo "=================================================================\n\n";
 
         } finally {
@@ -142,6 +174,20 @@ class Step4PaymentIntegrationTest {
             $this->planPremiumId = (int)$planId;
         }
 
+        // Ensure Precision plan exists in database
+        $stmtPrec = $this->db->prepare("SELECT id FROM subscription_plans WHERE slug = 'precision-plan' LIMIT 1");
+        $stmtPrec->execute();
+        $precId = $stmtPrec->fetchColumn();
+        if (!$precId) {
+            $this->db->exec("
+                INSERT INTO subscription_plans (name, slug, description, billing_interval, duration_days, price, currency, status, created_at, updated_at)
+                VALUES ('Precision Plan', 'precision-plan', 'Precision test plan', 'month', 30, 1000.00, 'PKR', 'active', NOW(), NOW())
+            ");
+            $this->planPrecisionId = (int)$this->db->lastInsertId();
+        } else {
+            $this->planPrecisionId = (int)$precId;
+        }
+
         // Set test environment configuration
         $_ENV['CASHMAAL_WEB_ID'] = $this->testWebId;
         $_ENV['CASHMAAL_IPN_KEY'] = $this->testIpnKey;
@@ -154,7 +200,7 @@ class Step4PaymentIntegrationTest {
         $this->db->exec("DELETE FROM payment_transactions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM subscriptions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM users WHERE email LIKE 'step4-%@scholarmatch.com'");
-        $this->db->exec("DELETE FROM subscription_plans WHERE slug = 'quarterly-test'");
+        $this->db->exec("DELETE FROM subscription_plans WHERE slug IN ('quarterly-test', 'usd-test-plan', 'precision-plan', 'float-edge-plan', 'usd-10-plan')");
         unset($_SESSION['user_id'], $_SESSION['user_role'], $_SESSION['user_email']);
     }
 
@@ -1693,6 +1739,637 @@ class Step4PaymentIntegrationTest {
 
         $sub = $this->db->query("SELECT * FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetch(PDO::FETCH_ASSOC);
         $this->assert(!$sub, "Subscription must NOT be activated");
+        echo "PASS\n";
+    }
+
+    // =========================================================================
+    // GROUP 11: Critical Renewal & Monetary Precision (61-62)
+    // =========================================================================
+
+    private function test61_subscriptionRenewalPreservesRemainingTime(): void {
+        echo "[Test 61] Subscription renewal preserves unexpired remaining time... ";
+        $uid = $this->createTestUser('step4-u61@scholarmatch.com');
+        
+        // 1. Seed an active subscription with 15 days remaining
+        $initialEndsAt = date('Y-m-d H:i:s', time() + (15 * 86400));
+        $this->db->exec("
+            INSERT INTO subscriptions (user_id, plan_id, status, starts_at, ends_at, auto_renew, provider, created_at, updated_at)
+            VALUES ($uid, {$this->planPremiumId}, 'active', NOW(), '$initialEndsAt', 1, 'cashmaal', NOW(), NOW())
+        ");
+        $subId = (int)$this->db->lastInsertId();
+
+        // 2. User renews 30-day plan via CashMaal IPN
+        $ref = 'TXN_STEP4_TEST_61_RENEW';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_61',
+            'status' => '1',
+            'Amount' => 1499.00,
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        // 3. Verify new ends_at extends from current unexpired ends_at to ~45 days (15 existing + 30 renewed = 45 days)
+        $sub = $this->db->query("SELECT starts_at, ends_at FROM subscriptions WHERE id = $subId")->fetch(PDO::FETCH_ASSOC);
+        $diffDays = round((strtotime($sub['ends_at']) - time()) / 86400);
+        $this->assert($diffDays >= 44 && $diffDays <= 46, "Renewal must extend expiry to ~45 days (15 + 30), got $diffDays days");
+        echo "PASS\n";
+    }
+
+    private function test62_exactIntegerAmount_A(): void {
+        echo "[Test 62] Test A: Exact integer amount (Expected 1000.00, Received 1000.00 => PASS)... ";
+        $uid = $this->createTestUser('step4-u62@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_62_A';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_62',
+            'status' => '1',
+            'Amount' => '1000.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "Exact integer amount must be accepted and marked paid");
+        echo "PASS\n";
+    }
+
+    private function test63_equivalentFormatting_B(): void {
+        echo "[Test 63] Test B: Equivalent formatting (Expected 1000.00, Received 1000 => PASS)... ";
+        $uid = $this->createTestUser('step4-u63@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_63_B';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_63',
+            'status' => '1',
+            'Amount' => '1000', // Equivalent string formatting without decimals
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "Equivalent formatting '1000' for 1000.00 must be accepted and marked paid");
+        echo "PASS\n";
+    }
+
+    private function test64_exactDecimalAmount_C(): void {
+        echo "[Test 64] Test C: Exact decimal amount (Expected 1000.50, Received 1000.50 => PASS)... ";
+        $this->db->exec("
+            INSERT INTO subscription_plans (name, slug, description, billing_interval, duration_days, price, currency, status, created_at, updated_at)
+            VALUES ('Decimal 50 Plan', 'decimal-50-plan', 'Decimal test plan', 'month', 30, 1000.50, 'PKR', 'active', NOW(), NOW())
+        ");
+        $decPlanId = (int)$this->db->lastInsertId();
+
+        $uid = $this->createTestUser('step4-u64@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_64_C';
+        $txId = $this->createPendingTransaction($uid, $decPlanId, 1000.50, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_64',
+            'status' => '1',
+            'Amount' => '1000.50',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "Exact decimal amount 1000.50 must be accepted and marked paid");
+
+        $this->db->exec("DELETE FROM payment_transactions WHERE id = $txId");
+        $this->db->exec("DELETE FROM subscriptions WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM subscription_plans WHERE id = $decPlanId");
+        echo "PASS\n";
+    }
+
+    private function test65_oneCentOverpaymentRejected_D(): void {
+        echo "[Test 65] Test D: One-cent overpayment (Expected 1000.00, Received 1000.01 => FAIL)... ";
+        $uid = $this->createTestUser('step4-u65@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_65_D';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_65',
+            'status' => '1',
+            'Amount' => '1000.01', // One-cent overpayment
+            'currency' => 'PKR'
+        ];
+
+        $caught = false;
+        try {
+            $this->billingController->cashmaalIpn();
+        } catch (\RuntimeException $e) {
+            $caught = true;
+        }
+        $this->assert($caught, "One-cent overpayment must be rejected");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'failed', "Overpaid transaction must be marked failed");
+        echo "PASS\n";
+    }
+
+    private function test66_oneCentUnderpaymentRejected_E(): void {
+        echo "[Test 66] Test E: One-cent underpayment (Expected 1000.00, Received 999.99 => FAIL)... ";
+        $uid = $this->createTestUser('step4-u66@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_66_E';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_66',
+            'status' => '1',
+            'Amount' => '999.99', // One-cent underpayment
+            'currency' => 'PKR'
+        ];
+
+        $caught = false;
+        try {
+            $this->billingController->cashmaalIpn();
+        } catch (\RuntimeException $e) {
+            $caught = true;
+        }
+        $this->assert($caught, "One-cent underpayment must be rejected");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'failed', "Underpaid transaction must be marked failed");
+        echo "PASS\n";
+    }
+
+    private function test67_floatingPointEdgeCase_F(): void {
+        echo "[Test 67] Test F: Floating-point binary representation edge case (0.1+0.7, 19.99) => PASS... ";
+        $this->assert(\App\Services\PaymentService::amountsEqual('19.99', '19.99') === true, "19.99 must equal 19.99");
+        $this->assert(\App\Services\PaymentService::amountsEqual('0.80', '0.8') === true, "0.80 must equal 0.8");
+        $this->assert(\App\Services\PaymentService::normalizeToMinorUnits('1000.001') === null, "Sub-cent fractions must normalize to null");
+
+        $this->db->exec("
+            INSERT INTO subscription_plans (name, slug, description, billing_interval, duration_days, price, currency, status, created_at, updated_at)
+            VALUES ('Float Edge Plan', 'float-edge-plan', 'Float test plan', 'month', 30, 19.99, 'PKR', 'active', NOW(), NOW())
+        ");
+        $edgePlanId = (int)$this->db->lastInsertId();
+
+        $uid = $this->createTestUser('step4-u67@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_67_F';
+        $txId = $this->createPendingTransaction($uid, $edgePlanId, 19.99, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_67',
+            'status' => '1',
+            'Amount' => '19.99',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "Float edge-case amount 19.99 must be marked paid");
+
+        $this->db->exec("DELETE FROM payment_transactions WHERE id = $txId");
+        $this->db->exec("DELETE FROM subscriptions WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM subscription_plans WHERE id = $edgePlanId");
+        echo "PASS\n";
+    }
+
+    private function test68_pkrVerifyV2ExactMatching_G(): void {
+        echo "[Test 68] Test G: PKR verify_v2 exact PKR_amount matching => PASS... ";
+        $uid = $this->createTestUser('step4-u68@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_68_G';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref, 'PKR');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_68',
+            'order_id' => $ref,
+            'PKR_amount' => '1000.00'
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_68',
+            'status' => '1',
+            'Amount' => '1000.00',
+            'currency' => 'PKR',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "PKR verify_v2 with exact PKR_amount must be accepted and marked paid");
+        echo "PASS\n";
+    }
+
+    private function test69_usdVerifyV2ExactMatching_H(): void {
+        echo "[Test 69] Test H: USD verify_v2 exact USD_amount matching => PASS... ";
+        $this->db->exec("
+            INSERT INTO subscription_plans (name, slug, description, billing_interval, duration_days, price, currency, status, created_at, updated_at)
+            VALUES ('USD Test Plan', 'usd-test-plan', 'USD plan', 'month', 30, 15.75, 'USD', 'active', NOW(), NOW())
+        ");
+        $usdPlanId = (int)$this->db->lastInsertId();
+
+        $uid = $this->createTestUser('step4-u69@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_69_H';
+        $txId = $this->createPendingTransaction($uid, $usdPlanId, 15.75, $ref, 'USD');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_69',
+            'order_id' => $ref,
+            'USD_amount' => '15.75'
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_69',
+            'status' => '1',
+            'Amount' => '15.75',
+            'currency' => 'USD',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "USD verify_v2 with exact USD_amount must be accepted and marked paid");
+
+        $this->db->exec("DELETE FROM payment_transactions WHERE id = $txId");
+        $this->db->exec("DELETE FROM subscriptions WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM subscription_plans WHERE id = $usdPlanId");
+        echo "PASS\n";
+    }
+
+    private function test70_verifyV2AmountMismatchOneMinorUnitRejected_I(): void {
+        echo "[Test 70] Test I: verify_v2 amount mismatch of one minor unit rejected => FAIL... ";
+        $uid = $this->createTestUser('step4-u70@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_70_I';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref, 'PKR');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_70',
+            'order_id' => $ref,
+            'PKR_amount' => '1000.01' // One-cent / paisa mismatch in verify_v2
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_70',
+            'status' => '1',
+            'Amount' => '1000.00',
+            'currency' => 'PKR',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        $caught = false;
+        try {
+            $this->billingController->cashmaalIpn();
+        } catch (\RuntimeException $e) {
+            $caught = true;
+        }
+        $this->assert($caught, "One minor unit mismatch in verify_v2 must be rejected");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'failed', "Transaction with mismatched verify_v2 amount must be marked failed");
+        echo "PASS\n";
+    }
+
+    private function test71_ipnAmountMismatchOneMinorUnitRejected_J(): void {
+        echo "[Test 71] Test J: IPN amount mismatch of one minor unit rejected => FAIL... ";
+        $uid = $this->createTestUser('step4-u71@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_71_J';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref, 'PKR');
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_71',
+            'status' => '1',
+            'Amount' => '999.99', // One minor unit mismatch in IPN payload
+            'currency' => 'PKR'
+        ];
+
+        $caught = false;
+        try {
+            $this->billingController->cashmaalIpn();
+        } catch (\RuntimeException $e) {
+            $caught = true;
+        }
+        $this->assert($caught, "One minor unit mismatch in IPN must be rejected");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'failed', "Transaction with mismatched IPN amount must be marked failed");
+        echo "PASS\n";
+    }
+
+    private function test72_pkrUsesOnlyPkrAmountAndIgnoresFeeInclusiveField(): void {
+        echo "[Test 72] PKR verification uses PKR_amount (1000) and ignores PKR_amount_with_fee (1010) => PASS... ";
+        $uid = $this->createTestUser('step4-u72@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_72';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref, 'PKR');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_72',
+            'order_id' => $ref,
+            'PKR_amount' => '1000.00',
+            'fee_in_PKR' => '10.00',
+            'PKR_amount_with_fee' => '1010.00'
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_72',
+            'status' => '1',
+            'Amount' => '1000.00',
+            'currency' => 'PKR',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "PKR transaction must be marked paid using PKR_amount (ignoring PKR_amount_with_fee)");
+        echo "PASS\n";
+    }
+
+    private function test73_pkrAmountWithFeeCannotRescueUnderpayment(): void {
+        echo "[Test 73] PKR response where PKR_amount = 999 and PKR_amount_with_fee = 1000 is rejected => FAIL... ";
+        $uid = $this->createTestUser('step4-u73@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_73';
+        $txId = $this->createPendingTransaction($uid, $this->planPrecisionId, 1000.00, $ref, 'PKR');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_73',
+            'order_id' => $ref,
+            'PKR_amount' => '999.00',
+            'fee_in_PKR' => '1.00',
+            'PKR_amount_with_fee' => '1000.00'
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_73',
+            'status' => '1',
+            'Amount' => '1000.00',
+            'currency' => 'PKR',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        $caught = false;
+        try {
+            $this->billingController->cashmaalIpn();
+        } catch (\RuntimeException $e) {
+            $caught = true;
+        }
+        $this->assert($caught, "PKR_amount_with_fee must NOT rescue an underpaid PKR_amount");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'failed', "Transaction must be marked failed when PKR_amount mismatches");
+        echo "PASS\n";
+    }
+
+    private function test74_usdUsesOnlyUsdAmountAndIgnoresFeeInclusiveField(): void {
+        echo "[Test 74] USD verification uses USD_amount (10.00) and ignores USD_amount_with_fee (10.50) => PASS... ";
+        $this->db->exec("
+            INSERT INTO subscription_plans (name, slug, description, billing_interval, duration_days, price, currency, status, created_at, updated_at)
+            VALUES ('USD 10 Plan', 'usd-10-plan', 'USD 10 plan', 'month', 30, 10.00, 'USD', 'active', NOW(), NOW())
+        ");
+        $usd10PlanId = (int)$this->db->lastInsertId();
+
+        $uid = $this->createTestUser('step4-u74@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_74';
+        $txId = $this->createPendingTransaction($uid, $usd10PlanId, 10.00, $ref, 'USD');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_74',
+            'order_id' => $ref,
+            'USD_amount' => '10.00',
+            'fee_in_USD' => '0.50',
+            'USD_amount_with_fee' => '10.50'
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_74',
+            'status' => '1',
+            'Amount' => '10.00',
+            'currency' => 'USD',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_end_clean();
+
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'paid', "USD transaction must be marked paid using USD_amount (ignoring USD_amount_with_fee)");
+
+        $this->db->exec("DELETE FROM payment_transactions WHERE id = $txId");
+        $this->db->exec("DELETE FROM subscriptions WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM subscription_plans WHERE id = $usd10PlanId");
+        echo "PASS\n";
+    }
+
+    private function test75_usdAmountWithFeeCannotRescueUnderpayment(): void {
+        echo "[Test 75] USD response where USD_amount = 9.99 and USD_amount_with_fee = 10.00 is rejected => FAIL... ";
+        $this->db->exec("
+            INSERT INTO subscription_plans (name, slug, description, billing_interval, duration_days, price, currency, status, created_at, updated_at)
+            VALUES ('USD 10 Plan', 'usd-10-plan', 'USD 10 plan', 'month', 30, 10.00, 'USD', 'active', NOW(), NOW())
+        ");
+        $usd10PlanId = (int)$this->db->lastInsertId();
+
+        $uid = $this->createTestUser('step4-u75@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_75';
+        $txId = $this->createPendingTransaction($uid, $usd10PlanId, 10.00, $ref, 'USD');
+
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_75',
+            'order_id' => $ref,
+            'USD_amount' => '9.99',
+            'fee_in_USD' => '0.01',
+            'USD_amount_with_fee' => '10.00'
+        ];
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'order_id' => $ref,
+            'CM_TID' => 'CM_TEST_75',
+            'status' => '1',
+            'Amount' => '10.00',
+            'currency' => 'USD',
+            'mock_api_verify' => $mockVerify
+        ];
+
+        $caught = false;
+        try {
+            $this->billingController->cashmaalIpn();
+        } catch (\RuntimeException $e) {
+            $caught = true;
+        }
+        $this->assert($caught, "USD_amount_with_fee must NOT rescue an underpaid USD_amount");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'failed', "Transaction must be marked failed when USD_amount mismatches");
+
+        $this->db->exec("DELETE FROM payment_transactions WHERE id = $txId");
+        $this->db->exec("DELETE FROM subscriptions WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM subscription_plans WHERE id = $usd10PlanId");
+        echo "PASS\n";
+    }
+
+    private function test76_missingPkrAmountFailsEvenIfFeeFieldExists(): void {
+        echo "[Test 76] Missing PKR_amount for PKR transaction fails even if PKR_amount_with_fee exists => FAIL... ";
+        $gateway = new \App\Services\CashMaalPaymentGateway();
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_76',
+            'order_id' => 'TXN_76',
+            'fee_in_PKR' => '10.00',
+            'PKR_amount_with_fee' => '1000.00' // PKR_amount is missing!
+        ];
+
+        $res = $gateway->evaluateVerifyApiResponse($mockVerify, 'CM_TEST_76', 'TXN_76', '1000.00', 'PKR');
+        $this->assert($res['verified'] === false, "Must fail verification when PKR_amount is missing");
+        $this->assert(strpos($res['error'], 'Missing PKR_amount') !== false, "Error message must indicate missing PKR_amount");
+        echo "PASS\n";
+    }
+
+    private function test77_missingUsdAmountFailsEvenIfFeeFieldExists(): void {
+        echo "[Test 77] Missing USD_amount for USD transaction fails even if USD_amount_with_fee exists => FAIL... ";
+        $gateway = new \App\Services\CashMaalPaymentGateway();
+        $mockVerify = [
+            'status' => '1',
+            'transaction_id' => 'CM_TEST_77',
+            'order_id' => 'TXN_77',
+            'fee_in_USD' => '0.50',
+            'USD_amount_with_fee' => '10.00' // USD_amount is missing!
+        ];
+
+        $res = $gateway->evaluateVerifyApiResponse($mockVerify, 'CM_TEST_77', 'TXN_77', '10.00', 'USD');
+        $this->assert($res['verified'] === false, "Must fail verification when USD_amount is missing");
+        $this->assert(strpos($res['error'], 'Missing USD_amount') !== false, "Error message must indicate missing USD_amount");
+        echo "PASS\n";
+    }
+
+    // =========================================================================
+    // GROUP 13: Normalizer Hardening & Integer Safety (78-85)
+    // =========================================================================
+
+    private function test78_validNormalAmount(): void {
+        echo "[Test 78] Valid normal amount (1000.00) normalizes successfully => PASS... ";
+        $norm = \App\Services\PaymentService::normalizeToMinorUnits('1000.00');
+        $this->assert($norm === 100000, "1000.00 must normalize to 100000 minor units");
+        echo "PASS\n";
+    }
+
+    private function test79_malformedCommaAmount(): void {
+        echo "[Test 79] Malformed comma amount (1,2,3.00) is rejected => FAIL... ";
+        $norm = \App\Services\PaymentService::normalizeToMinorUnits('1,2,3.00');
+        $this->assert($norm === null, "1,2,3.00 must be rejected");
+        echo "PASS\n";
+    }
+
+    private function test80_malformedGrouping(): void {
+        echo "[Test 80] Malformed grouping (10,00.00 and 1,000.00) is rejected => FAIL... ";
+        $norm1 = \App\Services\PaymentService::normalizeToMinorUnits('10,00.00');
+        $this->assert($norm1 === null, "10,00.00 must be rejected");
+        $norm2 = \App\Services\PaymentService::normalizeToMinorUnits('1,000.00');
+        $this->assert($norm2 === null, "1,000.00 must be rejected");
+        $norm3 = \App\Services\PaymentService::normalizeToMinorUnits('1,000');
+        $this->assert($norm3 === null, "1,000 must be rejected");
+        echo "PASS\n";
+    }
+
+    private function test81_validMachineFormatAmount(): void {
+        echo "[Test 81] Valid machine-format amount (1000000.50) normalizes correctly => PASS... ";
+        $norm = \App\Services\PaymentService::normalizeToMinorUnits('1000000.50');
+        $this->assert($norm === 100000050, "1000000.50 must normalize to 100000050 minor units");
+        echo "PASS\n";
+    }
+
+    private function test82_excessiveIntegerValue(): void {
+        echo "[Test 82] Excessive integer value exceeding safe supported range is rejected => FAIL... ";
+        $norm1 = \App\Services\PaymentService::normalizeToMinorUnits('9999999999999999999999999999.00');
+        $this->assert($norm1 === null, "Arbitrarily large integer amount must be rejected");
+        $norm2 = \App\Services\PaymentService::normalizeToMinorUnits('9999999999999'); // 13 digits
+        $this->assert($norm2 === null, "13-digit integer amount must be rejected");
+        $norm3 = \App\Services\PaymentService::normalizeToMinorUnits(((string)PHP_INT_MAX) . '0');
+        $this->assert($norm3 === null, "Integer overflowing PHP_INT_MAX must be rejected");
+        echo "PASS\n";
+    }
+
+    private function test83_negativeAmount(): void {
+        echo "[Test 83] Negative amount (-1000.00) is rejected => FAIL... ";
+        $norm = \App\Services\PaymentService::normalizeToMinorUnits('-1000.00');
+        $this->assert($norm === null, "-1000.00 must be rejected");
+        echo "PASS\n";
+    }
+
+    private function test84_nonNumericValue(): void {
+        echo "[Test 84] Non-numeric value (1000ABC) is rejected => FAIL... ";
+        $norm = \App\Services\PaymentService::normalizeToMinorUnits('1000ABC');
+        $this->assert($norm === null, "1000ABC must be rejected");
+        echo "PASS\n";
+    }
+
+    private function test85_whitespaceHandling(): void {
+        echo "[Test 85] Surrounding whitespace trimmed, internal whitespace rejected => PASS... ";
+        $normSurrounding = \App\Services\PaymentService::normalizeToMinorUnits('  1000.00  ');
+        $this->assert($normSurrounding === 100000, "Surrounding whitespace must be trimmed");
+        $normInternal = \App\Services\PaymentService::normalizeToMinorUnits('10 00.00');
+        $this->assert($normInternal === null, "Internal whitespace '10 00.00' must be rejected");
         echo "PASS\n";
     }
 

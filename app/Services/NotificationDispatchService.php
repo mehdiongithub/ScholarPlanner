@@ -231,28 +231,22 @@ class NotificationDispatchService {
             $payload = is_array($item['payload']) ? $item['payload'] : (json_decode($item['payload'], true) ?: []);
         }
 
-        $title = $scholarship['title'] ?? ($payload['title'] ?? 'Scholarship Opportunity');
-        $provider = $scholarship['provider_name'] ?? ($payload['provider'] ?? 'Scholarship Provider');
-        $deadline = 'Open/Rolling';
-        if (!empty($scholarship['application_deadline'])) {
-            $deadline = date('Y-m-d', strtotime($scholarship['application_deadline']));
-        } elseif (!empty($payload['deadline'])) {
-            $deadline = date('Y-m-d', strtotime($payload['deadline']));
-        }
+        $mergedData = array_merge($payload, array_filter([
+            'title' => $scholarship['title'] ?? null,
+            'provider_name' => $scholarship['provider_name'] ?? null,
+            'application_deadline' => $scholarship['application_deadline'] ?? null,
+            'slug' => $scholarship['slug'] ?? null,
+            'country_name' => $scholarship['country_name'] ?? null,
+            'funding_type' => $scholarship['funding_type'] ?? null,
+            'short_description' => $scholarship['short_description'] ?? null,
+            'description' => $scholarship['description'] ?? null,
+            'study_level' => $scholarship['study_level'] ?? null,
+            'official_application_url' => $scholarship['official_application_url'] ?? null,
+            'official_website' => $scholarship['official_website'] ?? null
+        ], function($v) { return $v !== null; }));
 
-        $slug = $scholarship['slug'] ?? ($payload['slug'] ?? '');
-        $detailUrl = !empty($slug) ? url('/scholarships/' . $slug) : ($payload['detail_url'] ?? url('/dashboard'));
-        $country = $scholarship['country_name'] ?? ($payload['country'] ?? 'International');
-        $funding = $scholarship['funding_type'] ?? ($payload['funding'] ?? 'Fully Funded');
-
-        return [
-            $title,
-            $provider,
-            $deadline,
-            $detailUrl,
-            $country,
-            $funding
-        ];
+        $type = $item['notification_type'] ?? 'NEW_MATCH';
+        return \App\Services\WhatsApp\ScholarshipMessageFormatter::buildTemplateParams($type, $mergedData);
     }
 
     /**
@@ -327,6 +321,27 @@ class NotificationDispatchService {
     public function isRetryableError(array $result): bool {
         $error = strtolower($result['error'] ?? '');
 
+        // Permanent client / template / policy errors (Never retry)
+        if (
+            strpos($error, '132001') !== false || // Template does not exist
+            strpos($error, '131047') !== false || // Re-engagement 24h window
+            strpos($error, '131058') !== false || // Public test number only
+            strpos($error, '131051') !== false || // Unsupported message type
+            strpos($error, '131000') !== false || // Something went wrong (auth/config)
+            strpos($error, '131008') !== false || // Required parameter missing
+            strpos($error, '131009') !== false || // Parameter value invalid
+            strpos($error, '132000') !== false || // Template param count mismatch
+            strpos($error, '400 bad request') !== false ||
+            strpos($error, '401 unauthorized') !== false ||
+            strpos($error, '403 forbidden') !== false ||
+            strpos($error, '404 not found') !== false ||
+            strpos($error, 'invalid recipient') !== false ||
+            strpos($error, 'missing base url') !== false ||
+            strpos($error, 'unsafe wacrm base url') !== false
+        ) {
+            return false;
+        }
+
         // HTTP 429 rate limit
         if (strpos($error, '429') !== false || strpos($error, 'rate_limited') !== false || ($result['retry_after'] ?? null) !== null) {
             return true;
@@ -389,5 +404,117 @@ class NotificationDispatchService {
             'err' => 'Cancelled: ' . $reason,
             'id' => $id
         ]);
+    }
+
+    /**
+     * Authoritative delivery status recording from webhook/status callback.
+     * Guarantees:
+     * 1. Status progression: pending -> sent -> delivered (cannot regress delivered -> sent).
+     * 2. Idempotency: duplicate status events are safely handled without duplicating state.
+     * 3. Isolation: only updates the exact row matching provider_message_id; cannot affect unrelated rows.
+     * 4. Error safety: logs failures and redacts sensitive parameters.
+     */
+    public function recordDeliveryStatus(string $providerMessageId, string $status, ?string $timestamp = null, ?string $errorMessage = null): array {
+        if (trim($providerMessageId) === '') {
+            return ['success' => false, 'error' => 'Provider message ID cannot be empty.'];
+        }
+
+        $normalizedStatus = strtolower(trim($status));
+        $validStatuses = ['sent', 'delivered', 'read', 'failed', 'undelivered'];
+        if (!in_array($normalizedStatus, $validStatuses, true)) {
+            return ['success' => false, 'error' => "Invalid status: $status"];
+        }
+
+        // Map read to delivered for notification_logs status
+        $dbStatus = ($normalizedStatus === 'read') ? 'delivered' : (($normalizedStatus === 'undelivered') ? 'failed' : $normalizedStatus);
+
+        $stmtFind = $this->db->prepare("SELECT id, status, provider_message_id FROM notification_logs WHERE provider_message_id = :msg_id LIMIT 1 FOR UPDATE");
+        
+        $openedTx = false;
+        if (!$this->db->inTransaction()) {
+            $this->db->beginTransaction();
+            $openedTx = true;
+        }
+        try {
+            $stmtFind->execute(['msg_id' => $providerMessageId]);
+            $record = $stmtFind->fetch(PDO::FETCH_ASSOC);
+
+            if (!$record) {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => false, 'error' => 'Notification record not found for provider message ID.'];
+            }
+
+            $currentStatus = $record['status'];
+            $id = (int)$record['id'];
+
+            // Idempotency: If already in target status, no-op
+            if ($currentStatus === $dbStatus) {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => true, 'updated' => false, 'status' => $currentStatus, 'id' => $id];
+            }
+
+            // Out-of-order protection: Do not regress delivered status back to sent
+            if ($currentStatus === 'delivered' && $dbStatus === 'sent') {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => true, 'updated' => false, 'status' => 'delivered', 'id' => $id, 'note' => 'Out-of-order event ignored (already delivered).'];
+            }
+
+            // Out-of-order protection: Do not overwrite terminal failure with sent
+            if ($currentStatus === 'failed' && $dbStatus === 'sent') {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => true, 'updated' => false, 'status' => 'failed', 'id' => $id, 'note' => 'Out-of-order event ignored (already failed).'];
+            }
+
+            if ($dbStatus === 'delivered') {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE notification_logs 
+                    SET status = 'delivered',
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute(['id' => $id]);
+            } elseif ($dbStatus === 'failed') {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE notification_logs 
+                    SET status = 'failed',
+                        failed_at = NOW(),
+                        error_message = :err,
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute([
+                    'id' => $id,
+                    'err' => $errorMessage ?? 'Delivery failed as reported by provider.'
+                ]);
+            } elseif ($dbStatus === 'sent') {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE notification_logs 
+                    SET status = 'sent',
+                        sent_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute(['id' => $id]);
+            }
+
+            if ($openedTx) {
+                $this->db->commit();
+            }
+            Logger::info("Notification #$id delivery status updated to '$dbStatus' for provider message ID '$providerMessageId'.");
+            return ['success' => true, 'updated' => true, 'status' => $dbStatus, 'id' => $id];
+        } catch (Exception $e) {
+            if ($openedTx && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
     }
 }

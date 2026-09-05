@@ -64,10 +64,11 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
             throw new RuntimeException("Transaction reference is required to initiate CashMaal payment.");
         }
 
-        $amount = number_format((float)($data['amount'] ?? 0.0), 2, '.', '');
-        if ((float)$amount <= 0.0) {
+        $normAmount = self::normalizeToMinorUnits($data['amount'] ?? null, 2);
+        if ($normAmount === null || $normAmount <= 0) {
             throw new RuntimeException("Invalid payment amount.");
         }
+        $amount = sprintf('%d.%02d', intdiv($normAmount, 100), $normAmount % 100);
 
         $currency = strtoupper(trim((string)($data['currency'] ?? $this->currency)));
         $email = trim((string)($data['email'] ?? ''));
@@ -121,7 +122,7 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
         $cmTid = trim((string)($params['CM_TID'] ?? ($params['cm_tid'] ?? ($params['transaction_id'] ?? ''))));
         $orderId = trim((string)($params['order_id'] ?? ($params['ref'] ?? '')));
         $rawStatus = (string)($params['status'] ?? '');
-        $amount = (float)($params['Amount'] ?? ($params['amount'] ?? 0.0));
+        $amount = trim((string)($params['Amount'] ?? ($params['amount'] ?? '0.00')));
         $currency = strtoupper(trim((string)($params['currency'] ?? $this->currency)));
 
         // 1. IPN Key verification using timing-safe hash_equals
@@ -194,7 +195,7 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
      * Maps documented CashMaal response fields:
      * status, transaction_id, order_id, PKR_amount, USD_amount, receiver_account, etc.
      */
-    public function verifyTransactionWithApi(string $cmTid, ?string $expectedOrderId = null, ?float $expectedAmount = null, string $currency = 'PKR'): array {
+    public function verifyTransactionWithApi(string $cmTid, ?string $expectedOrderId = null, $expectedAmount = null, string $currency = 'PKR'): array {
         if (empty($cmTid) || !$this->isConfigured()) {
             return [
                 'verified' => false,
@@ -209,6 +210,7 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -237,8 +239,9 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
 
     /**
      * Evaluate documented CashMaal verify_v2 JSON response structure.
+     * Enforces strict currency binding and deterministic minor units comparison.
      */
-    public function evaluateVerifyApiResponse(array $data, string $cmTid, ?string $expectedOrderId = null, ?float $expectedAmount = null, string $currency = 'PKR'): array {
+    public function evaluateVerifyApiResponse(array $data, string $cmTid, ?string $expectedOrderId = null, $expectedAmount = null, string $currency = 'PKR'): array {
         // 1. Status check: 1 = Success in CashMaal
         $rawStatus = (string)($data['status'] ?? '');
         if ($rawStatus !== '1' && $rawStatus !== 'success') {
@@ -274,23 +277,48 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
             }
         }
 
-        // 4. Amount check based on currency
+        // 4. Strict currency binding & deterministic monetary amount comparison
         $curr = strtoupper(trim($currency));
-        $verifiedAmount = 0.0;
-        if ($curr === 'PKR') {
-            $verifiedAmount = (float)($data['PKR_amount'] ?? ($data['PKR_amount_with_fee'] ?? 0.0));
-        } elseif ($curr === 'USD') {
-            $verifiedAmount = (float)($data['USD_amount'] ?? ($data['USD_amount_with_fee'] ?? 0.0));
-        } else {
-            $verifiedAmount = (float)($data['PKR_amount'] ?? ($data['USD_amount'] ?? 0.0));
-        }
+        $verifiedAmountRaw = null;
 
-        if ($expectedAmount !== null) {
-            if (abs($verifiedAmount - (float)$expectedAmount) > 0.01) {
+        if ($curr === 'PKR') {
+            if (!isset($data['PKR_amount']) || $data['PKR_amount'] === '') {
                 return [
                     'verified' => false,
                     'status' => 'failed',
-                    'error' => "Amount mismatch: expected $expectedAmount $curr, got $verifiedAmount $curr",
+                    'error' => "Missing PKR_amount in CashMaal verification response for PKR transaction",
+                    'raw' => $data
+                ];
+            }
+            $verifiedAmountRaw = (string)$data['PKR_amount'];
+        } elseif ($curr === 'USD') {
+            if (!isset($data['USD_amount']) || $data['USD_amount'] === '') {
+                return [
+                    'verified' => false,
+                    'status' => 'failed',
+                    'error' => "Missing USD_amount in CashMaal verification response for USD transaction",
+                    'raw' => $data
+                ];
+            }
+            $verifiedAmountRaw = (string)$data['USD_amount'];
+        } else {
+            return [
+                'verified' => false,
+                'status' => 'failed',
+                'error' => "Unsupported transaction currency for CashMaal verification: $curr",
+                'raw' => $data
+            ];
+        }
+
+        if ($expectedAmount !== null) {
+            $normExpected = self::normalizeToMinorUnits($expectedAmount, 2);
+            $normVerified = self::normalizeToMinorUnits($verifiedAmountRaw, 2);
+
+            if ($normExpected === null || $normVerified === null || $normExpected !== $normVerified) {
+                return [
+                    'verified' => false,
+                    'status' => 'failed',
+                    'error' => "Amount mismatch: expected $expectedAmount $curr, got $verifiedAmountRaw $curr",
                     'raw' => $data
                 ];
             }
@@ -301,11 +329,26 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
             'status' => 'success',
             'transaction_id' => $verifiedTxId ?: $cmTid,
             'order_id' => $verifiedOrderId ?: $expectedOrderId,
-            'amount' => $verifiedAmount,
+            'amount' => $verifiedAmountRaw,
             'currency' => $curr,
             'receiver_account' => $data['receiver_account'] ?? null,
             'raw' => $data
         ];
+    }
+
+    /**
+     * Normalize a monetary amount to integer minor units (e.g. cents / paisas).
+     * Strictly avoids binary floating point arithmetic.
+     */
+    public static function normalizeToMinorUnits($amount, int $scale = 2): ?int {
+        return PaymentService::normalizeToMinorUnits($amount, $scale);
+    }
+
+    /**
+     * Strict deterministic equality check in minor units.
+     */
+    public static function amountsEqual($expected, $received, int $scale = 2): bool {
+        return PaymentService::amountsEqual($expected, $received, $scale);
     }
 
     public function refundPayment(string $transactionId, float $amount): array {

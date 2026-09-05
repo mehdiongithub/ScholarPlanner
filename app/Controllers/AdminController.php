@@ -2553,8 +2553,19 @@ class AdminController {
 
     public function referralsIndex(): void {
         Auth::requirePermission('referrals.view');
+        $db = \App\Services\Database::connection();
+
+        $defaultDiscount = \App\Services\ReferralService::getSetting('referral_default_discount_percent', '10.00', $db);
+        $defaultCommission = \App\Services\ReferralService::getSetting('referral_default_commission_percent', '30.00', $db);
+        $windowMonths = \App\Services\ReferralService::getSetting('referral_attribution_window_months', '6', $db);
+        $commissionBasis = \App\Services\ReferralService::getSetting('referral_commission_basis', 'paid_amount_after_discount', $db);
+
         View::render('admin.referrals.index', [
             'csrf_token' => Security::csrfToken(),
+            'default_discount' => $defaultDiscount,
+            'default_commission' => $defaultCommission,
+            'window_months' => $windowMonths,
+            'commission_basis' => $commissionBasis,
             'errors' => $_SESSION['admin_errors'] ?? null,
             'success' => $_SESSION['admin_success'] ?? null
         ]);
@@ -2575,7 +2586,28 @@ class AdminController {
         $lastName = trim($_POST['last_name'] ?? '');
         $email = strtolower(trim($_POST['email'] ?? ''));
         $password = $_POST['password'] ?? '';
-        $discountPercent = (float)($_POST['discount_percent'] ?? 10.00);
+        $customCode = trim($_POST['referral_code'] ?? '');
+
+        // Strict percentage bounds validation without floats (0.00% to 100.00%)
+        $rawDiscount = $_POST['discount_percent'] ?? '10.00';
+        $discBps = \App\Services\ReferralService::parsePercentageToBasisPoints($rawDiscount);
+        if ($discBps === null) {
+            $_SESSION['admin_errors'] = 'Discount percentage must be a valid number between 0.00% and 100.00%.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+        $discountPercent = sprintf('%d.%02d', intdiv($discBps, 100), $discBps % 100);
+
+        $commissionPercent = null;
+        if (isset($_POST['commission_percent']) && trim((string)$_POST['commission_percent']) !== '') {
+            $commBps = \App\Services\ReferralService::parsePercentageToBasisPoints($_POST['commission_percent']);
+            if ($commBps === null) {
+                $_SESSION['admin_errors'] = 'Commission percentage must be a valid number between 0.00% and 100.00%.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+            $commissionPercent = sprintf('%d.%02d', intdiv($commBps, 100), $commBps % 100);
+        }
 
         if (empty($firstName) || empty($lastName) || empty($email) || empty($password)) {
             $_SESSION['admin_errors'] = 'All fields are required.';
@@ -2594,8 +2626,24 @@ class AdminController {
             exit();
         }
 
-        // Generate unique referral code
-        $referralCode = 'PARTNER_' . strtoupper(bin2hex(random_bytes(3)));
+        // Validate or generate unique 8-character uppercase referral code
+        if (!empty($customCode)) {
+            if (!\App\Services\ReferralService::validateCode($customCode)) {
+                $_SESSION['admin_errors'] = 'Referral code must be 1 to 8 alphanumeric characters with no spaces or special characters.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+            $referralCode = \App\Services\ReferralService::normalizeCode($customCode);
+            $stmtCheckCode = $db->prepare("SELECT COUNT(*) FROM users WHERE UPPER(referral_code) = :code");
+            $stmtCheckCode->execute(['code' => $referralCode]);
+            if ((int)$stmtCheckCode->fetchColumn() > 0) {
+                $_SESSION['admin_errors'] = 'Referral code is already in use.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+        } else {
+            $referralCode = \App\Services\ReferralService::generateUniqueCode($db);
+        }
 
         // Get referral_partner role id
         $partnerRoleId = $db->query("SELECT id FROM roles WHERE name = 'referral_partner'")->fetchColumn();
@@ -2609,8 +2657,8 @@ class AdminController {
 
         // Insert referral partner
         $stmt = $db->prepare("
-            INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referral_code, discount_percent, email_verified_at) 
-            VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'active', :referral_code, :discount_percent, NOW())
+            INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referral_code, discount_percent, commission_percent, email_verified_at) 
+            VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'active', :referral_code, :discount_percent, :commission_percent, NOW())
         ");
         $stmt->execute([
             'role_id' => $partnerRoleId,
@@ -2619,13 +2667,238 @@ class AdminController {
             'email' => $email,
             'password_hash' => $passwordHash,
             'referral_code' => $referralCode,
-            'discount_percent' => $discountPercent
+            'discount_percent' => $discountPercent,
+            'commission_percent' => $commissionPercent
         ]);
 
         $partnerId = $db->lastInsertId();
         $this->logAction('referral_partner_create', 'referrals', 'users', $partnerId, ['email' => $email, 'code' => $referralCode]);
 
         $_SESSION['admin_success'] = 'Referral partner created successfully. Referral code is: ' . $referralCode;
+        header("Location: " . url("/admin/referrals"));
+        exit();
+    }
+
+    public function referralsUpdateCode(string $encodedId): void {
+        Auth::requirePermission('referrals.manage');
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $id = decode_id($encodedId);
+        if (!$id) {
+            $_SESSION['admin_errors'] = 'Invalid partner ID.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $newCode = trim($_POST['referral_code'] ?? '');
+        $db = \App\Services\Database::connection();
+
+        if (empty($newCode)) {
+            $newCode = \App\Services\ReferralService::generateUniqueCode($db);
+        } else {
+            if (!\App\Services\ReferralService::validateCode($newCode)) {
+                $_SESSION['admin_errors'] = 'Referral code must be 1 to 8 alphanumeric characters with no spaces or special characters.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+            $newCode = \App\Services\ReferralService::normalizeCode($newCode);
+            $stmtCheck = $db->prepare("SELECT COUNT(*) FROM users WHERE UPPER(referral_code) = :code AND id != :id");
+            $stmtCheck->execute(['code' => $newCode, 'id' => $id]);
+            if ((int)$stmtCheck->fetchColumn() > 0) {
+                $_SESSION['admin_errors'] = 'Referral code already taken by another partner.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+        }
+
+        $stmtUpd = $db->prepare("UPDATE users SET referral_code = :code WHERE id = :id");
+        $stmtUpd->execute(['code' => $newCode, 'id' => $id]);
+
+        $this->logAction('referral_partner_update_code', 'referrals', 'users', $id, ['new_code' => $newCode]);
+
+        $_SESSION['admin_success'] = 'Referral code updated successfully to: ' . $newCode;
+        header("Location: " . url("/admin/referrals"));
+        exit();
+    }
+
+    public function referralsUpdatePercentages(string $encodedId): void {
+        Auth::requirePermission('referrals.manage');
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $id = decode_id($encodedId);
+        if (!$id) {
+            $_SESSION['admin_errors'] = 'Invalid partner ID.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $rawDiscount = $_POST['discount_percent'] ?? '';
+        $discBps = \App\Services\ReferralService::parsePercentageToBasisPoints($rawDiscount);
+        if ($discBps === null) {
+            $_SESSION['admin_errors'] = 'Discount percentage must be a valid number between 0.00% and 100.00%.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+        $discountPercent = sprintf('%d.%02d', intdiv($discBps, 100), $discBps % 100);
+
+        $commissionPercent = null;
+        if (isset($_POST['commission_percent']) && trim((string)$_POST['commission_percent']) !== '') {
+            $commBps = \App\Services\ReferralService::parsePercentageToBasisPoints($_POST['commission_percent']);
+            if ($commBps === null) {
+                $_SESSION['admin_errors'] = 'Commission percentage must be a valid number between 0.00% and 100.00%.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+            $commissionPercent = sprintf('%d.%02d', intdiv($commBps, 100), $commBps % 100);
+        }
+
+        $db = \App\Services\Database::connection();
+        $stmtUpd = $db->prepare("UPDATE users SET discount_percent = :disc, commission_percent = :comm WHERE id = :id");
+        $stmtUpd->execute([
+            'disc' => $discountPercent,
+            'comm' => $commissionPercent,
+            'id' => $id
+        ]);
+
+        $this->logAction('referral_partner_update_percentages', 'referrals', 'users', $id, [
+            'discount_percent' => $discountPercent,
+            'commission_percent' => $commissionPercent
+        ]);
+
+        $_SESSION['admin_success'] = 'Partner percentages updated successfully.';
+        header("Location: " . url("/admin/referrals"));
+        exit();
+    }
+
+    public function referralsSettingsUpdate(): void {
+        Auth::requirePermission('settings.edit');
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        // Strict percentage bounds validation without floats (0.00% to 100.00%)
+        $rawDiscount = $_POST['referral_default_discount_percent'] ?? '';
+        $discBps = \App\Services\ReferralService::parsePercentageToBasisPoints($rawDiscount);
+        if ($discBps === null) {
+            $_SESSION['admin_errors'] = 'Default discount percentage must be a valid number between 0.00% and 100.00%.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $rawCommission = $_POST['referral_default_commission_percent'] ?? '';
+        $commBps = \App\Services\ReferralService::parsePercentageToBasisPoints($rawCommission);
+        if ($commBps === null) {
+            $_SESSION['admin_errors'] = 'Default commission percentage must be a valid number between 0.00% and 100.00%.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $windowMonths = max(1, (int)($_POST['referral_attribution_window_months'] ?? 6));
+        $basis = trim($_POST['referral_commission_basis'] ?? 'paid_amount_after_discount');
+
+        if (!in_array($basis, ['paid_amount_after_discount', 'original_plan_amount'], true)) {
+            $basis = 'paid_amount_after_discount';
+        }
+
+        $db = \App\Services\Database::connection();
+        $settings = [
+            'referral_default_discount_percent' => sprintf('%d.%02d', intdiv($discBps, 100), $discBps % 100),
+            'referral_default_commission_percent' => sprintf('%d.%02d', intdiv($commBps, 100), $commBps % 100),
+            'referral_attribution_window_months' => (string)$windowMonths,
+            'referral_commission_basis' => $basis
+        ];
+
+        $stmt = $db->prepare("
+            INSERT INTO settings (group_name, `key`, `value`, is_public, created_at, updated_at)
+            VALUES ('referral', :key, :value, 0, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updated_at = NOW()
+        ");
+        foreach ($settings as $k => $v) {
+            $stmt->execute(['key' => $k, 'value' => $v]);
+        }
+
+        $this->logAction('referral_settings_update', 'settings', 'settings', 0, $settings);
+
+        $_SESSION['admin_success'] = 'Referral settings updated successfully.';
+        header("Location: " . url("/admin/referrals"));
+        exit();
+    }
+
+    public function referralsCorrectAttribution(): void {
+        Auth::requirePermission('referrals.manage');
+
+        $csrf = $_POST['csrf_token'] ?? null;
+        if (!Security::verifyCsrfToken($csrf)) {
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $newPartnerId = !empty($_POST['partner_id']) ? (int)$_POST['partner_id'] : null;
+
+        // Prevent self-referral attribution
+        if ($newPartnerId && $newPartnerId === $userId) {
+            $_SESSION['admin_errors'] = 'A user cannot be attributed to themselves as a referral partner.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $db = \App\Services\Database::connection();
+
+        $stmtUser = $db->prepare("SELECT id, referral_partner_id, referred_by_code FROM users WHERE id = :id LIMIT 1");
+        $stmtUser->execute(['id' => $userId]);
+        $targetUser = $stmtUser->fetch(PDO::FETCH_ASSOC);
+
+        if (!$targetUser) {
+            $_SESSION['admin_errors'] = 'Target user not found.';
+            header("Location: " . url("/admin/referrals"));
+            exit();
+        }
+
+        $newCode = null;
+        if ($newPartnerId) {
+            $stmtPartner = $db->prepare("SELECT id, referral_code FROM users WHERE id = :id AND status = 'active' LIMIT 1");
+            $stmtPartner->execute(['id' => $newPartnerId]);
+            $partner = $stmtPartner->fetch(PDO::FETCH_ASSOC);
+            if (!$partner) {
+                $_SESSION['admin_errors'] = 'Selected referral partner not found or inactive.';
+                header("Location: " . url("/admin/referrals"));
+                exit();
+            }
+            $newCode = $partner['referral_code'];
+        }
+
+        $stmtUpd = $db->prepare("UPDATE users SET referral_partner_id = :pid, referred_by_code = :code WHERE id = :uid");
+        $stmtUpd->execute([
+            'pid' => $newPartnerId,
+            'code' => $newCode,
+            'uid' => $userId
+        ]);
+
+        $this->logAction('referral_attribution_corrected', 'referrals', 'users', $userId, [
+            'old_partner_id' => $targetUser['referral_partner_id'],
+            'new_partner_id' => $newPartnerId,
+            'new_code' => $newCode
+        ]);
+
+        $_SESSION['admin_success'] = 'User referral attribution updated successfully.';
         header("Location: " . url("/admin/referrals"));
         exit();
     }
@@ -2695,9 +2968,11 @@ class AdminController {
             'email' => 'users.email',
             'referral_code' => 'users.referral_code',
             'discount_percent' => 'users.discount_percent',
+            'commission_percent' => 'users.commission_percent',
             'status' => 'users.status',
             'created_at' => 'users.created_at',
-            'conversions' => '(SELECT COUNT(*) FROM payment_transactions pt WHERE pt.referral_code_used = users.referral_code AND pt.status IN (\'paid\', \'success\'))'
+            'conversions' => '(SELECT COUNT(*) FROM referral_commissions rc WHERE rc.partner_id = users.id AND rc.status = \'earned\')',
+            'total_earned' => '(SELECT COALESCE(SUM(rc.commission_amount), 0.00) FROM referral_commissions rc WHERE rc.partner_id = users.id AND rc.status = \'earned\')'
         ];
         
         $joins = [
@@ -2711,6 +2986,7 @@ class AdminController {
         $columnMapping = [
             'referral_code' => 'users.referral_code',
             'discount_percent' => 'users.discount_percent',
+            'commission_percent' => 'users.commission_percent',
             'status' => 'users.status',
             'created_at' => 'users.created_at'
         ];
@@ -2728,8 +3004,78 @@ class AdminController {
                 $row['record_id'] = encode_id((int)$row['id']);
                 $row['partner_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
                 $row['conversions'] = (int)$row['conversions'];
-                $row['payouts'] = number_format($row['conversions'] * 20.00, 2);
+                $row['payouts'] = number_format((float)($row['total_earned'] ?? 0), 2);
                 unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    public function referralsCommissionsData(): void {
+        Auth::requirePermission('referrals.view');
+        $db = \App\Services\Database::connection();
+
+        $columns = [
+            'id' => 'referral_commissions.id',
+            'partner_name' => 'CONCAT(partner.first_name, \' \', partner.last_name)',
+            'partner_email' => 'partner.email',
+            'referred_user' => 'CONCAT(ref_user.first_name, \' \', ref_user.last_name)',
+            'referred_email' => 'ref_user.email',
+            'transaction_reference' => 'referral_commissions.transaction_reference',
+            'original_plan_amount' => 'referral_commissions.original_plan_amount',
+            'referral_discount_amount' => 'referral_commissions.referral_discount_amount',
+            'actual_paid_amount' => 'referral_commissions.actual_paid_amount',
+            'commission_percentage' => 'referral_commissions.commission_percentage',
+            'commission_basis' => 'referral_commissions.commission_basis',
+            'commission_amount' => 'referral_commissions.commission_amount',
+            'payment_date' => 'referral_commissions.payment_date',
+            'status' => 'referral_commissions.status'
+        ];
+
+        $joins = [
+            'JOIN users partner ON referral_commissions.partner_id = partner.id',
+            'JOIN users ref_user ON referral_commissions.referred_user_id = ref_user.id'
+        ];
+
+        $customWhere = '1=1';
+        $customParams = [];
+
+        if (!empty($_GET['partner_id'])) {
+            $customWhere .= ' AND referral_commissions.partner_id = :filter_pid';
+            $customParams['filter_pid'] = (int)$_GET['partner_id'];
+        }
+        if (!empty($_GET['month'])) {
+            $customWhere .= ' AND referral_commissions.payment_date BETWEEN :filter_mstart AND :filter_mend';
+            $customParams['filter_mstart'] = $_GET['month'] . '-01 00:00:00';
+            $customParams['filter_mend'] = date('Y-m-t 23:59:59', strtotime($customParams['filter_mstart']));
+        }
+        if (!empty($_GET['status'])) {
+            $customWhere .= ' AND referral_commissions.status = :filter_status';
+            $customParams['filter_status'] = $_GET['status'];
+        }
+
+        $searchableColumns = ['partner.first_name', 'partner.last_name', 'partner.email', 'ref_user.first_name', 'ref_user.last_name', 'referral_commissions.transaction_reference'];
+        $columnMapping = [
+            'payment_date' => 'referral_commissions.payment_date',
+            'commission_amount' => 'referral_commissions.commission_amount',
+            'actual_paid_amount' => 'referral_commissions.actual_paid_amount',
+            'status' => 'referral_commissions.status'
+        ];
+
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'referral_commissions',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['record_id'] = encode_id((int)$row['id']);
                 return $row;
             }
         );

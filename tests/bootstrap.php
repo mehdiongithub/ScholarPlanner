@@ -34,3 +34,8 @@ if (!defined('TESTING_MODE')) {
 \App\Services\Logger::init();
 
 date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'UTC');
+
+// Initialize session in CLI test mode before any stdout output
+if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+    session_start();
+}

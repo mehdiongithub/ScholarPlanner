@@ -8,13 +8,20 @@ use PDOException;
 
 class NotificationQueueService {
     private PDO $db;
-    private int $maxAttempts;
-    private int $retryDelay;
+    private int $maxAttempts = 5;
+    private int $retryDelay = 60;
+    private array $retryDelays = [
+        1 => 60,     // Attempt 1: +60s
+        2 => 300,    // Attempt 2: +300s (5m)
+        3 => 900,    // Attempt 3: +900s (15m)
+        4 => 3600,   // Attempt 4: +3600s (1h)
+        5 => 14400   // Attempt 5: +14400s (4h)
+    ];
 
     public function __construct() {
         $this->db = Database::connection();
-        $this->maxAttempts = (int)($_ENV['NOTIFICATION_MAX_ATTEMPTS'] ?? 3);
-        $this->retryDelay = (int)($_ENV['NOTIFICATION_RETRY_DELAY'] ?? 300);
+        $this->maxAttempts = (int)($_ENV['NOTIFICATION_MAX_ATTEMPTS'] ?? 5);
+        $this->retryDelay = (int)($_ENV['NOTIFICATION_RETRY_DELAY'] ?? 60);
     }
 
     /**
@@ -76,6 +83,14 @@ class NotificationQueueService {
             if (($type === 'NEW_MATCH' || $type === 'DAILY_MATCH_DIGEST' || $type === 'WEEKLY_MATCH_DIGEST') && !\App\Services\SubscriptionService::can($userId, 'premium_alerts')) {
                 \App\Services\Logger::info("Skipped enqueuing match alert for user $userId (Free plan).");
                 return false;
+            }
+        }
+
+        if ($scholarshipId !== null) {
+            $stmtExists = $this->db->prepare("SELECT 1 FROM scholarships WHERE id = :id LIMIT 1");
+            $stmtExists->execute(['id' => $scholarshipId]);
+            if (!$stmtExists->fetchColumn()) {
+                $scholarshipId = null;
             }
         }
 
@@ -198,6 +213,13 @@ class NotificationQueueService {
             $recipient = $item['recipient'];
             $payload = ($item['payload'] !== null) ? (json_decode($item['payload'], true) ?: []) : [];
 
+            // 1. Immediate validation of supported channels (email, whatsapp)
+            if ($channel !== 'email' && $channel !== 'whatsapp') {
+                $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], false, "Unsupported notification channel: $channel", null);
+                $processedCount++;
+                continue;
+            }
+
             // Recheck user details before delivery
             $userId = (int)$item['user_id'];
             $type = $item['notification_type'];
@@ -231,25 +253,24 @@ class NotificationQueueService {
                 }
 
                 $prefKey = null;
-                if ($type === 'NEW_MATCH') {
-                    $prefKey = 'matching_scholarship_alerts';
-                } elseif ($type === 'SCHOLARSHIP_DEADLINE_SOON' || $type === 'SCHOLARSHIP_DEADLINE_TODAY') {
-                    $prefKey = 'deadline_reminders';
-                } elseif ($type === 'DAILY_MATCH_DIGEST') {
-                    $prefKey = 'daily_alerts';
-                } elseif ($type === 'WEEKLY_MATCH_DIGEST') {
-                    $prefKey = 'weekly_digest';
-                }
-
                 $emailAlertsEnabled = false;
                 $whatsappAlertsEnabled = false;
 
-                if ($prefKey) {
+                if ($type === 'NEW_MATCH' || $type === 'DAILY_MATCH_DIGEST') {
+                    $prefKey = 'matching_scholarship_alerts';
+                    $emailAlertsEnabled = ($prefMap['matching_scholarship_alerts']['email'] ?? false) || ($prefMap['daily_alerts']['email'] ?? false);
+                    $whatsappAlertsEnabled = ($prefMap['matching_scholarship_alerts']['whatsapp'] ?? false) || ($prefMap['daily_alerts']['whatsapp'] ?? false);
+                } elseif ($type === 'SCHOLARSHIP_DEADLINE_SOON' || $type === 'SCHOLARSHIP_DEADLINE_TODAY') {
+                    $prefKey = 'deadline_reminders';
+                    $emailAlertsEnabled = $prefMap[$prefKey]['email'] ?? false;
+                    $whatsappAlertsEnabled = $prefMap[$prefKey]['whatsapp'] ?? false;
+                } elseif ($type === 'WEEKLY_MATCH_DIGEST') {
+                    $prefKey = 'weekly_digest';
                     $emailAlertsEnabled = $prefMap[$prefKey]['email'] ?? false;
                     $whatsappAlertsEnabled = $prefMap[$prefKey]['whatsapp'] ?? false;
                 } else {
                     $emailAlertsEnabled = true;
-                    $whatsappAlertsEnabled = false;
+                    $whatsappAlertsEnabled = true;
                 }
 
                 $generalEmail = (bool)($prefMap['email_alerts']['email'] ?? true);
@@ -270,6 +291,149 @@ class NotificationQueueService {
                 continue;
             }
 
+            // Scholarship Trust Gate: Only deliver if scholarship is currently published, verified, and not expired
+            if (!$isTransactional && !empty($item['scholarship_id'])) {
+                $schCheck = $db->prepare("
+                    SELECT status, verification_status, application_deadline 
+                    FROM scholarships 
+                    WHERE id = :sid 
+                    LIMIT 1
+                ");
+                $schCheck->execute(['sid' => $item['scholarship_id']]);
+                $schData = $schCheck->fetch(PDO::FETCH_ASSOC);
+                if (!$schData || $schData['status'] !== 'published' || $schData['verification_status'] !== 'verified') {
+                    $this->updateQueueItemStatusToSkipped($item['id'], "Delivery skipped: Scholarship is no longer published or verified.");
+                    $processedCount++;
+                    continue;
+                }
+                if ($schData['application_deadline'] !== null && strtotime($schData['application_deadline']) < strtotime(date('Y-m-d'))) {
+                    $this->updateQueueItemStatusToSkipped($item['id'], "Delivery skipped: Scholarship deadline has already passed.");
+                    $processedCount++;
+                    continue;
+                }
+            }
+
+            // Automatic Scholarship WhatsApp Guardrails (Cutoff Gate, Sunday Rule & Lifetime 25-Message Cap)
+            if ($channel === 'whatsapp' && !$isTransactional) {
+                // 0. Batch Cutoff Gate: Worker MUST NOT send daily scholarship WhatsApp batch before cutoff (23:59:59 PKT)
+                if ($type === 'DAILY_MATCH_DIGEST' || strpos($item['idempotency_key'] ?? '', 'scholarship_whatsapp_') === 0) {
+                    $batchDay = $payload['calendar_day'] ?? null;
+                    if (!$batchDay && preg_match('/scholarship_whatsapp_\d+_(\d{4}-\d{2}-\d{2})/', $item['idempotency_key'] ?? '', $m)) {
+                        $batchDay = $m[1];
+                    }
+
+                    if ($batchDay !== null) {
+                        $nowPkt = \App\Services\NotificationService::getKarachiDateTime();
+                        $cutoffPkt = \App\Services\NotificationService::getCutoffDateTime($batchDay);
+                        if (!\App\Services\NotificationService::isPastCutoff($batchDay, $nowPkt) && !defined('BYPASS_BATCH_CUTOFF')) {
+                            // Batch collection window is still open! Worker must not deliver before cutoff.
+                            $db->prepare("
+                                UPDATE notification_logs 
+                                SET status = 'pending', 
+                                    available_at = :avail, 
+                                    updated_at = NOW() 
+                                WHERE id = :id
+                            ")->execute([
+                                'avail' => $cutoffPkt->format('Y-m-d H:i:s'),
+                                'id' => $item['id']
+                            ]);
+                            continue;
+                        }
+                    }
+                }
+
+                // 1. Sunday Rule: Prohibit automatic scholarship WhatsApp delivery on Sunday
+                $isSunday = \App\Services\NotificationService::$simulateSunday !== null 
+                    ? \App\Services\NotificationService::$simulateSunday 
+                    : (((int)\App\Services\NotificationService::getKarachiDateTime()->format('w') === 0 && !defined('BYPASS_SUNDAY_RULE')) || (defined('SIMULATE_SUNDAY') && SIMULATE_SUNDAY));
+
+                if ($isSunday) {
+                    // Check if email fallback is permitted:
+                    if ((bool)$user['email_opt_in'] && !empty($user['email'])) {
+                        // Deliver via Email fallback
+                        $emailSubject = '📅 Your Sunday Scholarship Matches';
+                        $emailBody = $this->renderHtmlEmail($item['notification_type'], $payload);
+                        $res = $emailService->sendEmail($user['email'], $emailSubject, $emailBody);
+                        $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], $res['success'], $res['error'] ?? null, $res['message_id'] ?? null);
+                        $processedCount++;
+                        continue;
+                    } else {
+                        // WhatsApp-only user: DEFER to Monday without dropping or skipping!
+                        $nextMonday = \App\Services\NotificationService::getKarachiDateTime()->modify('next monday')->format('Y-m-d');
+                        $cutoffMonday = \App\Services\NotificationService::getCutoffDateTime($nextMonday);
+                        $db->prepare("
+                            UPDATE notification_logs 
+                            SET status = 'pending', 
+                                available_at = :avail, 
+                                updated_at = NOW() 
+                            WHERE id = :id
+                        ")->execute([
+                            'avail' => $cutoffMonday->format('Y-m-d H:i:s'),
+                            'id' => $item['id']
+                        ]);
+                        continue;
+                    }
+                }
+
+                // 2. Validate recipient phone number format
+                $normPhone = \App\Services\WhatsApp\WacrmWhatsAppProvider::normalizePhoneNumber($recipient);
+                if ($normPhone === null) {
+                    $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], false, "Invalid recipient phone number format. Must be in E.164 format.", null);
+                    $processedCount++;
+                    continue;
+                }
+                $recipient = $normPhone;
+
+                // 3. Concurrency-Safe Lifetime 25-Message Cap using user row-level locking
+                $db->beginTransaction();
+                try {
+                    $lockStmt = $db->prepare("SELECT id FROM users WHERE id = :uid FOR UPDATE");
+                    $lockStmt->execute(['uid' => $userId]);
+
+                    $cntStmt = $db->prepare("
+                        SELECT COUNT(*) FROM notification_logs 
+                        WHERE user_id = :uid 
+                          AND channel = 'whatsapp' 
+                          AND status = 'sent' 
+                          AND notification_type IN (
+                              'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON', 
+                              'SCHOLARSHIP_DEADLINE_TODAY', 'DAILY_MATCH_DIGEST', 'WEEKLY_MATCH_DIGEST'
+                          )
+                    ");
+                    $cntStmt->execute(['uid' => $userId]);
+                    $sentCount = (int)$cntStmt->fetchColumn();
+
+                    if ($sentCount >= 25) {
+                        $db->rollBack();
+                        $this->updateQueueItemStatusToSkipped($item['id'], "Lifetime limit reached: User has received maximum 25 scholarship WhatsApp messages.");
+                        $processedCount++;
+                        continue;
+                    }
+
+                    // Perform delivery while holding row lock to serialize concurrent workers
+                    $templateName = $this->getWhatsAppTemplateName($item['notification_type']);
+                    $params = $this->buildWhatsAppTemplateParams($item['notification_type'], $payload);
+                    $providerName = $item['provider'] ?? 'wacrm';
+
+                    $res = $whatsappService->sendMessage($recipient, $templateName, $params, $providerName, $item['notification_type']);
+                    $success = $res['success'];
+                    $error = $res['error'] ?? null;
+                    $providerMsgId = $res['message_id'] ?? null;
+                    $retryAfter = $res['retry_after'] ?? null;
+
+                    $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], $success, $error, $providerMsgId, $retryAfter);
+                    $db->commit();
+                    $processedCount++;
+                    continue;
+                } catch (\Exception $ex) {
+                    $db->rollBack();
+                    $this->updateQueueItemStatus($item['id'], (int)$item['attempts'], false, $ex->getMessage(), null);
+                    $processedCount++;
+                    continue;
+                }
+            }
+
+            // Normal delivery for Email or Transactional WhatsApp (e.g. Payment Confirmation)
             $success = false;
             $error = null;
             $providerMsgId = null;
@@ -285,12 +449,11 @@ class NotificationQueueService {
                     $res = $emailService->sendEmail($recipient, $subject, $emailBody);
                     $success = $res['success'];
                     $error = $res['error'] ?? null;
+                    $providerMsgId = $res['message_id'] ?? null;
                 } elseif ($channel === 'whatsapp') {
+                    // Transactional WhatsApp (e.g. Meta payment confirmation)
                     $templateName = $this->getWhatsAppTemplateName($item['notification_type']);
-                    
-                    // Build sequential params array
                     $params = $this->buildWhatsAppTemplateParams($item['notification_type'], $payload);
-                    
                     $providerName = $item['provider'] ?? null;
                     $res = $whatsappService->sendMessage($recipient, $templateName, $params, $providerName, $item['notification_type']);
                     $success = $res['success'];
@@ -355,9 +518,8 @@ class NotificationQueueService {
                 ]);
                 \App\Services\Logger::error("Notification #$id permanently failed after $attempts attempts: " . $this->redactError($error));
             } else {
-                // Exponential backoff delay: retryDelay * 2^(attempts-1)
-                $backoffMultiplier = (int)pow(2, max(0, $attempts - 1));
-                $delay = $this->retryDelay * $backoffMultiplier;
+                // Exponential backoff delay: 60s, 300s, 900s, 3600s, 14400s
+                $delay = $this->retryDelays[$attempts] ?? ($this->retryDelay * (int)pow(2, max(0, $attempts - 1)));
                 if ($retryAfter !== null && $retryAfter >= 10 && $retryAfter <= 86400) {
                     $delay = $retryAfter;
                 }
@@ -431,13 +593,26 @@ class NotificationQueueService {
         $err = strtolower($error);
         return (
             strpos($err, 'invalid recipient') !== false ||
+            strpos($err, 'invalid phone') !== false ||
             strpos($err, 'invalid email') !== false ||
             strpos($err, 'unsupported channel') !== false ||
             strpos($err, 'unsupported notification channel') !== false ||
             strpos($err, 'missing recipient') !== false ||
             strpos($err, 'cancelled') !== false ||
             strpos($err, 'opted out') !== false ||
-            strpos($err, 'user not found') !== false
+            strpos($err, 'user not found') !== false ||
+            strpos($err, 'prohibited on sunday') !== false ||
+            strpos($err, 'lifetime limit') !== false ||
+            strpos($err, '132001') !== false ||
+            strpos($err, '131047') !== false ||
+            strpos($err, '131058') !== false ||
+            strpos($err, '132000') !== false ||
+            strpos($err, '131008') !== false ||
+            strpos($err, '131009') !== false ||
+            strpos($err, '400 bad request') !== false ||
+            strpos($err, '401 unauthorized') !== false ||
+            strpos($err, '403 forbidden') !== false ||
+            strpos($err, '404 not found') !== false
         );
     }
 
@@ -457,26 +632,7 @@ class NotificationQueueService {
     }
 
     private function buildWhatsAppTemplateParams(string $type, array $payload): array {
-        if ($type === 'PAYMENT_CONFIRMATION' || $type === 'PAYMENT_SUCCESS' || $type === 'SUBSCRIPTION_CONFIRMATION') {
-            return [
-                $payload['user_name'] ?? 'Student',
-                $payload['plan_name'] ?? 'Premium Monthly',
-                $payload['amount'] ?? '',
-                $payload['currency'] ?? 'PKR',
-                $payload['reference'] ?? ''
-            ];
-        }
-
-        return [
-            $payload['title'] ?? '',
-            $payload['provider'] ?? '',
-            $payload['degree'] ?? '',
-            $payload['field'] ?? '',
-            $payload['country'] ?? '',
-            $payload['funding'] ?? '',
-            $payload['deadline'] ?? 'Open/Rolling',
-            $payload['score'] ?? '0'
-        ];
+        return \App\Services\WhatsApp\ScholarshipMessageFormatter::buildTemplateParams($type, $payload);
     }
 
     private function renderHtmlEmail(string $type, array $payload): string {
@@ -606,6 +762,118 @@ class NotificationQueueService {
         ");
         $stmt->execute();
         return $stmt->rowCount();
+    }
+
+    /**
+     * Authoritative delivery status recording from webhook/status callback.
+     * Guarantees:
+     * 1. Status progression: pending -> sent -> delivered (cannot regress delivered -> sent).
+     * 2. Idempotency: duplicate status events are safely handled without duplicating state.
+     * 3. Isolation: only updates the exact row matching provider_message_id; cannot affect unrelated rows.
+     * 4. Error safety: logs failures and redacts sensitive parameters.
+     */
+    public function recordDeliveryStatus(string $providerMessageId, string $status, ?string $timestamp = null, ?string $errorMessage = null): array {
+        if (trim($providerMessageId) === '') {
+            return ['success' => false, 'error' => 'Provider message ID cannot be empty.'];
+        }
+
+        $normalizedStatus = strtolower(trim($status));
+        $validStatuses = ['sent', 'delivered', 'read', 'failed', 'undelivered'];
+        if (!in_array($normalizedStatus, $validStatuses, true)) {
+            return ['success' => false, 'error' => "Invalid status: $status"];
+        }
+
+        // Map read to delivered for notification_logs status
+        $dbStatus = ($normalizedStatus === 'read') ? 'delivered' : (($normalizedStatus === 'undelivered') ? 'failed' : $normalizedStatus);
+
+        $stmtFind = $this->db->prepare("SELECT id, status, provider_message_id FROM notification_logs WHERE provider_message_id = :msg_id LIMIT 1 FOR UPDATE");
+        
+        $openedTx = false;
+        if (!$this->db->inTransaction()) {
+            $this->db->beginTransaction();
+            $openedTx = true;
+        }
+        try {
+            $stmtFind->execute(['msg_id' => $providerMessageId]);
+            $record = $stmtFind->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$record) {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => false, 'error' => 'Notification record not found for provider message ID.'];
+            }
+
+            $currentStatus = $record['status'];
+            $id = (int)$record['id'];
+
+            // Idempotency: If already in target status, no-op
+            if ($currentStatus === $dbStatus) {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => true, 'updated' => false, 'status' => $currentStatus, 'id' => $id];
+            }
+
+            // Out-of-order protection: Do not regress delivered status back to sent
+            if ($currentStatus === 'delivered' && $dbStatus === 'sent') {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => true, 'updated' => false, 'status' => 'delivered', 'id' => $id, 'note' => 'Out-of-order event ignored (already delivered).'];
+            }
+
+            // Out-of-order protection: Do not overwrite terminal failure with sent
+            if ($currentStatus === 'failed' && $dbStatus === 'sent') {
+                if ($openedTx) {
+                    $this->db->rollBack();
+                }
+                return ['success' => true, 'updated' => false, 'status' => 'failed', 'id' => $id, 'note' => 'Out-of-order event ignored (already failed).'];
+            }
+
+            if ($dbStatus === 'delivered') {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE notification_logs 
+                    SET status = 'delivered',
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute(['id' => $id]);
+            } elseif ($dbStatus === 'failed') {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE notification_logs 
+                    SET status = 'failed',
+                        failed_at = NOW(),
+                        error_message = :err,
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute([
+                    'id' => $id,
+                    'err' => $this->redactError($errorMessage ?? 'Delivery failed as reported by provider.')
+                ]);
+            } elseif ($dbStatus === 'sent') {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE notification_logs 
+                    SET status = 'sent',
+                        sent_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute(['id' => $id]);
+            }
+
+            if ($openedTx) {
+                $this->db->commit();
+            }
+            \App\Services\Logger::info("Notification #$id delivery status updated to '$dbStatus' for provider message ID '$providerMessageId'.");
+            return ['success' => true, 'updated' => true, 'status' => $dbStatus, 'id' => $id];
+        } catch (\Exception $e) {
+            if ($openedTx && $this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
     }
 
     /**

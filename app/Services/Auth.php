@@ -320,7 +320,11 @@ class Auth {
         }
 
         if (session_status() === PHP_SESSION_ACTIVE) {
-            session_destroy();
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                $_SESSION = [];
+            } else {
+                session_destroy();
+            }
         }
         self::$currentUser = null;
     }
@@ -469,7 +473,9 @@ class Auth {
      * Redirect to a custom 403 error page
      */
     public static function abort403(): void {
-        http_response_code(403);
+        if (!headers_sent()) {
+            http_response_code(403);
+        }
         if (defined('TESTING_MODE') && TESTING_MODE) {
             throw new \RuntimeException("Abort 403 Forbidden");
         }

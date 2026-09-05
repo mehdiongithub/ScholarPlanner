@@ -240,7 +240,12 @@ $router->post('/admin/settings/wacrm/test-connection', ['App\Controllers\AdminCo
 $router->get('/admin/referrals', ['App\Controllers\AdminController', 'referralsIndex']);
 $router->post('/admin/referrals', ['App\Controllers\AdminController', 'referralsStore']);
 $router->post('/admin/referrals/{id}/delete', ['App\Controllers\AdminController', 'referralsDelete']);
+$router->post('/admin/referrals/{id}/update-code', ['App\Controllers\AdminController', 'referralsUpdateCode']);
+$router->post('/admin/referrals/{id}/update-percentages', ['App\Controllers\AdminController', 'referralsUpdatePercentages']);
+$router->post('/admin/referrals/settings', ['App\Controllers\AdminController', 'referralsSettingsUpdate']);
+$router->post('/admin/referrals/correct-attribution', ['App\Controllers\AdminController', 'referralsCorrectAttribution']);
 $router->get('/admin/referrals/data', ['App\Controllers\AdminController', 'referralsData']);
+$router->get('/admin/referrals/commissions/data', ['App\Controllers\AdminController', 'referralsCommissionsData']);
 
 // Partner Dashboard Routes
 $router->get('/referral-partner', ['App\Controllers\ReferralPartnerController', 'index']);

@@ -126,8 +126,7 @@ class DocumentController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['document_errors'] = ['csrf' => 'CSRF verification failed. Please try again.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         $docId = (int)($_POST['document_id'] ?? 0);
@@ -184,15 +183,13 @@ class DocumentController {
         $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         if (!array_key_exists($ext, $this->allowedMimes)) {
             $_SESSION['document_errors'] = ['file' => 'Invalid file format. Allowed formats: PDF, JPG, JPEG, PNG, DOC, DOCX.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         // 5. Validation: Double extension block
         if (preg_match('/\.(php|phtml|php3|php4|php5|php7|phps|exe|sh|bat|cmd|pl|cgi)\./i', $originalName)) {
             $_SESSION['document_errors'] = ['file' => 'Security policy restriction: unsafe double extension block.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         // 6. Validation: Binary MIME-type spoof check
@@ -215,8 +212,7 @@ class DocumentController {
 
         if (!$mimeValid) {
             $_SESSION['document_errors'] = ['file' => 'File verification failed: MIME-type spoofing detected.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         // 7. Secure storage execution
@@ -300,8 +296,7 @@ class DocumentController {
         }
 
         \App\Services\CacheService::clear();
-        header("Location: " . url('/documents'));
-        $this->halt();
+        $this->redirect(url('/documents'));
     }
 
     /**
@@ -312,7 +307,11 @@ class DocumentController {
         Auth::requireAuth();
         $rawId = decode_id($id);
         if ($rawId === null) {
-            $this->dieWithError(404, "Invalid document ID.");
+            if (is_numeric($id)) {
+                $rawId = (int)$id;
+            } else {
+                $this->dieWithError(404, "Invalid document ID.");
+            }
         }
         $id = $rawId;
         $userId = Auth::userId();
@@ -336,9 +335,11 @@ class DocumentController {
 
         $this->logAudit('document.download', $userId, $id);
 
-        header('Content-Type: ' . $doc['mime_type']);
-        header('Content-Disposition: inline; filename="' . basename($doc['original_filename']) . '"');
-        header('Content-Length: ' . $doc['file_size']);
+        if (!headers_sent()) {
+            header('Content-Type: ' . $doc['mime_type']);
+            header('Content-Disposition: inline; filename="' . basename($doc['original_filename']) . '"');
+            header('Content-Length: ' . $doc['file_size']);
+        }
         readfile($doc['storage_path']);
         $this->halt();
     }
@@ -360,8 +361,7 @@ class DocumentController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['document_errors'] = ['csrf' => 'CSRF verification failed. Please try again.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         $stmt = $this->db->prepare("SELECT * FROM user_documents WHERE id = :id LIMIT 1");
@@ -370,22 +370,19 @@ class DocumentController {
 
         if (!$doc) {
             $_SESSION['document_errors'] = ['delete' => 'Document not found.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         // Ownership validation (IDOR protection)
         if ((int)$doc['user_id'] !== $userId) {
             $_SESSION['document_errors'] = ['delete' => 'Unauthorized deletion request.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         // Business rule constraint: Approved records cannot be deleted
         if ($doc['status'] === 'approved') {
             $_SESSION['document_errors'] = ['delete' => 'Approved documents cannot be deleted to preserve audit trails.'];
-            header("Location: " . url('/documents'));
-            $this->halt();
+            $this->redirect(url('/documents'));
         }
 
         // Remove from disk
@@ -401,8 +398,7 @@ class DocumentController {
         $_SESSION['document_success'] = "Document deleted successfully.";
 
         \App\Services\CacheService::clear();
-        header("Location: " . url('/documents'));
-        $this->halt();
+        $this->redirect(url('/documents'));
     }
 
     /**
@@ -566,8 +562,7 @@ class DocumentController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_doc_error'] = 'CSRF verification failed.';
-            header("Location: " . url('/admin/documents/' . $encId));
-            $this->halt();
+            $this->redirect(url('/admin/documents/' . $encId));
         }
 
         $stmt = $this->db->prepare("
@@ -583,8 +578,7 @@ class DocumentController {
 
         if (!$doc) {
             $_SESSION['admin_doc_error'] = 'Document not found.';
-            header("Location: " . url('/admin/documents'));
-            $this->halt();
+            $this->redirect(url('/admin/documents'));
         }
 
         $stmtUp = $this->db->prepare("
@@ -616,8 +610,7 @@ class DocumentController {
         );
 
         $_SESSION['admin_doc_success'] = "Document approved successfully.";
-        header("Location: " . url('/admin/documents'));
-        $this->halt();
+        $this->redirect(url('/admin/documents'));
     }
 
     /**
@@ -638,15 +631,13 @@ class DocumentController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_doc_error'] = 'CSRF verification failed.';
-            header("Location: " . url('/admin/documents/' . $encId));
-            $this->halt();
+            $this->redirect(url('/admin/documents/' . $encId));
         }
 
         $reason = trim($_POST['rejection_reason'] ?? '');
         if (empty($reason)) {
             $_SESSION['admin_doc_error'] = 'Rejection reason is required.';
-            header("Location: " . url('/admin/documents/' . $encId));
-            $this->halt();
+            $this->redirect(url('/admin/documents/' . $encId));
         }
 
         $stmt = $this->db->prepare("
@@ -662,8 +653,7 @@ class DocumentController {
 
         if (!$doc) {
             $_SESSION['admin_doc_error'] = 'Document not found.';
-            header("Location: " . url('/admin/documents'));
-            $this->halt();
+            $this->redirect(url('/admin/documents'));
         }
 
         $stmtUp = $this->db->prepare("
@@ -680,7 +670,10 @@ class DocumentController {
             'id' => $id
         ]);
 
-        $this->logAudit('document.reject', $doc['user_id'], $id, ['document_type' => $doc['doc_name'], 'reason' => $reason]);
+        $this->logAudit('document.reject', $doc['user_id'], $id, [
+            'document_type' => $doc['doc_name'],
+            'rejection_reason' => $reason
+        ]);
         \App\Services\CacheService::clear();
 
         // Enqueue Notification
@@ -699,8 +692,7 @@ class DocumentController {
         );
 
         $_SESSION['admin_doc_success'] = "Document rejected successfully.";
-        header("Location: " . url('/admin/documents'));
-        $this->halt();
+        $this->redirect(url('/admin/documents'));
     }
 
     /**
@@ -748,13 +740,22 @@ class DocumentController {
         exit();
     }
 
+    private function redirect(string $url): void {
+        if (!headers_sent()) {
+            header("Location: " . $url);
+        }
+        $this->halt();
+    }
+
     /**
      * Terminate execution with code and error message or throw exception in test mode
      */
     private function dieWithError(int $code, string $message): void {
-        http_response_code($code);
+        if (!headers_sent()) {
+            http_response_code($code);
+        }
         if (defined('TESTING_MODE') && TESTING_MODE) {
-            throw new \RuntimeException($message);
+            throw new \RuntimeException($message, $code);
         }
         die($message);
     }

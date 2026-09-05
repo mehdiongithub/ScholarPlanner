@@ -57,6 +57,7 @@ foreach ($users as $user) {
                 JOIN scholarship_matches sm ON s.id = sm.scholarship_id AND sm.user_id = :uid
                 LEFT JOIN countries c ON s.country_id = c.id
                 WHERE s.status = 'published'
+                  AND s.verification_status = 'verified'
                   AND s.application_deadline IS NOT NULL
                   AND DATE(s.application_deadline) = :target_date
                   AND DATE(s.application_deadline) >= CURDATE()
@@ -77,15 +78,27 @@ foreach ($users as $user) {
                 $type = ($days === 1) ? 'SCHOLARSHIP_DEADLINE_TODAY' : 'SCHOLARSHIP_DEADLINE_SOON';
 
                 $payload = [
+                    'scholarship_id' => $sid,
                     'title' => $s['title'],
                     'provider' => $s['provider_name'],
+                    'provider_name' => $s['provider_name'],
+                    'study_level' => $s['study_level'] ?? 'Master\'s',
+                    'degree' => $s['study_level'] ?? 'Master\'s',
                     'country' => $s['country_name'] ?? 'Multiple Countries',
+                    'country_name' => $s['country_name'] ?? 'Multiple Countries',
                     'funding' => $s['funding_type'],
+                    'funding_type' => $s['funding_type'],
+                    'short_description' => $s['short_description'] ?? null,
+                    'description' => $s['description'] ?? null,
                     'deadline' => $deadlineDate,
+                    'application_deadline' => $deadlineDate,
+                    'days_left' => $days,
                     'score' => $s['match_score'],
                     'summary' => "Deadline Reminder: Applications for {$s['title']} close in {$days} day(s)!",
+                    'slug' => $s['slug'],
                     'detail_url' => url('/scholarships/' . $s['slug']),
-                    'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
+                    'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? '',
+                    'official_application_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
                 ];
 
                 $notificationService->sendNotification($userId, $type, $payload, $sid, $idempotencyKey);
@@ -99,11 +112,13 @@ foreach ($users as $user) {
             SELECT usr.reminder_days as custom_days, s.*, c.name as country_name, COALESCE(sm.match_score, 80) as match_score
             FROM user_scholarship_reminders usr
             JOIN scholarships s ON usr.scholarship_id = s.id
-            LEFT JOIN scholarship_matches sm ON s.id = sm.scholarship_id AND sm.user_id = :uid
+            JOIN scholarship_matches sm ON s.id = sm.scholarship_id AND sm.user_id = :uid
             LEFT JOIN countries c ON s.country_id = c.id
             WHERE usr.user_id = :uid2
               AND usr.is_enabled = 1
               AND s.status = 'published'
+              AND s.verification_status = 'verified'
+              AND sm.eligibility_status = 'ELIGIBLE'
               AND s.application_deadline IS NOT NULL
               AND DATE(s.application_deadline) >= CURDATE()
         ");
@@ -129,15 +144,27 @@ foreach ($users as $user) {
                     $type = ($days === 1) ? 'SCHOLARSHIP_DEADLINE_TODAY' : 'SCHOLARSHIP_DEADLINE_SOON';
 
                     $payload = [
+                        'scholarship_id' => $sid,
                         'title' => $s['title'],
                         'provider' => $s['provider_name'],
+                        'provider_name' => $s['provider_name'],
+                        'study_level' => $s['study_level'] ?? 'Master\'s',
+                        'degree' => $s['study_level'] ?? 'Master\'s',
                         'country' => $s['country_name'] ?? 'Multiple Countries',
+                        'country_name' => $s['country_name'] ?? 'Multiple Countries',
                         'funding' => $s['funding_type'],
+                        'funding_type' => $s['funding_type'],
+                        'short_description' => $s['short_description'] ?? null,
+                        'description' => $s['description'] ?? null,
                         'deadline' => $deadlineDate,
+                        'application_deadline' => $deadlineDate,
+                        'days_left' => $days,
                         'score' => $s['match_score'],
                         'summary' => "Deadline Reminder: Applications for {$s['title']} close in {$days} day(s)!",
+                        'slug' => $s['slug'],
                         'detail_url' => url('/scholarships/' . $s['slug']),
-                        'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
+                        'official_apply_url' => $s['official_application_url'] ?? $s['official_website'] ?? '',
+                        'official_application_url' => $s['official_application_url'] ?? $s['official_website'] ?? ''
                     ];
 
                     $notificationService->sendNotification($userId, $type, $payload, $sid, $idempotencyKey);

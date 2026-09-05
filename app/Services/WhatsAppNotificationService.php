@@ -74,4 +74,27 @@ class WhatsAppNotificationService {
         $provider = $this->getProviderFor($providerName, $notificationType);
         return $provider->sendTemplateMessage($normalizedPhone, $templateName, $parameters);
     }
+
+    /**
+     * Send a direct text message through the resolved WhatsApp provider.
+     */
+    public function sendTextMessage(string $recipient, string $text, ?string $providerName = null, ?string $notificationType = null): array {
+        // Clean and normalize recipient phone number
+        $normalizedPhone = WacrmWhatsAppProvider::normalizePhoneNumber($recipient);
+        if ($normalizedPhone === null) {
+            return [
+                'success' => false,
+                'message_id' => null,
+                'error' => 'Invalid or missing recipient phone number format.'
+            ];
+        }
+
+        $provider = $this->getProviderFor($providerName, $notificationType);
+        if (method_exists($provider, 'sendTextMessage')) {
+            return $provider->sendTextMessage($normalizedPhone, $text);
+        }
+
+        return $provider->sendTemplateMessage($normalizedPhone, 'text_message', [$text]);
+    }
 }
+

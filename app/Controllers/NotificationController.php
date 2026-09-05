@@ -135,7 +135,9 @@ class NotificationController {
 
         $rawId = decode_id($id);
         if ($rawId === null) {
-            http_response_code(404);
+            if (!headers_sent()) {
+                http_response_code(404);
+            }
             view('errors.404');
             exit();
         }
@@ -184,7 +186,9 @@ class NotificationController {
 
         $rawId = decode_id($id);
         if ($rawId === null) {
-            http_response_code(404);
+            if (!headers_sent()) {
+                http_response_code(404);
+            }
             view('errors.404');
             exit();
         }
@@ -195,7 +199,9 @@ class NotificationController {
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['notification_error'] = 'CSRF verification failed. Please try again.';
-            header("Location: " . url("/admin/notifications"));
+            if (!headers_sent()) {
+                header("Location: " . url("/admin/notifications"));
+            }
             exit();
         }
 
@@ -208,7 +214,9 @@ class NotificationController {
             $_SESSION['notification_error'] = "Could not retry the notification. The maximum delivery attempts have been reached (3/3), or the notification is not in a retryable status.";
         }
 
-        header("Location: " . url("/admin/notifications/$encId"));
+        if (!headers_sent()) {
+            header("Location: " . url("/admin/notifications/$encId"));
+        }
         exit();
     }
 
@@ -250,7 +258,9 @@ class NotificationController {
             $_SESSION['notification_error'] = "Invalid provider selected for testing.";
         }
 
-        header("Location: " . url("/admin/notifications"));
+        if (!headers_sent()) {
+            header("Location: " . url("/admin/notifications"));
+        }
         exit();
     }
 }

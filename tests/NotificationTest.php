@@ -95,8 +95,8 @@ class NotificationTest {
         // 5. Create a published scholarship
         $germanyId = $this->db->query("SELECT id FROM countries WHERE name = 'Germany' LIMIT 1")->fetchColumn();
         $this->db->prepare("
-            INSERT INTO scholarships (title, slug, provider_name, short_description, description, country_id, funding_type, status, application_deadline, published_at)
-            VALUES ('German Math Scholarship', 'german-math-scholarship', 'German Science', 'Desc', 'Desc', :ger, 'Fully Funded', 'published', :deadline, NOW())
+            INSERT INTO scholarships (title, slug, provider_name, short_description, description, country_id, funding_type, status, verification_status, application_deadline, published_at)
+            VALUES ('German Math Scholarship', 'german-math-scholarship', 'German Science', 'Desc', 'Desc', :ger, 'Fully Funded', 'published', 'verified', :deadline, NOW())
         ")->execute([
             'ger' => $germanyId,
             'deadline' => date('Y-m-d', strtotime('+3 days'))
@@ -622,8 +622,8 @@ class NotificationTest {
 
         $avail2 = $this->db->query("SELECT available_at FROM notification_logs WHERE id = $id2")->fetchColumn();
         $diff2 = strtotime($avail2) - time();
-        if ($diff2 < 250 || $diff2 > 350) {
-            throw new \Exception("Expected negative retryAfter to fall back to default delay, got difference: $diff2");
+        if ($diff2 < 45 || $diff2 > 80) {
+            throw new \Exception("Expected negative retryAfter to fall back to default delay (60s), got difference: $diff2");
         }
 
         // 3. Test absurdly large retryAfter (e.g. 9999999)
@@ -636,8 +636,8 @@ class NotificationTest {
 
         $avail3 = $this->db->query("SELECT available_at FROM notification_logs WHERE id = $id3")->fetchColumn();
         $diff3 = strtotime($avail3) - time();
-        if ($diff3 < 250 || $diff3 > 350) {
-            throw new \Exception("Expected absurdly large retryAfter to fall back to default delay, got difference: $diff3");
+        if ($diff3 < 45 || $diff3 > 80) {
+            throw new \Exception("Expected absurdly large retryAfter to fall back to default delay (60s), got difference: $diff3");
         }
 
         echo "✔ Retry delay boundaries and constraints verified.\n";

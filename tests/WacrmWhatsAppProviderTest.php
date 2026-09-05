@@ -93,6 +93,7 @@ namespace {
             $this->testMalformedJsonResponseHandling();
             $this->testPhoneNumberValidation();
             $this->testTemplateNameMapping();
+            $this->testDirectTextMessageSending();
             $this->testAdminConnectionTestAccessControl();
 
             echo "WacrmWhatsAppProviderTest PASSED.\n\n";
@@ -452,6 +453,51 @@ namespace {
             $keyProp->setValue($provider, $oldKey);
 
             echo "✔ Template dynamic configuration mapping verified.\n";
+        }
+
+        private function testDirectTextMessageSending(): void {
+            CurlMockRegistry::reset();
+            CurlMockRegistry::$response = json_encode([
+                'data' => [
+                    'message_id' => 'msg_text_wacrm_8888',
+                    'whatsapp_message_id' => 'wamid.HBgLOTEzMDA...'
+                ]
+            ]);
+            CurlMockRegistry::$httpCode = 201;
+
+            $provider = new WacrmWhatsAppProvider();
+            $reflector = new ReflectionClass($provider);
+            $urlProp = $reflector->getProperty('baseUrl');
+            $urlProp->setAccessible(true);
+            $keyProp = $reflector->getProperty('apiKey');
+            $keyProp->setAccessible(true);
+
+            $oldUrl = $urlProp->getValue($provider);
+            $oldKey = $keyProp->getValue($provider);
+
+            $urlProp->setValue($provider, 'https://mock.local');
+            $keyProp->setValue($provider, 'test_key');
+
+            $res = $provider->sendTextMessage('+923001234567', 'ScholarPlanner WACRM direct text test.');
+
+            if (!$res['success']) {
+                throw new Exception("Direct text send failed: " . ($res['error'] ?? ''));
+            }
+
+            if ($res['message_id'] !== 'msg_text_wacrm_8888') {
+                throw new Exception("Unexpected message ID in direct text send: " . $res['message_id']);
+            }
+
+            $postFields = json_decode(CurlMockRegistry::$calledPostFields, true);
+            if ($postFields['to'] !== '+923001234567' || $postFields['type'] !== 'text' || $postFields['text'] !== 'ScholarPlanner WACRM direct text test.') {
+                throw new Exception("Incorrect payload for direct text send: " . CurlMockRegistry::$calledPostFields);
+            }
+
+            // Restore values
+            $urlProp->setValue($provider, $oldUrl);
+            $keyProp->setValue($provider, $oldKey);
+
+            echo "✔ Direct text message sending and HTTP 201 payload processing verified.\n";
         }
 
         private function testAdminConnectionTestAccessControl(): void {

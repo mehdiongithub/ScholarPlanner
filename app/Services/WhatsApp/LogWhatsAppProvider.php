@@ -31,4 +31,27 @@ class LogWhatsAppProvider implements WhatsAppProviderInterface {
             'error' => null
         ];
     }
+
+    public function sendTextMessage(string $recipient, string $text): array {
+        $logDir = dirname($this->logPath);
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0777, true);
+        }
+
+        $logEntry = sprintf(
+            "[%s] Recipient: %s | Text: %s\n",
+            date('Y-m-d H:i:s'),
+            $recipient,
+            $text
+        );
+
+        file_put_contents($this->logPath, $logEntry, FILE_APPEND);
+
+        return [
+            'success' => true,
+            'message_id' => 'log_' . uniqid(),
+            'error' => null
+        ];
+    }
 }
+

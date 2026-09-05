@@ -18,6 +18,13 @@ class AuthController {
         exit();
     }
 
+    private function redirect(string $url, string $message = 'Redirect'): void {
+        if (!headers_sent()) {
+            header("Location: " . $url);
+        }
+        $this->halt($message);
+    }
+
     /**
      * Display registration form
      */
@@ -100,28 +107,18 @@ class AuthController {
 
         // Validate Referral Code if provided
         $partnerId = null;
+        $validRefCode = null;
         if (!empty($referralCode)) {
-            $stmtCheckPartner = $db->prepare("
-                SELECT u.id, u.created_at FROM users u
-                JOIN roles r ON u.role_id = r.id
-                WHERE u.referral_code = :ref AND r.name = 'referral_partner' AND u.status = 'active'
-                LIMIT 1
-            ");
-            $stmtCheckPartner->execute(['ref' => $referralCode]);
-            $partner = $stmtCheckPartner->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$partner) {
-                $errors['referral_code'] = "The referral code is invalid or the partner is inactive.";
-            } else {
-                $partnerId = $partner['id'];
-                $windowMonths = (int)$db->query("SELECT `value` FROM settings WHERE `key` = 'referral_attribution_window_months'")->fetchColumn();
-                if ($windowMonths <= 0) $windowMonths = 3;
-                
-                $windowLimit = strtotime("+$windowMonths months", strtotime($partner['created_at']));
-                if (time() > $windowLimit) {
-                    $errors['referral_code'] = "This referral code has expired.";
+            $partner = \App\Services\ReferralService::findPartnerByCode($referralCode, $db);
+            if ($partner) {
+                // Self-referral prevention: partner cannot refer their own registration/email
+                $isSelfReferral = (strtolower(trim($email)) === strtolower(trim($partner['email'])));
+                if (!$isSelfReferral) {
+                    $partnerId = (int)$partner['id'];
+                    $validRefCode = \App\Services\ReferralService::normalizeCode($partner['referral_code']);
                 }
             }
+            // Invalid referral codes or self-referrals do not break normal registration
         }
 
         if (!empty($errors)) {
@@ -144,8 +141,8 @@ class AuthController {
             
             // 1. Insert user
             $stmt = $db->prepare("
-                INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referred_by_code) 
-                VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'pending', :referred_by_code)
+                INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, referral_partner_id, referred_by_code) 
+                VALUES (:role_id, :first_name, :last_name, :email, :password_hash, 'pending', :partner_id, :referred_by_code)
             ");
             $stmt->execute([
                 'role_id' => $visitorRoleId,
@@ -153,7 +150,8 @@ class AuthController {
                 'last_name' => $lastName,
                 'email' => $email,
                 'password_hash' => $passwordHash,
-                'referred_by_code' => !empty($referralCode) ? $referralCode : null
+                'partner_id' => $partnerId,
+                'referred_by_code' => $validRefCode
             ]);
             
             $userId = (int)$db->lastInsertId();
@@ -161,13 +159,13 @@ class AuthController {
             // 2. Insert into referral_signups if referred
             if ($partnerId) {
                 $stmtSignup = $db->prepare("
-                    INSERT INTO referral_signups (partner_id, referred_user_id, referral_code) 
-                    VALUES (:partner_id, :referred_user_id, :referral_code)
+                    INSERT INTO referral_signups (partner_id, referred_user_id, referral_code, created_at) 
+                    VALUES (:partner_id, :referred_user_id, :referral_code, NOW())
                 ");
                 $stmtSignup->execute([
                     'partner_id' => $partnerId,
                     'referred_user_id' => $userId,
-                    'referral_code' => $referralCode
+                    'referral_code' => $validRefCode
                 ]);
             }
 
@@ -244,8 +242,7 @@ class AuthController {
             $_SESSION['user_name'] = $firstName . ' ' . $lastName;
             $_SESSION['user_email'] = $email;
 
-            header("Location: " . url('/verify-email'));
-            $this->halt("Redirect to verify-email");
+            $this->redirect(url('/verify-email'), "Redirect to verify-email");
 
         } catch (Exception $e) {
             if ($db->inTransaction()) {
@@ -688,12 +685,11 @@ class AuthController {
 
                 if (Auth::hasRole('referral_partner')) {
                     $_SESSION['verify_success_toast'] = "Email verified successfully! Welcome to your dashboard.";
-                    header("Location: " . url('/referral-partner'));
+                    $this->redirect(url('/referral-partner'), "Redirect to profile edit or partner dashboard");
                 } else {
                     $_SESSION['verify_success_toast'] = "Email verified successfully! Let's complete your profile.";
-                    header("Location: " . url('/profile/edit'));
+                    $this->redirect(url('/profile/edit'), "Redirect to profile edit or partner dashboard");
                 }
-                $this->halt("Redirect to profile edit or partner dashboard");
             }
         }
 
@@ -871,13 +867,14 @@ class AuthController {
             $successMsg = "Verification code requested. Please check your email.";
 
             if ($isAjax) {
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode(['success' => true, 'message' => $successMsg]);
                 $this->halt();
             } else {
                 $_SESSION['verify_success'] = $successMsg;
-                header("Location: " . url('/verify-email'));
-                $this->halt("Redirect to verify-email");
+                $this->redirect(url('/verify-email'), "Redirect to verify-email");
             }
         } catch (Exception $e) {
             if ($db->inTransaction()) {
@@ -890,7 +887,9 @@ class AuthController {
             
             $err = "Could not request a new verification code. Please try again.";
             if ($isAjax) {
-                header('Content-Type: application/json');
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                }
                 echo json_encode(['success' => false, 'error' => $err]);
                 $this->halt();
             } else {
