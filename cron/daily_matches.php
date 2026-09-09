@@ -1,6 +1,23 @@
 <?php
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    echo "Access Denied: CLI runtime execution context only.\n";
+    exit(1);
+}
 
-require_once dirname(__DIR__) . '/tests/bootstrap.php';
+if (!defined('ROOT_PATH')) {
+    define('ROOT_PATH', dirname(__DIR__));
+}
+require_once ROOT_PATH . '/vendor/autoload.php';
+
+try {
+    if (file_exists(ROOT_PATH . '/.env')) {
+        $dotenv = \Dotenv\Dotenv::createImmutable(ROOT_PATH);
+        $dotenv->load();
+    }
+} catch (\Exception $e) {
+    // Fail silently
+}
 
 use App\Services\Database;
 use App\Services\ScholarshipMatchingService;
@@ -8,13 +25,17 @@ use App\Services\NotificationService;
 use App\Services\NotificationQueueService;
 use App\Services\SubscriptionService;
 
-if (php_sapi_name() !== 'cli') {
-    die("This script must be run via the command line.\n");
-}
-
 echo "Starting Daily Matches process...\n";
 
 $db = Database::connection();
+$lockStmt = $db->prepare("SELECT GET_LOCK('cron_daily_matches', 0)");
+$lockStmt->execute();
+if ((int)$lockStmt->fetchColumn() !== 1) {
+    echo "ℹ Another daily matches process is currently running. Exiting.\n";
+    exit(0);
+}
+
+try {
 $matchingService = new ScholarshipMatchingService();
 $notificationService = new NotificationService();
 $queueService = new NotificationQueueService();
@@ -206,17 +227,21 @@ foreach ($userBatches as $batchIndex => $batch) {
                 if ($sendWhatsApp && !$sendEmail) {
                     // Record match idempotency key so repeated cron runs do not duplicate this match
                     try {
+                        $activePlan = \App\Services\SubscriptionService::getActivePlan($userId);
+                        $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected'], true)) ? (int)$activePlan['id'] : null;
+
                         $stmtLog = $db->prepare("
                             INSERT INTO notification_logs (
-                                user_id, scholarship_id, notification_type, channel, provider, 
+                                user_id, subscription_id, scholarship_id, notification_type, channel, provider, 
                                 recipient, payload, idempotency_key, status, available_at, created_at, updated_at
                             ) VALUES (
-                                :uid, :sid, 'NEW_MATCH', 'whatsapp', 'wacrm', 
+                                :uid, :sub_id, :sid, 'NEW_MATCH', 'whatsapp', 'wacrm', 
                                 :rcpt, :payload, :key, 'batched', NOW(), NOW(), NOW()
                             )
                         ");
                         $stmtLog->execute([
                             'uid' => $userId,
+                            'sub_id' => $subId,
                             'sid' => $schId,
                             'rcpt' => $normalizedPhone,
                             'payload' => json_encode($matchPayload),
@@ -237,6 +262,9 @@ foreach ($userBatches as $batchIndex => $batch) {
             echo "Error processing user ID $userId: " . $e->getMessage() . "\n";
         }
     }
+}
+} finally {
+    $db->query("SELECT RELEASE_LOCK('cron_daily_matches')");
 }
 
 // Finished enqueuing matching notifications

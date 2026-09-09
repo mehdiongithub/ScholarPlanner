@@ -86,9 +86,15 @@ set_error_handler(function ($severity, $message, $file, $line) {
 \App\Services\Logger::init();
 
 // Send Security Headers
-header("X-Frame-Options: SAMEORIGIN");
-header("X-Content-Type-Options: nosniff");
-header("Referrer-Policy: strict-origin-when-cross-origin");
+if (!headers_sent()) {
+    header("X-Frame-Options: SAMEORIGIN");
+    header("X-Content-Type-Options: nosniff");
+    header("Referrer-Policy: strict-origin-when-cross-origin");
+    header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+    if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+        header("Strict-Transport-Security: max-age=31536000; includeSubDomains");
+    }
+}
 
 // Load Router and Dispatch request
 $router = new \App\Services\Router();

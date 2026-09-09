@@ -286,47 +286,45 @@ class BillingController {
 
                 $baseTime = null;
                 $isOngoing = false;
-                if ($sub && in_array($sub['status'], ['active', 'cancelled']) && !empty($sub['ends_at'])) {
+                if ($sub && in_array($sub['status'], ['active', 'protected', 'cancelled']) && !empty($sub['ends_at'])) {
                     if (strtotime($sub['ends_at']) > time()) {
                         $baseTime = $sub['ends_at'];
-                        $isOngoing = !empty($sub['starts_at']);
+                        $isOngoing = true;
                     }
                 }
 
                 $endsAt = SubscriptionService::calculatePlanExpiry($plan, $baseTime);
 
-                if ($sub) {
+                if ($sub && $isOngoing) {
                     $stmtSubUpd = $this->db->prepare("
                         UPDATE subscriptions 
                         SET status = 'active', 
-                            starts_at = " . ($isOngoing ? ":starts" : "NOW()") . ", 
                             ends_at = :ends, 
+                            normal_ends_at = :normal_ends,
                             cancelled_at = NULL, 
                             auto_renew = 1, 
                             updated_at = NOW() 
                         WHERE id = :id
                     ");
-                    $paramsSub = [
+                    $stmtSubUpd->execute([
                         'ends' => $endsAt,
+                        'normal_ends' => $endsAt,
                         'id' => $sub['id']
-                    ];
-                    if ($isOngoing) {
-                        $paramsSub['starts'] = $sub['starts_at'];
-                    }
-                    $stmtSubUpd->execute($paramsSub);
+                    ]);
                     $subId = $sub['id'];
                 } else {
                     $stmtSubIns = $this->db->prepare("
                         INSERT INTO subscriptions (
-                            user_id, plan_id, status, starts_at, ends_at, auto_renew, provider, provider_subscription_id, created_at, updated_at
+                            user_id, plan_id, status, starts_at, ends_at, normal_ends_at, minimum_delivered_required, auto_renew, provider, provider_subscription_id, created_at, updated_at
                         ) VALUES (
-                            :uid, :pid, 'active', NOW(), :ends, 1, :provider, :sub_id, NOW(), NOW()
+                            :uid, :pid, 'active', NOW(), :ends, :normal_ends, 5, 1, :provider, :sub_id, NOW(), NOW()
                         )
                     ");
                     $stmtSubIns->execute([
                         'uid' => $tx['user_id'],
                         'pid' => $plan['id'],
                         'ends' => $endsAt,
+                        'normal_ends' => $endsAt,
                         'provider' => $tx['provider'],
                         'sub_id' => $res['provider_transaction_id']
                     ]);
@@ -335,6 +333,9 @@ class BillingController {
 
                 $stmtLink = $this->db->prepare("UPDATE payment_transactions SET subscription_id = :sub_id WHERE id = :id");
                 $stmtLink->execute(['sub_id' => $subId, 'id' => $tx['id']]);
+
+                // Synchronize subscription usage metrics atomically
+                \App\Services\SubscriptionService::syncSubscriptionUsage((int)$subId, $this->db);
 
                 // Enqueue Meta WhatsApp confirmation
                 $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)($tx['plan_id'] ?: $plan['id']));
@@ -501,32 +502,46 @@ class BillingController {
                     $planId = $this->db->query("SELECT id FROM subscription_plans WHERE slug = 'premium-monthly' LIMIT 1")->fetchColumn();
                 }
 
-                $stmtSub = $this->db->prepare("SELECT id FROM subscriptions WHERE user_id = :uid AND plan_id = :pid ORDER BY id DESC LIMIT 1");
+                $stmtSub = $this->db->prepare("SELECT id, status, starts_at, ends_at FROM subscriptions WHERE user_id = :uid AND plan_id = :pid ORDER BY id DESC LIMIT 1");
                 $stmtSub->execute(['uid' => $tx['user_id'], 'pid' => $planId]);
                 $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
 
-                $endsAt = SubscriptionService::calculatePlanExpiry($planId);
+                $baseTime = null;
+                $isOngoing = false;
+                if ($sub && in_array($sub['status'], ['active', 'protected', 'cancelled']) && !empty($sub['ends_at'])) {
+                    if (strtotime($sub['ends_at']) > time()) {
+                        $baseTime = $sub['ends_at'];
+                        $isOngoing = true;
+                    }
+                }
 
-                if ($sub) {
+                $endsAt = SubscriptionService::calculatePlanExpiry($planId, $baseTime);
+
+                if ($sub && $isOngoing) {
                     $stmtSubUpd = $this->db->prepare("
                         UPDATE subscriptions 
-                        SET status = 'active', starts_at = NOW(), ends_at = :ends, cancelled_at = NULL, auto_renew = 1, updated_at = NOW() 
+                        SET status = 'active', ends_at = :ends, normal_ends_at = :normal_ends, cancelled_at = NULL, auto_renew = 1, updated_at = NOW() 
                         WHERE id = :id
                     ");
-                    $stmtSubUpd->execute(['ends' => $endsAt, 'id' => $sub['id']]);
+                    $stmtSubUpd->execute([
+                        'ends' => $endsAt,
+                        'normal_ends' => $endsAt,
+                        'id' => $sub['id']
+                    ]);
                     $subId = $sub['id'];
                 } else {
                     $stmtSubIns = $this->db->prepare("
                         INSERT INTO subscriptions (
-                            user_id, plan_id, status, starts_at, ends_at, auto_renew, provider, provider_subscription_id, created_at, updated_at
+                            user_id, plan_id, status, starts_at, ends_at, normal_ends_at, minimum_delivered_required, auto_renew, provider, provider_subscription_id, created_at, updated_at
                         ) VALUES (
-                            :uid, :pid, 'active', NOW(), :ends, 1, :provider, :sub_id, NOW(), NOW()
+                            :uid, :pid, 'active', NOW(), :ends, :normal_ends, 5, 1, :provider, :sub_id, NOW(), NOW()
                         )
                     ");
                     $stmtSubIns->execute([
                         'uid' => $tx['user_id'],
                         'pid' => $planId,
                         'ends' => $endsAt,
+                        'normal_ends' => $endsAt,
                         'provider' => $provider,
                         'sub_id' => $res['provider_transaction_id']
                     ]);
@@ -535,6 +550,9 @@ class BillingController {
 
                 $stmtLink = $this->db->prepare("UPDATE payment_transactions SET subscription_id = :sub_id WHERE id = :id");
                 $stmtLink->execute(['sub_id' => $subId, 'id' => $tx['id']]);
+
+                // Synchronize subscription usage metrics atomically
+                \App\Services\SubscriptionService::syncSubscriptionUsage((int)$subId, $this->db);
 
                 // Enqueue Meta WhatsApp confirmation
                 $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)($tx['plan_id'] ?: $planId));
@@ -748,21 +766,21 @@ class BillingController {
                 // If user currently has an active subscription with unexpired time, extend from current ends_at!
                 $baseTime = null;
                 $isOngoing = false;
-                if ($sub && in_array($sub['status'], ['active', 'cancelled']) && !empty($sub['ends_at'])) {
+                if ($sub && in_array($sub['status'], ['active', 'protected', 'cancelled']) && !empty($sub['ends_at'])) {
                     if (strtotime($sub['ends_at']) > time()) {
                         $baseTime = $sub['ends_at'];
-                        $isOngoing = !empty($sub['starts_at']);
+                        $isOngoing = true;
                     }
                 }
 
                 $endsAt = \App\Services\SubscriptionService::calculatePlanExpiry($planRec, $baseTime);
 
-                if ($sub) {
+                if ($sub && $isOngoing) {
                     $stmtSubUpd = $this->db->prepare("
                         UPDATE subscriptions 
                         SET status = 'active', 
-                            starts_at = " . ($isOngoing ? ":starts" : "NOW()") . ", 
                             ends_at = :ends, 
+                            normal_ends_at = :normal_ends,
                             cancelled_at = NULL, 
                             auto_renew = 1, 
                             provider = :provider, 
@@ -770,29 +788,27 @@ class BillingController {
                             updated_at = NOW() 
                         WHERE id = :id
                     ");
-                    $paramsSub = [
+                    $stmtSubUpd->execute([
                         'ends' => $endsAt,
+                        'normal_ends' => $endsAt,
                         'provider' => $tx['provider'],
                         'ptx' => $res['provider_transaction_id'],
                         'id' => $sub['id']
-                    ];
-                    if ($isOngoing) {
-                        $paramsSub['starts'] = $sub['starts_at'];
-                    }
-                    $stmtSubUpd->execute($paramsSub);
+                    ]);
                     $subId = $sub['id'];
                 } else {
                     $stmtSubIns = $this->db->prepare("
                         INSERT INTO subscriptions (
-                            user_id, plan_id, status, starts_at, ends_at, auto_renew, provider, provider_subscription_id, created_at, updated_at
+                            user_id, plan_id, status, starts_at, ends_at, normal_ends_at, minimum_delivered_required, auto_renew, provider, provider_subscription_id, created_at, updated_at
                         ) VALUES (
-                            :uid, :pid, 'active', NOW(), :ends, 1, :provider, :ptx, NOW(), NOW()
+                            :uid, :pid, 'active', NOW(), :ends, :normal_ends, 5, 1, :provider, :ptx, NOW(), NOW()
                         )
                     ");
                     $stmtSubIns->execute([
                         'uid' => $tx['user_id'],
                         'pid' => $planId,
                         'ends' => $endsAt,
+                        'normal_ends' => $endsAt,
                         'provider' => $tx['provider'],
                         'ptx' => $res['provider_transaction_id']
                     ]);
@@ -802,6 +818,9 @@ class BillingController {
                 // Link subscription
                 $stmtLink = $this->db->prepare("UPDATE payment_transactions SET subscription_id = :sub_id WHERE id = :id");
                 $stmtLink->execute(['sub_id' => $subId, 'id' => $tx['id']]);
+
+                // Synchronize subscription usage metrics atomically
+                \App\Services\SubscriptionService::syncSubscriptionUsage((int)$subId, $this->db);
 
                 // Enqueue Meta WhatsApp confirmation
                 $this->enqueuePaymentConfirmation((int)$tx['user_id'], (int)$tx['id'], $tx['transaction_reference'], (float)$tx['amount'], $tx['currency'], (int)$planId);

@@ -1685,11 +1685,23 @@ class AdminController {
 
         $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
         $schedulerSettings = $schedulerService->getSettings();
+        $matchingNextRun = $schedulerService->calculateNextRun(
+            $schedulerSettings['matching_send_time'],
+            $schedulerSettings['matching_timezone'],
+            $schedulerSettings['matching_allowed_days']
+        );
+        $deadlineNextRun = $schedulerService->calculateNextRun(
+            $schedulerSettings['deadline_send_time'],
+            $schedulerSettings['deadline_timezone'],
+            $schedulerSettings['deadline_allowed_days']
+        );
 
         View::render('admin.settings', [
             'user' => Auth::currentUser(),
             'groups' => $groups,
             'schedulerSettings' => $schedulerSettings,
+            'matchingNextRun' => $matchingNextRun,
+            'deadlineNextRun' => $deadlineNextRun,
             'csrf_token' => Security::csrfToken()
         ]);
     }
@@ -1710,8 +1722,8 @@ class AdminController {
             exit();
         }
 
-        // Validate notification scheduler settings if submitted
-        if (isset($_POST['whatsapp_send_time']) || isset($_POST['is_notification_settings'])) {
+        // Validate & persist notification scheduler settings if submitted
+        if (isset($_POST['whatsapp_send_time']) || isset($_POST['is_notification_settings']) || isset($_POST['matching_send_time'])) {
             $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
             $validation = $schedulerService->validateSettings($_POST);
             if (!$validation['valid']) {
@@ -1719,8 +1731,12 @@ class AdminController {
                 header("Location: " . url("/admin/settings"));
                 return;
             }
-            foreach ($validation['sanitized'] as $k => $v) {
-                $_POST[$k] = $v;
+            try {
+                $schedulerService->updateSettings($_POST);
+            } catch (Exception $e) {
+                $_SESSION['admin_errors'] = 'Failed to update scheduler settings: ' . $e->getMessage();
+                header("Location: " . url("/admin/settings"));
+                return;
             }
         }
 

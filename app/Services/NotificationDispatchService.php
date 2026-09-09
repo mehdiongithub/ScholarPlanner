@@ -110,7 +110,7 @@ class NotificationDispatchService {
             ];
         }
 
-        // 5. Success / Failure Transition
+        // 5. Success / Held / Failure Transition
         if (!empty($res['success'])) {
             $messageId = $res['message_id'] ?? 'wacrm_' . bin2hex(random_bytes(8));
             $this->markSent($id, $messageId, (int)$currentRecord['attempts'] + 1);
@@ -122,8 +122,21 @@ class NotificationDispatchService {
             ];
         }
 
+        // Handle Held State (e.g., Template is currently under Meta review)
+        if (!empty($res['held']) || (!empty($res['error']) && strpos($res['error'], 'META_TEMPLATE_IN_REVIEW') !== false)) {
+            $holdReason = $res['error'] ?? 'META_TEMPLATE_IN_REVIEW';
+            $this->markHeld($id, $holdReason);
+            Logger::info("Notification #{$id} held pending Meta template review: {$holdReason}");
+            return [
+                'status' => 'held',
+                'reason' => $holdReason,
+                'notification_id' => $id
+            ];
+        }
+
         // Handle Failure with Retry Policy
         return $this->handleFailure($currentRecord, $res);
+
     }
 
     /**
@@ -407,6 +420,25 @@ class NotificationDispatchService {
     }
 
     /**
+     * Mark notification held pending Meta template review.
+     */
+    private function markHeld(int $id, string $reason): void {
+        $stmt = $this->db->prepare("
+            UPDATE notification_logs 
+            SET status = 'pending',
+                available_at = DATE_ADD(NOW(), INTERVAL 3600 SECOND),
+                error_message = :err,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            'err' => 'Held: ' . $reason,
+            'id' => $id
+        ]);
+    }
+
+
+    /**
      * Authoritative delivery status recording from webhook/status callback.
      * Guarantees:
      * 1. Status progression: pending -> sent -> delivered (cannot regress delivered -> sent).
@@ -457,12 +489,12 @@ class NotificationDispatchService {
                 return ['success' => true, 'updated' => false, 'status' => $currentStatus, 'id' => $id];
             }
 
-            // Out-of-order protection: Do not regress delivered status back to sent
-            if ($currentStatus === 'delivered' && $dbStatus === 'sent') {
+            // Downgrade protection: If already delivered, cannot regress to sent, failed, or retrying
+            if ($currentStatus === 'delivered') {
                 if ($openedTx) {
                     $this->db->rollBack();
                 }
-                return ['success' => true, 'updated' => false, 'status' => 'delivered', 'id' => $id, 'note' => 'Out-of-order event ignored (already delivered).'];
+                return ['success' => true, 'updated' => false, 'status' => 'delivered', 'id' => $id, 'note' => 'Terminal status: delivered cannot be downgraded.'];
             }
 
             // Out-of-order protection: Do not overwrite terminal failure with sent
@@ -474,13 +506,15 @@ class NotificationDispatchService {
             }
 
             if ($dbStatus === 'delivered') {
+                $deliveredAt = (!empty($timestamp) && strtotime($timestamp) !== false) ? date('Y-m-d H:i:s', strtotime($timestamp)) : date('Y-m-d H:i:s');
                 $stmtUpdate = $this->db->prepare("
                     UPDATE notification_logs 
                     SET status = 'delivered',
+                        delivered_at = COALESCE(delivered_at, :delivered_at),
                         updated_at = NOW()
                     WHERE id = :id
                 ");
-                $stmtUpdate->execute(['id' => $id]);
+                $stmtUpdate->execute(['id' => $id, 'delivered_at' => $deliveredAt]);
             } elseif ($dbStatus === 'failed') {
                 $stmtUpdate = $this->db->prepare("
                     UPDATE notification_logs 

@@ -26,6 +26,7 @@ try {
 $_ENV['APP_ENV'] = 'testing';
 $_ENV['APP_DEBUG'] = 'true';
 $_ENV['MAIL_MAILER'] = 'log';
+$_ENV['WHATSAPP_PROVIDER'] = 'log';
 if (!defined('TESTING_MODE')) {
     define('TESTING_MODE', true);
 }

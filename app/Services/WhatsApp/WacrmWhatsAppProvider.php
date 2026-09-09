@@ -9,6 +9,10 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
     private string $apiKey;
     private int $timeout;
     private array $templates;
+    private bool $testMode;
+    private string $testRecipient;
+    private string $testTemplateNewMatch;
+    private array $templateStatus;
 
     public function __construct() {
         $config = require ROOT_PATH . '/config/whatsapp.php';
@@ -17,7 +21,12 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
         $this->apiKey = $wacrmConfig['api_key'] ?? '';
         $this->timeout = $wacrmConfig['timeout'] ?? 15;
         $this->templates = $wacrmConfig['templates'] ?? [];
+        $this->testMode = filter_var($_ENV['WHATSAPP_TEST_MODE'] ?? ($config['test_mode'] ?? false), FILTER_VALIDATE_BOOLEAN);
+        $this->testRecipient = $_ENV['WHATSAPP_TEST_RECIPIENT'] ?? ($config['test_recipient'] ?? '+923251371826');
+        $this->testTemplateNewMatch = $_ENV['WHATSAPP_TEST_TEMPLATE_NEW_MATCH'] ?? ($config['test_template_new_match'] ?? 'new_match_v2');
+        $this->templateStatus = $config['template_status'] ?? [];
     }
+
 
     /**
      * Determine if an IP address is a safe, routable, public IP.
@@ -167,6 +176,11 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
             return ['safe' => false, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => 'Invalid characters in hostname.'];
         }
 
+        // In testing mode, immediately bypass DNS query timeouts for mock hostnames
+        if ($isTesting && $dnsResolver === null && (str_ends_with($rawHost, '.local') || str_ends_with($rawHost, '.test') || str_ends_with($rawHost, '.example.com') || str_starts_with($rawHost, 'mock-') || $rawHost === 'mock.local')) {
+            return ['safe' => true, 'pinned_ip' => null, 'port' => $port, 'host' => $rawHost, 'error' => null];
+        }
+
         // Resolve DNS records (IPv4 A and IPv6 AAAA)
         if ($dnsResolver !== null) {
             $ips = (array)$dnsResolver($rawHost);
@@ -309,11 +323,49 @@ class WacrmWhatsAppProvider implements WhatsAppProviderInterface {
 
         // Map template name
         $nameMap = [
-            'new_scholarship_match' => $this->templates['new_match'] ?? 'new_match',
+            'new_scholarship_match' => $this->templates['new_match'] ?? 'new_match_v2',
+            'new_match' => $this->templates['new_match'] ?? 'new_match_v2',
+            'daily_match_digest' => $this->templates['new_match'] ?? 'new_match_v2',
+            'weekly_match_digest' => $this->templates['new_match'] ?? 'new_match_v2',
             'deadline_reminder_soon' => $this->templates['deadline_soon'] ?? 'deadline_soon',
+            'deadline_soon' => $this->templates['deadline_soon'] ?? 'deadline_soon',
             'deadline_reminder_today' => $this->templates['deadline_today'] ?? 'deadline_today',
+            'deadline_today' => $this->templates['deadline_today'] ?? 'deadline_today',
         ];
+        if ($this->testMode) {
+            $nameMap['new_scholarship_match'] = $this->testTemplateNewMatch;
+            $nameMap['new_match'] = $this->testTemplateNewMatch;
+            $nameMap['daily_match_digest'] = $this->testTemplateNewMatch;
+            $nameMap['weekly_match_digest'] = $this->testTemplateNewMatch;
+        }
         $mappedTemplateName = $nameMap[$templateName] ?? $templateName;
+
+
+        // In-Review Meta Template Gate: Do not call Meta/WACRM if template is still in review
+        $envKey = 'META_TEMPLATE_STATUS_' . strtoupper($mappedTemplateName);
+        $rawStatus = $_ENV[$envKey] ?? ($this->templateStatus[$mappedTemplateName] ?? ($this->templateStatus[$templateName] ?? 'ACTIVE'));
+        if (strtoupper($rawStatus) === 'IN_REVIEW' && !defined('BYPASS_TEMPLATE_REVIEW_GATE')) {
+            return [
+                'success' => false,
+                'message_id' => null,
+                'error' => "META_TEMPLATE_IN_REVIEW: Template '{$mappedTemplateName}' is currently under Meta review.",
+                'held' => true,
+                'status' => 'held'
+            ];
+        }
+
+
+        // Test mode recipient guardrail (ensures live test mode only dispatches to authorized recipient)
+        if ($this->testMode && $normalizedPhone !== self::normalizePhoneNumber($this->testRecipient) && !defined('BYPASS_TEST_RECIPIENT_GATE')) {
+            return [
+                'success' => false,
+                'message_id' => null,
+                'error' => "TEST_MODE_RECIPIENT_BLOCKED: Test mode active. Dispatch restricted to authorized test recipient.",
+                'held' => true,
+                'status' => 'held'
+            ];
+        }
+
 
         // WACRM Request Payload
         $payload = [

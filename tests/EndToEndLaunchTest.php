@@ -279,13 +279,14 @@ class EndToEndLaunchTest {
         ];
 
         // Verify E2E uploads blocks MIME spoofing / unsafe names
+        ob_start();
         try {
-            ob_start();
             $docController->upload();
-            ob_end_clean();
             throw new Exception("Double extension file upload bypassed!");
         } catch (\RuntimeException $e) {
             // expected mock redirect due to error
+        } finally {
+            ob_end_clean();
         }
 
         @unlink($tempPath);
@@ -308,8 +309,9 @@ class EndToEndLaunchTest {
             $docController->upload();
         } catch (\RuntimeException $e) {
             // Redirect expected
+        } finally {
+            ob_end_clean();
         }
-        ob_end_clean();
 
         // Check document stored
         $storedDoc = $this->db->query("SELECT * FROM user_documents WHERE user_id = {$this->uVisitor} AND document_id = {$docId} LIMIT 1")->fetch(PDO::FETCH_ASSOC);
@@ -325,15 +327,16 @@ class EndToEndLaunchTest {
         $otherStudentId = $stmt->fetchColumn();
         if ($otherStudentId) {
             $this->loginUser((int)$otherStudentId, 'visitor');
+            ob_start();
             try {
-                ob_start();
                 $docController->download((int)$storedDoc['id']);
-                ob_end_clean();
                 throw new Exception("IDOR document download gate bypassed!");
             } catch (\RuntimeException $e) {
                 if ($e->getCode() !== 403) {
                     throw $e;
                 }
+            } finally {
+                ob_end_clean();
             }
         }
 
@@ -443,8 +446,9 @@ class EndToEndLaunchTest {
                 $docController->approve(encode_id((int)$doc['id']));
             } catch (\RuntimeException $e) {
                 // redirects expected
+            } finally {
+                ob_end_clean();
             }
-            ob_end_clean();
 
             $status = $this->db->query("SELECT status FROM user_documents WHERE id = {$doc['id']}")->fetchColumn();
             if ($status !== 'approved') {

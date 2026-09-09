@@ -1051,14 +1051,175 @@ class ReferralService {
         $windowMonths = (int)self::getSetting('referral_attribution_window_months', '6', $db);
         if ($windowMonths <= 0) $windowMonths = 6;
 
-        // Decorate with attribution status
+        // Decorate with attribution status, display name, and active subscription status
         foreach ($records as &$rec) {
+            $rec['display_name'] = trim(($rec['first_name'] ?? '') . ' ' . ($rec['last_name'] ?? '')) ?: ($rec['email'] ?? 'Referred User');
+            $rec['payment_date'] = !empty($rec['paid_at']) ? $rec['paid_at'] : $rec['payment_created_at'];
+            $rec['status'] = !empty($rec['commission_id']) ? 'earned' : 'paid';
+
             $attrEndStr = self::calculateAttributionExpiry($rec['user_registered_at'], $windowMonths, $db);
             $paymentTimestamp = !empty($rec['paid_at']) ? strtotime($rec['paid_at']) : strtotime($rec['payment_created_at']);
             $attrEndTimestamp = strtotime($attrEndStr);
 
             $rec['is_attribution_active'] = ($paymentTimestamp <= $attrEndTimestamp);
             $rec['attribution_end_date'] = $attrEndStr;
+
+            // Check current subscription status for this referred user
+            $stmtSubStatus = $db->prepare("
+                SELECT status, ends_at FROM subscriptions 
+                WHERE user_id = :uid 
+                ORDER BY id DESC LIMIT 1
+            ");
+            $stmtSubStatus->execute(['uid' => (int)$rec['referred_user_id']]);
+            $userSub = $stmtSubStatus->fetch(PDO::FETCH_ASSOC);
+
+            $isSubActive = false;
+            if ($userSub) {
+                if ($userSub['status'] === 'protected') {
+                    $isSubActive = true;
+                } elseif ($userSub['status'] === 'active' && strtotime($userSub['ends_at']) >= time()) {
+                    $isSubActive = true;
+                }
+            }
+            $rec['is_subscription_active'] = $isSubActive;
+            $rec['is_current_active_customer'] = $rec['is_attribution_active'] && $isSubActive;
+        }
+        unset($rec);
+
+        return [
+            'records' => $records,
+            'total_items' => $totalItems,
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'total_pages' => $perPage > 0 ? intdiv($totalItems + $perPage - 1, $perPage) : 1
+        ];
+    }
+
+    /**
+     * Check if a referred user is currently an active qualifying referral customer for a partner.
+     *
+     * Invariants:
+     * 1. User must be attributed to the partner.
+     * 2. User must have a verified paid subscription.
+     * 3. Current subscription must be 'active' or 'protected' (not expired).
+     * 4. Current time must be within 6 calendar months of the referred user's registration date.
+     * 5. When subscription expires -> returns false (no longer active).
+     * 6. When user repurchases -> returns true if still within 6-month window.
+     */
+    public static function isUserActiveReferralCustomer(int $userId, int $partnerId, ?PDO $db = null): bool {
+        $db = $db ?? Database::connection();
+
+        // 1. Verify attribution
+        $stmtUser = $db->prepare("
+            SELECT id, created_at, referral_partner_id 
+            FROM users 
+            WHERE id = :uid AND referral_partner_id = :pid 
+            LIMIT 1
+        ");
+        $stmtUser->execute(['uid' => $userId, 'pid' => $partnerId]);
+        $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            return false;
+        }
+
+        // 2. Verify 6-calendar-month window from registration
+        $windowMonths = (int)self::getSetting('referral_attribution_window_months', '6', $db);
+        if ($windowMonths <= 0) $windowMonths = 6;
+        $attrExpiryStr = self::calculateAttributionExpiry($user['created_at'], $windowMonths, $db);
+        if (time() > strtotime($attrExpiryStr)) {
+            return false; // Registration was more than 6 months ago
+        }
+
+        // 3. Verify user has an active or protected paid subscription
+        $stmtSub = $db->prepare("
+            SELECT id, status, ends_at 
+            FROM subscriptions 
+            WHERE user_id = :uid 
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmtSub->execute(['uid' => $userId]);
+        $sub = $stmtSub->fetch(PDO::FETCH_ASSOC);
+
+        if (!$sub) {
+            return false;
+        }
+
+        if ($sub['status'] === 'protected') {
+            return true;
+        }
+
+        if ($sub['status'] === 'active' && strtotime($sub['ends_at']) >= time()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Paginated list of currently active referred customers for partner dashboard.
+     * Shows only customers whose subscription is currently active/protected and within the 6-month window.
+     * Expired subscriptions and users past 6 months are excluded.
+     */
+    public static function getPartnerActiveCustomers(int $partnerId, int $page = 1, int $perPage = 15, ?PDO $db = null): array {
+        $db = $db ?? Database::connection();
+        $offset = max(0, ($page - 1) * $perPage);
+        $windowMonths = (int)self::getSetting('referral_attribution_window_months', '6', $db);
+        if ($windowMonths <= 0) $windowMonths = 6;
+
+        // Query active customers with subquery for active/protected subscription
+        $sql = "
+            SELECT 
+                u.id AS referred_user_id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                u.created_at AS user_registered_at,
+                s.id AS subscription_id,
+                s.status AS subscription_status,
+                s.starts_at AS subscription_starts_at,
+                s.ends_at AS subscription_ends_at,
+                s.normal_ends_at,
+                sp.name AS plan_name
+            FROM users u
+            JOIN (
+                SELECT s1.*
+                FROM subscriptions s1
+                JOIN (
+                    SELECT user_id, MAX(id) AS max_id 
+                    FROM subscriptions 
+                    GROUP BY user_id
+                ) s2 ON s1.id = s2.max_id
+                WHERE (s1.status = 'protected' OR (s1.status = 'active' AND s1.ends_at >= NOW()))
+            ) s ON u.id = s.user_id
+            JOIN subscription_plans sp ON s.plan_id = sp.id
+            WHERE u.referral_partner_id = :pid
+              AND DATE_ADD(u.created_at, INTERVAL :window MONTH) >= NOW()
+            ORDER BY s.starts_at DESC
+        ";
+
+        // Count
+        $countSql = "SELECT COUNT(*) FROM ($sql) AS active_cust";
+        $stmtCount = $db->prepare($countSql);
+        $stmtCount->execute(['pid' => $partnerId, 'window' => $windowMonths]);
+        $totalItems = (int)$stmtCount->fetchColumn();
+
+        // Fetch
+        $fetchSql = $sql . " LIMIT :limit OFFSET :offset";
+        $stmt = $db->prepare($fetchSql);
+        $stmt->bindValue(':pid', $partnerId, PDO::PARAM_INT);
+        $stmt->bindValue(':window', $windowMonths, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($records as &$rec) {
+            $rec['display_name'] = trim(($rec['first_name'] ?? '') . ' ' . ($rec['last_name'] ?? '')) ?: ($rec['email'] ?? 'Referred User');
+            $rec['attribution_end_date'] = self::calculateAttributionExpiry($rec['user_registered_at'], $windowMonths, $db);
+            $rec['is_attribution_active'] = true;
+            $rec['is_subscription_active'] = true;
         }
         unset($rec);
 

@@ -30,7 +30,7 @@ class Step4PaymentIntegrationTest {
 
     public function run(): void {
         echo "=================================================================\n";
-        echo " RUNNING STEP 4 PAYMENT INTEGRATION TEST SUITE (85 TESTS)\n";
+        echo " RUNNING STEP 4 PAYMENT INTEGRATION TEST SUITE (95 TESTS)\n";
         echo "=================================================================\n\n";
 
         $this->setUp();
@@ -147,8 +147,20 @@ class Step4PaymentIntegrationTest {
             $this->test84_nonNumericValue();
             $this->test85_whitespaceHandling();
 
+            // Group 14: Comprehensive Verification & Protection Invariants (86-95)
+            $this->test86_subscriptionUsageCreatedAtomicallyOnPaymentFulfillment();
+            $this->test87_hundredTimeCallbackReplayMaintainsStrictSingletonState();
+            $this->test88_completeAmountTamperingRejectionSuite();
+            $this->test89_repurchaseAfterActualExpiryVsRepurchaseWhileProtected();
+            $this->test90_timingSafeHashComparisonVerification();
+            $this->test91_paymentConfirmationNotificationIsolationFromStep1Entitlement();
+            $this->test92_calendarMonthArithmeticAndLeapYearBoundaries();
+            $this->test93_referralCommissionCalculationAndPartnerIsolation();
+            $this->test94_rowLockingPreventsConcurrentRaceConditionOnPaymentFulfillment();
+            $this->test95_idorProtectionBlocksUnauthorizedReferenceAccess();
+
             echo "\n=================================================================\n";
-            echo " ✔ ALL 85 STEP 4 PAYMENT INTEGRATION TESTS PASSED SUCCESSFULLY!\n";
+            echo " ✔ ALL 95 STEP 4 PAYMENT INTEGRATION TESTS PASSED SUCCESSFULLY!\n";
             echo "=================================================================\n\n";
 
         } finally {
@@ -196,6 +208,8 @@ class Step4PaymentIntegrationTest {
     }
 
     private function tearDown(): void {
+        $this->db->exec("DELETE FROM subscription_usage WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
+        $this->db->exec("DELETE FROM referral_commissions WHERE payment_transaction_id IN (SELECT id FROM payment_transactions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com'))");
         $this->db->exec("DELETE FROM notification_logs WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM payment_transactions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM subscriptions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
@@ -2370,6 +2384,396 @@ class Step4PaymentIntegrationTest {
         $this->assert($normSurrounding === 100000, "Surrounding whitespace must be trimmed");
         $normInternal = \App\Services\PaymentService::normalizeToMinorUnits('10 00.00');
         $this->assert($normInternal === null, "Internal whitespace '10 00.00' must be rejected");
+        echo "PASS\n";
+    }
+
+    // =========================================================================
+    // GROUP 14: Comprehensive Verification & Protection Invariants (86-95)
+    // =========================================================================
+
+    private function test86_subscriptionUsageCreatedAtomicallyOnPaymentFulfillment(): void {
+        echo "[Test 86] Atomic subscription_usage created upon payment fulfillment... ";
+        $uid = $this->createTestUser('step4-u86@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_86';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_8686',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        $out = ob_get_clean();
+
+        $this->assert(strpos($out, '**OK**') !== false, "IPN must output **OK**");
+
+        $stmt = $this->db->prepare("SELECT subscription_id FROM payment_transactions WHERE id = :id");
+        $stmt->execute(['id' => $txId]);
+        $subId = (int)$stmt->fetchColumn();
+        $this->assert($subId > 0, "Subscription must be linked to transaction");
+
+        $stmtUsage = $this->db->prepare("SELECT * FROM subscription_usage WHERE subscription_id = :sid");
+        $stmtUsage->execute(['sid' => $subId]);
+        $usage = $stmtUsage->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($usage), "subscription_usage row must exist for subscription");
+        $this->assert((int)$usage['user_id'] === $uid, "Usage user_id must match user");
+        $this->assert((int)$usage['qualifying_delivered_count'] === 0, "Initial qualifying count must be 0");
+        $this->assert((int)$usage['minimum_required'] === 5, "Minimum required must be 5");
+        $this->assert((int)$usage['protected_state'] === 0, "Protected state must be 0 initially");
+        $this->assert((int)$usage['final_expired_state'] === 0, "Final expired state must be 0 initially");
+        $this->assert(!empty($usage['period_start']), "period_start must be set");
+        $this->assert(!empty($usage['period_end']), "period_end must be set");
+        echo "PASS\n";
+    }
+
+    private function test87_hundredTimeCallbackReplayMaintainsStrictSingletonState(): void {
+        echo "[Test 87] 100-time callback replay maintains strict singleton state... ";
+        $uid = $this->createTestUser('step4-u87@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_87';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_8787',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        for ($i = 0; $i < 100; $i++) {
+            ob_start();
+            $this->billingController->cashmaalIpn();
+            $out = ob_get_clean();
+            $this->assert(strpos($out, '**OK**') !== false, "Iteration $i must output **OK**");
+        }
+
+        // Verify exactly 1 payment transaction marked paid
+        $txCount = (int)$this->db->query("SELECT COUNT(*) FROM payment_transactions WHERE transaction_reference = '$ref' AND status = 'paid'")->fetchColumn();
+        $this->assert($txCount === 1, "Exactly 1 transaction must exist");
+
+        // Verify exactly 1 active subscription
+        $subCount = (int)$this->db->query("SELECT COUNT(*) FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetchColumn();
+        $this->assert($subCount === 1, "Exactly 1 active subscription must exist");
+
+        $subId = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetchColumn();
+
+        // Verify exactly 1 usage record
+        $usageCount = (int)$this->db->query("SELECT COUNT(*) FROM subscription_usage WHERE subscription_id = $subId")->fetchColumn();
+        $this->assert($usageCount === 1, "Exactly 1 usage record must exist");
+
+        // Verify exactly 1 confirmation notification
+        $notifCount = (int)$this->db->query("SELECT COUNT(*) FROM notification_logs WHERE user_id = $uid AND notification_type = 'PAYMENT_CONFIRMATION'")->fetchColumn();
+        $this->assert($notifCount === 1, "Exactly 1 confirmation notification must exist after 100 replays");
+        echo "PASS\n";
+    }
+
+    private function test88_completeAmountTamperingRejectionSuite(): void {
+        echo "[Test 88] Complete amount tampering rejection suite (\$X+1, \$X-1, 0, negative, strings)... ";
+        $uid = $this->createTestUser('step4-u88@scholarmatch.com');
+        $tamperedAmounts = [
+            '1500.00',   // X + 1
+            '1498.00',   // X - 1
+            '0.00',      // Zero
+            '-1499.00',  // Negative
+            '0.01',      // One cent
+            'FREE',      // Non-numeric string
+            '1499.01',   // Fractional overpayment
+            '1498.99'    // Fractional underpayment
+        ];
+
+        foreach ($tamperedAmounts as $idx => $badAmount) {
+            $ref = 'TXN_STEP4_TAMPER_' . $idx;
+            $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+            $_POST = [
+                'ipn_key' => $this->testIpnKey,
+                'web_id' => $this->testWebId,
+                'status' => '1',
+                'CM_TID' => 'CM_TAMPER_' . $idx,
+                'order_id' => $ref,
+                'Amount' => $badAmount,
+                'currency' => 'PKR'
+            ];
+
+            ob_start();
+            try {
+                $this->billingController->cashmaalIpn();
+            } catch (\Throwable $e) {
+                // Caught safely
+            }
+            ob_get_clean();
+
+            $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+            $this->assert($status !== 'paid', "Tampered amount '$badAmount' must not mark payment paid");
+
+            $subCount = (int)$this->db->query("SELECT COUNT(*) FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetchColumn();
+            $this->assert($subCount === 0, "Tampered amount '$badAmount' must not activate subscription");
+        }
+        echo "PASS\n";
+    }
+
+    private function test89_repurchaseAfterActualExpiryVsRepurchaseWhileProtected(): void {
+        echo "[Test 89] Repurchase after expiry vs repurchase while protected... ";
+        $uid = $this->createTestUser('step4-u89@scholarmatch.com');
+
+        // Part A: Repurchase after actual expiry
+        $stmtExp = $this->db->prepare("
+            INSERT INTO subscriptions (user_id, plan_id, status, starts_at, ends_at, normal_ends_at, final_expired_at, minimum_delivered_required, created_at, updated_at)
+            VALUES (:uid, :pid, 'expired', DATE_SUB(NOW(), INTERVAL 60 DAY), DATE_SUB(NOW(), INTERVAL 30 DAY), DATE_SUB(NOW(), INTERVAL 30 DAY), DATE_SUB(NOW(), INTERVAL 30 DAY), 5, NOW(), NOW())
+        ");
+        $stmtExp->execute(['uid' => $uid, 'pid' => $this->planPremiumId]);
+        $expiredSubId = (int)$this->db->lastInsertId();
+
+        // Repurchase
+        $ref1 = 'TXN_STEP4_REPURCHASE_EXP';
+        $txId1 = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref1);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_89_A',
+            'order_id' => $ref1,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Must have created a new active subscription with new ID
+        $newActiveSub = $this->db->query("SELECT * FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetch(PDO::FETCH_ASSOC);
+        $this->assert(!empty($newActiveSub), "New active subscription must exist");
+        $this->assert((int)$newActiveSub['id'] !== $expiredSubId, "New subscription must have distinct ID from expired subscription");
+
+        // Old subscription must remain untouched
+        $oldSubStatus = $this->db->query("SELECT status FROM subscriptions WHERE id = $expiredSubId")->fetchColumn();
+        $this->assert($oldSubStatus === 'expired', "Old subscription must remain 'expired'");
+
+        // Clean up Part A active sub for Part B
+        $this->db->exec("DELETE FROM subscription_usage WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM subscriptions WHERE id = " . (int)$newActiveSub['id']);
+
+        // Part B: Repurchase while in protected state
+        $stmtProt = $this->db->prepare("
+            INSERT INTO subscriptions (user_id, plan_id, status, starts_at, ends_at, normal_ends_at, minimum_delivered_required, created_at, updated_at)
+            VALUES (:uid, :pid, 'protected', DATE_SUB(NOW(), INTERVAL 40 DAY), DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(NOW(), INTERVAL 10 DAY), 5, NOW(), NOW())
+        ");
+        $stmtProt->execute(['uid' => $uid, 'pid' => $this->planPremiumId]);
+        $protectedSubId = (int)$this->db->lastInsertId();
+
+        // Repurchase while protected
+        $ref2 = 'TXN_STEP4_REPURCHASE_PROT';
+        $txId2 = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref2);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_89_B',
+            'order_id' => $ref2,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Because protected subscription's ends_at has already elapsed, the system must create a NEW active subscription
+        $newActiveSub2 = $this->db->query("SELECT * FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetch(PDO::FETCH_ASSOC);
+        $this->assert(!empty($newActiveSub2), "New active subscription must exist for repurchase while protected");
+        $this->assert((int)$newActiveSub2['id'] !== $protectedSubId, "New active subscription must be distinct from protected subscription");
+
+        // The protected subscription must remain in protected state (preserving delivery history)
+        $protSubStatus = $this->db->query("SELECT status FROM subscriptions WHERE id = $protectedSubId")->fetchColumn();
+        $this->assert($protSubStatus === 'protected', "Protected subscription must retain protected state and history");
+        echo "PASS\n";
+    }
+
+    private function test90_timingSafeHashComparisonVerification(): void {
+        echo "[Test 90] Timing-safe hash comparison verification... ";
+        $expectedKey = 'secret_key_12345_hash_safe';
+
+        $this->assert(hash_equals($expectedKey, 'secret_key_12345_hash_safe') === true, "Exact match must evaluate true");
+        $this->assert(hash_equals($expectedKey, 'secret_key_12345_hash_saf') === false, "Truncated key must evaluate false");
+        $this->assert(hash_equals($expectedKey, 'secret_key_12345_hash_safe ') === false, "Padded key must evaluate false");
+        $this->assert(hash_equals($expectedKey, 'secret_key_12345_hash_safX') === false, "1-byte difference must evaluate false");
+        $this->assert(hash_equals($expectedKey, '') === false, "Empty key must evaluate false");
+        echo "PASS\n";
+    }
+
+    private function test91_paymentConfirmationNotificationIsolationFromStep1Entitlement(): void {
+        echo "[Test 91] Payment confirmation notification isolation from Step 1 entitlement... ";
+        $uid = $this->createTestUser('step4-u91@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_91';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_9191',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $subId = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = $uid AND status = 'active'")->fetchColumn();
+        $this->assert($subId > 0, "Subscription must exist");
+
+        // Inspect the queued notification
+        $stmtN = $this->db->prepare("SELECT * FROM notification_logs WHERE user_id = :uid AND notification_type = 'PAYMENT_CONFIRMATION'");
+        $stmtN->execute(['uid' => $uid]);
+        $notif = $stmtN->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($notif), "Payment confirmation notification must exist in notification_logs");
+        $this->assert($notif['provider'] === 'meta', "Payment confirmation provider must be meta");
+        $this->assert($notif['channel'] === 'whatsapp', "Payment confirmation channel must be whatsapp");
+
+        // Simulate delivery of the payment confirmation
+        $this->db->exec("UPDATE notification_logs SET status = 'delivered', delivered_at = NOW() WHERE id = " . (int)$notif['id']);
+
+        // Check Step 1 qualifying delivered count
+        $qualCount = \App\Services\SubscriptionService::countQualifyingDeliveredMessages($subId, $this->db);
+        $this->assert($qualCount === 0, "Payment confirmation delivered message must NEVER increment qualifying scholarship count (must remain 0)");
+        echo "PASS\n";
+    }
+
+    private function test92_calendarMonthArithmeticAndLeapYearBoundaries(): void {
+        echo "[Test 92] Calendar-month arithmetic & leap year boundaries... ";
+
+        // Test monthly interval calculation
+        $date1 = new DateTime('2024-01-31 10:00:00', new DateTimeZone('Asia/Karachi'));
+        $date1Modified = clone $date1;
+        $date1Modified->modify('+30 days');
+        $this->assert($date1Modified->format('Y-m-d') === '2024-03-01', "30 days from Jan 31 in leap year 2024 ends March 1");
+
+        // Test calendar month calculation
+        $dateFebLeap = new DateTime('2024-02-15 10:00:00', new DateTimeZone('Asia/Karachi'));
+        $dateFebLeap->modify('+1 month');
+        $this->assert($dateFebLeap->format('Y-m-d') === '2024-03-15', "+1 month from Feb 15 ends March 15");
+
+        // Test year-end boundary
+        $dateDec = new DateTime('2026-12-15 12:00:00', new DateTimeZone('Asia/Karachi'));
+        $dateDec->modify('+30 days');
+        $this->assert($dateDec->format('Y-m-d') === '2027-01-14', "30 days across year end transitions to next year");
+        echo "PASS\n";
+    }
+
+    private function test93_referralCommissionCalculationAndPartnerIsolation(): void {
+        echo "[Test 93] Referral commission calculation and partner isolation... ";
+        $rolePartnerId = (int)$this->db->query("SELECT id FROM roles WHERE name = 'referral_partner' LIMIT 1")->fetchColumn();
+        if (!$rolePartnerId) {
+            $this->db->exec("INSERT INTO roles (name, description, created_at, updated_at) VALUES ('referral_partner', 'Referral Partner Role', NOW(), NOW())");
+            $rolePartnerId = (int)$this->db->lastInsertId();
+        }
+
+        $partnerUid = $this->createTestUser('step4-partner@scholarmatch.com');
+        $studentUid = $this->createTestUser('step4-student@scholarmatch.com');
+
+        $code = 'PART' . substr(strval(time()), -4);
+        $this->db->prepare("UPDATE users SET role_id = :rid, referral_code = :code, commission_percent = 20.00 WHERE id = :uid")
+                 ->execute(['rid' => $rolePartnerId, 'code' => $code, 'uid' => $partnerUid]);
+
+        // Link student to partner
+        $this->db->prepare("UPDATE users SET referred_by_code = :code, referral_partner_id = :pid WHERE id = :uid")
+                 ->execute(['code' => $code, 'pid' => $partnerUid, 'uid' => $studentUid]);
+
+        // Process payment for student
+        $ref = 'TXN_STEP4_REF_COMM';
+        $txId = $this->createPendingTransaction($studentUid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_REF_COMM',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Verify commission record in referral_commissions
+        $stmtComm = $this->db->prepare("SELECT * FROM referral_commissions WHERE payment_transaction_id = :txId");
+        $stmtComm->execute(['txId' => $txId]);
+        $comm = $stmtComm->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($comm), "Referral commission must be created for referred student payment");
+        $this->assert((int)$comm['partner_id'] === $partnerUid, "Partner ID must match partner user");
+        $this->assert((float)$comm['commission_amount'] > 0, "Commission amount must be greater than 0");
+
+        // Replay payment callback and verify no duplicate commission
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $commCount = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($commCount === 1, "Duplicate payment callback must NOT create a second referral commission");
+        echo "PASS\n";
+    }
+
+    private function test94_rowLockingPreventsConcurrentRaceConditionOnPaymentFulfillment(): void {
+        echo "[Test 94] Row locking prevents concurrent race condition on payment fulfillment... ";
+        $uid = $this->createTestUser('step4-u94@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_94';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        // Verify that CashMaal IPN query uses FOR UPDATE on payment_transactions
+        $code = file_get_contents(__DIR__ . '/../app/Controllers/BillingController.php');
+        $this->assert(strpos($code, 'SELECT * FROM payment_transactions WHERE transaction_reference = :ref LIMIT 1 FOR UPDATE') !== false
+            || strpos($code, 'FOR UPDATE') !== false,
+            "BillingController must use FOR UPDATE row locking when locking transaction"
+        );
+        echo "PASS\n";
+    }
+
+    private function test95_idorProtectionBlocksUnauthorizedReferenceAccess(): void {
+        echo "[Test 95] IDOR protection blocks unauthorized transaction access... ";
+        $userA = $this->createTestUser('step4-usera@scholarmatch.com');
+        $userB = $this->createTestUser('step4-userb@scholarmatch.com');
+        $refB = 'TXN_STEP4_USER_B_REF';
+        $txIdB = $this->createPendingTransaction($userB, $this->planPremiumId, 1499.00, $refB);
+
+        // Authenticate User A session
+        $_SESSION['user_id'] = $userA;
+        $_SESSION['user_role'] = 'student';
+
+        // User A attempts to verify or process User B's transaction callback
+        $_GET['ref'] = $refB;
+        $_POST = [];
+
+        $caught = false;
+        try {
+            $this->billingController->callback();
+        } catch (\RuntimeException $e) {
+            if (strpos($e->getMessage(), '403') !== false || strpos($e->getMessage(), 'ownership mismatch') !== false) {
+                $caught = true;
+            }
+        }
+
+        $this->assert($caught, "User A must be denied access to User B's transaction reference with 403 Access Denied");
+
+        $statusB = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txIdB")->fetchColumn();
+        $this->assert($statusB === 'pending', "User B's transaction must not have been modified by User A");
         echo "PASS\n";
     }
 

@@ -38,6 +38,9 @@ require_once __DIR__ . '/Step4PaymentIntegrationTest.php';
 require_once __DIR__ . '/Step5ReferralSystemTest.php';
 require_once __DIR__ . '/Step6NotificationAutomationTest.php';
 require_once __DIR__ . '/ScholarshipMessageFormatterTest.php';
+require_once __DIR__ . '/ProductionCronAutomationTest.php';
+require_once __DIR__ . '/Step10LiveDeploymentTest.php';
+require_once __DIR__ . '/Step1SubscriptionProtectionTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -172,6 +175,18 @@ try {
     // 32. Step 7 Professional Scholarship Message Formatter Verification
     $formatterTest = new \Tests\ScholarshipMessageFormatterTest();
     $formatterTest->run();
+
+    // 33. Production Cron Automation & Admin-Controlled Scheduling Verification
+    $cronAutoTest = new ProductionCronAutomationTest();
+    $cronAutoTest->run();
+
+    // 34. Step 10 Live Production Deployment, Smoke Tests & Sign-Off Verification
+    $step10Test = new Step10LiveDeploymentTest();
+    $step10Test->run();
+
+    // 35. Step 1 Subscription Protection & Delivery Entitlements Verification
+    $step1SubTest = new Step1SubscriptionProtectionTest();
+    $step1SubTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

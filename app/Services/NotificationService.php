@@ -586,17 +586,21 @@ class NotificationService {
                 // Available at cutoff time: 23:59:59 PKT
                 $availableAt = $cutoffPkt->format('Y-m-d H:i:s');
 
+                $activePlan = \App\Services\SubscriptionService::getActivePlan($userId);
+                $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected'], true)) ? (int)$activePlan['id'] : null;
+
                 $stmtIns = $this->db->prepare("
                     INSERT INTO notification_logs (
-                        user_id, scholarship_id, notification_type, channel, provider,
+                        user_id, subscription_id, scholarship_id, notification_type, channel, provider,
                         recipient, payload, idempotency_key, status, available_at, created_at, updated_at
                     ) VALUES (
-                        :uid, :sid, 'DAILY_MATCH_DIGEST', 'whatsapp', 'wacrm',
+                        :uid, :sub_id, :sid, 'DAILY_MATCH_DIGEST', 'whatsapp', 'wacrm',
                         :rcpt, :payload, :key, 'pending', :avail, NOW(), NOW()
                     )
                 ");
                 $stmtIns->execute([
                     'uid' => $userId,
+                    'sub_id' => $subId,
                     'sid' => $firstSchId,
                     'rcpt' => $recipientPhone,
                     'payload' => json_encode($payload),

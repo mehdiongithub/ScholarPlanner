@@ -15,8 +15,26 @@ class MetaWhatsAppProvider implements WhatsAppProviderInterface {
     }
 
     public function sendTemplateMessage(string $recipient, string $templateName, array $parameters): array {
+        $config = require ROOT_PATH . '/config/whatsapp.php';
+        $templateStatus = $config['template_status'] ?? [];
+        $envKey = 'META_TEMPLATE_STATUS_' . strtoupper($templateName);
+        $rawStatus = $_ENV[$envKey] ?? ($templateStatus[$templateName] ?? 'ACTIVE');
+
+        // In-Review Meta Template Gate: Do not call Meta Cloud API if template is still in review
+        if (strtoupper($rawStatus) === 'IN_REVIEW' && !defined('BYPASS_TEMPLATE_REVIEW_GATE')) {
+            return [
+                'success' => false,
+                'message_id' => null,
+                'error' => "META_TEMPLATE_IN_REVIEW: Template '{$templateName}' is currently under Meta review.",
+                'held' => true,
+                'status' => 'held'
+            ];
+        }
+
+
         // Format body text parameters
         $formattedParams = [];
+
         foreach ($parameters as $param) {
             $formattedParams[] = [
                 'type' => 'text',

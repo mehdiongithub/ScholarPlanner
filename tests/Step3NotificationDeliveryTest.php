@@ -57,7 +57,7 @@ class Step3NotificationDeliveryTest {
 
     public function run(): void {
         echo "=================================================================\n";
-        echo " RUNNING STEP 3 NOTIFICATION DELIVERY TEST SUITE (52 TESTS)\n";
+        echo " RUNNING STEP 3 NOTIFICATION DELIVERY TEST SUITE (60 TESTS)\n";
         echo "=================================================================\n\n";
 
         $this->setUpFixtures();
@@ -127,8 +127,18 @@ class Step3NotificationDeliveryTest {
             $this->test51_step1RegistrationVerificationQueueBehaviorIntact();
             $this->test52_step2MatchingIdempotencyBehaviorIntact();
 
+            // --- Group 7: State Machine, Idempotency & Delivery Protection (53-60) ---
+            $this->test53_deliveryCallbackDowngradeProtectionDeliveredCannotBecomeFailedOrSent();
+            $this->test54_deliveryCallbackIdempotencyAcross10Callbacks();
+            $this->test55_deliveryCallbackIsolationByProviderMessageIdOnly();
+            $this->test56_stateMachineTransitionsPendingToProcessingToSentToDelivered();
+            $this->test57_idempotencyKeyUniquenessAndDeterministicFormat();
+            $this->test58_step1DeliveryEntitlementPreservationDeliveredOnly();
+            $this->test59_sundayQuietRuleAndDeferral();
+            $this->test60_credentialRedactionInLogsAndExceptions();
+
             echo "\n=================================================================\n";
-            echo " ✔ ALL 52 STEP 3 NOTIFICATION DELIVERY TESTS PASSED SUCCESSFULLY!\n";
+            echo " ✔ ALL 60 STEP 3 NOTIFICATION DELIVERY TESTS PASSED SUCCESSFULLY!\n";
             echo "=================================================================\n\n";
 
         } finally {
@@ -889,7 +899,261 @@ class Step3NotificationDeliveryTest {
         $step2Test->run();
         $output = ob_get_clean();
 
-        $this->assert(strpos($output, 'ALL 40 STEP 2 VERIFICATION TESTS PASSED') !== false, "Step 2 test suite must pass");
+        $this->assert(strpos($output, 'STEP 2 VERIFICATION TESTS PASSED') !== false, "Step 2 test suite must pass");
+        echo "PASS\n";
+    }
+
+    private function test53_deliveryCallbackDowngradeProtectionDeliveredCannotBecomeFailedOrSent(): void {
+        echo "[Test 53] Delivery callback downgrade protection (delivered cannot become failed/sent)... ";
+        $uid = $this->createTestUser('step3-downgrade-53@scholarmatch.com', 'whatsapp', 0);
+        $sid = $this->createTestScholarship('Downgrade Protection 53');
+        $msgId = 'msg_downgrade_test_' . bin2hex(random_bytes(6));
+        $initialDeliveredAt = '2026-09-08 10:00:00';
+
+        $stmt = $this->db->prepare("
+            INSERT INTO notification_logs (user_id, scholarship_id, notification_type, channel, provider, recipient, provider_message_id, status, created_at, updated_at)
+            VALUES (:uid, :sid, 'NEW_MATCH', 'whatsapp', 'wacrm', '+923001234567', :msg_id, 'sent', NOW(), NOW())
+        ");
+        $stmt->execute(['uid' => $uid, 'sid' => $sid, 'msg_id' => $msgId]);
+        $rowId = (int)$this->db->lastInsertId();
+
+        // Mark delivered first
+        $resDelivered = $this->queueService->recordDeliveryStatus($msgId, 'delivered', $initialDeliveredAt);
+        $this->assert($resDelivered['success'] === true && $resDelivered['status'] === 'delivered', "Initial delivered transition must succeed");
+
+        // Attempt 1: Attempt to downgrade to 'failed'
+        $resFailed = $this->queueService->recordDeliveryStatus($msgId, 'failed', null, 'Late delivery failure error');
+        $this->assert($resFailed['success'] === true, "Callback handled gracefully");
+        $this->assert($resFailed['updated'] === false, "Delivered row must not be updated to failed");
+        $this->assert($resFailed['status'] === 'delivered', "Status reported must remain delivered");
+
+        // Attempt 2: Attempt to downgrade to 'undelivered'
+        $resUndelivered = $this->queueService->recordDeliveryStatus($msgId, 'undelivered', null, 'Undelivered callback');
+        $this->assert($resUndelivered['updated'] === false, "Delivered row must not be updated to undelivered");
+
+        // Attempt 3: Attempt out-of-order 'sent'
+        $resSent = $this->queueService->recordDeliveryStatus($msgId, 'sent');
+        $this->assert($resSent['updated'] === false, "Delivered row must not be updated to sent");
+
+        // Test the same downgrade protection on NotificationDispatchService
+        $dispatchService = new \App\Services\NotificationDispatchService($this->db);
+        $resDispatch = $dispatchService->recordDeliveryStatus($msgId, 'failed', null, 'Another late failure');
+        $this->assert($resDispatch['updated'] === false, "DispatchService must also protect delivered row from downgrade");
+
+        // Verify DB row remains strictly 'delivered' with original delivered_at
+        $finalRow = $this->db->query("SELECT status, delivered_at, failed_at, error_message FROM notification_logs WHERE id = $rowId")->fetch(PDO::FETCH_ASSOC);
+        $this->assert($finalRow['status'] === 'delivered', "Status in DB must remain strictly 'delivered', got " . $finalRow['status']);
+        $this->assert($finalRow['delivered_at'] === $initialDeliveredAt, "delivered_at must remain strictly untouched");
+        $this->assert(empty($finalRow['failed_at']), "failed_at must remain NULL");
+        $this->assert(empty($finalRow['error_message']), "error_message must remain empty");
+        echo "PASS\n";
+    }
+
+    private function test54_deliveryCallbackIdempotencyAcross10Callbacks(): void {
+        echo "[Test 54] Delivery callback idempotency across 10 callbacks... ";
+        $uid = $this->createTestUser('step3-idemp-54@scholarmatch.com', 'whatsapp', 0);
+        $sid = $this->createTestScholarship('Idemp Callbacks 54');
+        $msgId = 'msg_idemp_10x_' . bin2hex(random_bytes(6));
+        $initialDeliveredAt = '2026-09-08 09:30:00';
+
+        $stmt = $this->db->prepare("
+            INSERT INTO notification_logs (user_id, scholarship_id, notification_type, channel, provider, recipient, provider_message_id, status, created_at, updated_at)
+            VALUES (:uid, :sid, 'NEW_MATCH', 'whatsapp', 'wacrm', '+923001234567', :msg_id, 'sent', NOW(), NOW())
+        ");
+        $stmt->execute(['uid' => $uid, 'sid' => $sid, 'msg_id' => $msgId]);
+
+        // Callback 1
+        $r1 = $this->queueService->recordDeliveryStatus($msgId, 'delivered', $initialDeliveredAt);
+        $this->assert($r1['success'] === true && $r1['updated'] === true, "First callback must update record");
+
+        // Callbacks 2 through 10
+        for ($i = 2; $i <= 10; $i++) {
+            $laterTime = date('Y-m-d H:i:s', strtotime("+{$i} hours", strtotime($initialDeliveredAt)));
+            $r = $this->queueService->recordDeliveryStatus($msgId, 'delivered', $laterTime);
+            $this->assert($r['success'] === true, "Callback #$i must return success");
+            $this->assert($r['updated'] === false, "Duplicate callback #$i must be no-op (updated=false)");
+        }
+
+        // Verify exactly 1 row exists
+        $count = (int)$this->db->query("SELECT COUNT(*) FROM notification_logs WHERE provider_message_id = '$msgId'")->fetchColumn();
+        $this->assert($count === 1, "Exactly 1 record must exist for provider_message_id");
+
+        // Verify delivered_at was not changed
+        $savedTime = $this->db->query("SELECT delivered_at FROM notification_logs WHERE provider_message_id = '$msgId'")->fetchColumn();
+        $this->assert($savedTime === $initialDeliveredAt, "delivered_at must strictly remain initial value");
+        echo "PASS\n";
+    }
+
+    private function test55_deliveryCallbackIsolationByProviderMessageIdOnly(): void {
+        echo "[Test 55] Delivery callback isolation strictly by provider_message_id only... ";
+        $uidA = $this->createTestUser('step3-iso-55a@scholarmatch.com', 'whatsapp', 0);
+        $uidB = $this->createTestUser('step3-iso-55b@scholarmatch.com', 'whatsapp', 0);
+        $sid = $this->createTestScholarship('Isolation 55');
+
+        $msgA = 'msg_iso_A_' . bin2hex(random_bytes(6));
+        $msgB = 'msg_iso_B_' . bin2hex(random_bytes(6));
+
+        $stmt = $this->db->prepare("
+            INSERT INTO notification_logs (user_id, scholarship_id, notification_type, channel, provider, recipient, provider_message_id, status, created_at, updated_at)
+            VALUES (:uid, :sid, 'NEW_MATCH', 'whatsapp', 'wacrm', '+923001234567', :msg, 'sent', NOW(), NOW())
+        ");
+        $stmt->execute(['uid' => $uidA, 'sid' => $sid, 'msg' => $msgA]);
+        $stmt->execute(['uid' => $uidB, 'sid' => $sid, 'msg' => $msgB]);
+
+        // Deliver only Msg A
+        $resA = $this->queueService->recordDeliveryStatus($msgA, 'delivered');
+        $this->assert($resA['success'] === true, "Callback for Msg A must succeed");
+
+        // Check Msg A is delivered
+        $statusA = $this->db->query("SELECT status FROM notification_logs WHERE provider_message_id = '$msgA'")->fetchColumn();
+        $this->assert($statusA === 'delivered', "Msg A must be delivered");
+
+        // Check Msg B is STILL 'sent' (isolated, never touched)
+        $statusB = $this->db->query("SELECT status FROM notification_logs WHERE provider_message_id = '$msgB'")->fetchColumn();
+        $this->assert($statusB === 'sent', "Msg B must remain strictly 'sent'");
+
+        // Unknown message ID handling
+        $resUnknown = $this->queueService->recordDeliveryStatus('UNKNOWN_MSG_999999', 'delivered');
+        $this->assert($resUnknown['success'] === false, "Unknown message ID must return false");
+        echo "PASS\n";
+    }
+
+    private function test56_stateMachineTransitionsPendingToProcessingToSentToDelivered(): void {
+        echo "[Test 56] State machine transitions pending -> processing -> sent -> delivered... ";
+        $uid = $this->createTestUser('step3-sm-56@scholarmatch.com', 'email', 0);
+        $sid = $this->createTestScholarship('State Machine 56');
+        $key = "sm_key_{$uid}_{$sid}";
+
+        // 1. Pending
+        $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'email', 'step3-sm-56@scholarmatch.com', 'SM Subject', ['title' => 'SM'], $key);
+        $row = $this->db->query("SELECT id, status FROM notification_logs WHERE idempotency_key = '$key'")->fetch(PDO::FETCH_ASSOC);
+        $this->assert($row['status'] === 'pending', "Initial status must be pending");
+        $id = (int)$row['id'];
+
+        // 2. Processing (simulate queue claim)
+        $this->db->exec("UPDATE notification_logs SET status = 'processing' WHERE id = $id");
+        $statusProc = $this->db->query("SELECT status FROM notification_logs WHERE id = $id")->fetchColumn();
+        $this->assert($statusProc === 'processing', "Status must transition to processing");
+
+        // 3. Sent
+        $provMsgId = 'msg_sm_prov_' . bin2hex(random_bytes(6));
+        $this->db->prepare("UPDATE notification_logs SET status = 'sent', sent_at = NOW(), provider_message_id = :pmsg WHERE id = :id")->execute(['pmsg' => $provMsgId, 'id' => $id]);
+        $statusSent = $this->db->query("SELECT status, sent_at FROM notification_logs WHERE id = $id")->fetch(PDO::FETCH_ASSOC);
+        $this->assert($statusSent['status'] === 'sent', "Status must transition to sent");
+        $this->assert(!empty($statusSent['sent_at']), "sent_at must be populated");
+
+        // 4. Delivered
+        $this->queueService->recordDeliveryStatus($provMsgId, 'delivered');
+        $statusDeliv = $this->db->query("SELECT status, delivered_at FROM notification_logs WHERE id = $id")->fetch(PDO::FETCH_ASSOC);
+        $this->assert($statusDeliv['status'] === 'delivered', "Status must transition to delivered");
+        $this->assert(!empty($statusDeliv['delivered_at']), "delivered_at must be populated");
+
+        // 5. Invalid transition attempt (worker retry cannot touch delivered record)
+        $retryRes = $this->queueService->retryLog($id);
+        $this->assert($retryRes === false, "retryLog must refuse to transition delivered record");
+        echo "PASS\n";
+    }
+
+    private function test57_idempotencyKeyUniquenessAndDeterministicFormat(): void {
+        echo "[Test 57] Idempotency key uniqueness across repeated attempts... ";
+        $uid = $this->createTestUser('step3-idemp-57@scholarmatch.com', 'whatsapp', 0);
+        $sid = $this->createTestScholarship('Idemp Unique 57');
+        $key = "deterministic_key_{$uid}_{$sid}";
+
+        // Attempt 1: succeeds
+        $res1 = $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'whatsapp', '+923001234567', null, ['title' => 'T57'], $key);
+        $this->assert($res1 === true, "First enqueue must succeed");
+
+        // Attempts 2..10: safely skipped
+        for ($i = 2; $i <= 10; $i++) {
+            $resN = $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'whatsapp', '+923001234567', null, ['title' => 'T57'], $key);
+            $this->assert($resN === false, "Enqueue duplicate #$i must return false without exception");
+        }
+
+        $count = (int)$this->db->query("SELECT COUNT(*) FROM notification_logs WHERE idempotency_key = '$key'")->fetchColumn();
+        $this->assert($count === 1, "Exactly 1 row must exist in notification_logs");
+        echo "PASS\n";
+    }
+
+    private function test58_step1DeliveryEntitlementPreservationDeliveredOnly(): void {
+        echo "[Test 58] Step 1 delivery entitlement counting (delivered-only, scholarship-types only)... ";
+        $uid = $this->createTestUser('step3-entitle-58@scholarmatch.com', 'whatsapp', 0);
+        $sub = \App\Services\SubscriptionService::getActivePlan($uid);
+        $this->assert(!empty($sub['id']), "User must have active subscription");
+        $subId = (int)$sub['id'];
+
+        $countBefore = \App\Services\SubscriptionService::countQualifyingDeliveredMessages($subId, $this->db);
+
+        // 1. Insert 'sent' scholarship notification -> must NOT count
+        $msgSent = 'msg_entitle_sent_' . bin2hex(random_bytes(4));
+        $this->db->prepare("
+            INSERT INTO notification_logs (user_id, subscription_id, notification_type, channel, provider, recipient, provider_message_id, status, created_at, updated_at)
+            VALUES (:uid, :sub_id, 'NEW_MATCH', 'whatsapp', 'wacrm', '+923001234567', :msg, 'sent', NOW(), NOW())
+        ")->execute(['uid' => $uid, 'sub_id' => $subId, 'msg' => $msgSent]);
+        $this->assert(\App\Services\SubscriptionService::countQualifyingDeliveredMessages($subId, $this->db) === $countBefore, "Sent status must not count toward entitlement");
+
+        // 2. Insert 'delivered' transactional notification (EMAIL_VERIFICATION) -> must NOT count
+        $msgTx = 'msg_entitle_tx_' . bin2hex(random_bytes(4));
+        $this->db->prepare("
+            INSERT INTO notification_logs (user_id, subscription_id, notification_type, channel, provider, recipient, provider_message_id, status, delivered_at, created_at, updated_at)
+            VALUES (:uid, :sub_id, 'EMAIL_VERIFICATION', 'email', 'smtp', 'test@example.com', :msg, 'delivered', NOW(), NOW(), NOW())
+        ")->execute(['uid' => $uid, 'sub_id' => $subId, 'msg' => $msgTx]);
+        $this->assert(\App\Services\SubscriptionService::countQualifyingDeliveredMessages($subId, $this->db) === $countBefore, "Transactional types must not count toward entitlement");
+
+        // 3. Mark the scholarship notification 'delivered' -> must increment exactly by 1
+        $this->queueService->recordDeliveryStatus($msgSent, 'delivered');
+        $countAfter = \App\Services\SubscriptionService::countQualifyingDeliveredMessages($subId, $this->db);
+        $this->assert($countAfter === $countBefore + 1, "Delivered scholarship notification must increment qualifying count by 1");
+        echo "PASS\n";
+    }
+
+    private function test59_sundayQuietRuleAndDeferral(): void {
+        echo "[Test 59] Sunday quiet rule defers WhatsApp-only automated messages... ";
+        $uid = $this->createTestUser('step3-sunday-59@scholarmatch.com', 'whatsapp', 0);
+        $sid = $this->createTestScholarship('Sunday Scholarship 59');
+        $key = "sunday_test_{$uid}_{$sid}";
+
+        // Make user WhatsApp-only by turning off email opt-in
+        $this->db->exec("UPDATE users SET email_opt_in = 0 WHERE id = $uid");
+
+        $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'whatsapp', '+923001234567', null, ['title' => 'Sunday Match'], $key);
+
+        // Simulate Sunday
+        \App\Services\NotificationService::$simulateSunday = true;
+        try {
+            $this->queueService->processQueue(50);
+
+            $row = $this->db->query("SELECT status, available_at FROM notification_logs WHERE idempotency_key = '$key'")->fetch(PDO::FETCH_ASSOC);
+            $this->assert($row['status'] === 'pending', "WhatsApp-only item must remain pending on Sunday, got " . $row['status']);
+            $this->assert(strtotime($row['available_at']) > time(), "available_at must be deferred into future (Monday cutoff)");
+        } finally {
+            \App\Services\NotificationService::$simulateSunday = null;
+        }
+        echo "PASS\n";
+    }
+
+    private function test60_credentialRedactionInLogsAndExceptions(): void {
+        echo "[Test 60] Credential redaction in error messages and logs... ";
+        $uid = $this->createTestUser('step3-redact-60@scholarmatch.com', 'email', 0);
+        $sid = $this->createTestScholarship('Redact 60');
+        $key = "redact_{$uid}_{$sid}";
+
+        $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'email', 'step3-redact-60@scholarmatch.com', 'Redact Test', ['title' => 'T60'], $key);
+        $id = (int)$this->db->query("SELECT id FROM notification_logs WHERE idempotency_key = '$key'")->fetchColumn();
+
+        // Record a failure with sensitive token in message
+        $sensitiveMsg = "Failed connecting with token=SUPER_SECRET_TOKEN_98765 and Authorization: Bearer SECRET_BEARER_4321";
+        $this->queueService->recordDeliveryStatus('UNKNOWN_MSG_KEY', 'failed', null, $sensitiveMsg);
+
+        // Also test the queueService redactError method via Reflection
+        $ref = new ReflectionClass($this->queueService);
+        $method = $ref->getMethod('redactError');
+        $method->setAccessible(true);
+        $redacted = $method->invoke($this->queueService, $sensitiveMsg);
+
+        $this->assert(strpos($redacted, 'SUPER_SECRET_TOKEN_98765') === false, "Token must be redacted");
+        $this->assert(strpos($redacted, 'SECRET_BEARER_4321') === false, "Bearer secret must be redacted");
+        $this->assert(strpos($redacted, '[REDACTED]') !== false, "Must contain [REDACTED]");
         echo "PASS\n";
     }
 

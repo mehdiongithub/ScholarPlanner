@@ -542,12 +542,12 @@ class ScholarshipMatchingService {
         if (empty($schInstitutions)) {
             return ['status' => 'MATCHED', 'message' => 'Open to all educational institutions.'];
         }
-        if (!$education || empty($education['institution_id'])) {
+        if (!$education || (empty($education['institution_id']) && empty($education['institution_name']))) {
             return ['status' => 'MISSING', 'message' => 'Educational institution is not specified in your profile.'];
         }
 
-        $userInstId = (int)$education['institution_id'];
-        if (in_array($userInstId, $schInstitutions, true)) {
+        $userInstId = (int)($education['institution_id'] ?? 0);
+        if ($userInstId > 0 && in_array($userInstId, $schInstitutions, true)) {
             return ['status' => 'MATCHED', 'message' => 'Your educational institution meets the specific institution requirement.'];
         }
 

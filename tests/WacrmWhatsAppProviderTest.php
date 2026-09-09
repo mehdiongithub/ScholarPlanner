@@ -197,7 +197,7 @@ namespace {
 
             // Verify payload structure sent to WACRM
             $postFields = json_decode(CurlMockRegistry::$calledPostFields, true);
-            if ($postFields['to'] !== '+923001234567' || $postFields['template']['name'] !== 'new_match') {
+            if ($postFields['to'] !== '+923001234567' || ($postFields['template']['name'] !== 'new_match' && $postFields['template']['name'] !== 'new_match_v2')) {
                 throw new Exception("Incorrect payload format submitted to cURL handler.");
             }
 

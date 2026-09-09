@@ -1,18 +1,40 @@
 <?php
 
-require_once dirname(__DIR__) . '/tests/bootstrap.php';
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    echo "Access Denied: CLI runtime execution context only.\n";
+    exit(1);
+}
+
+if (!defined('ROOT_PATH')) {
+    define('ROOT_PATH', dirname(__DIR__));
+}
+require_once ROOT_PATH . '/vendor/autoload.php';
+
+try {
+    if (file_exists(ROOT_PATH . '/.env')) {
+        $dotenv = \Dotenv\Dotenv::createImmutable(ROOT_PATH);
+        $dotenv->load();
+    }
+} catch (\Exception $e) {
+    // Fail silently
+}
 
 use App\Services\Database;
 use App\Services\NotificationService;
 use App\Services\NotificationQueueService;
 
-if (php_sapi_name() !== 'cli') {
-    die("This script must be run via the command line.\n");
-}
-
 echo "Starting Deadline Reminders process...\n";
 
 $db = Database::connection();
+$lockStmt = $db->prepare("SELECT GET_LOCK('cron_deadline_reminders', 0)");
+$lockStmt->execute();
+if ((int)$lockStmt->fetchColumn() !== 1) {
+    echo "ℹ Another deadline reminders process is currently running. Exiting.\n";
+    exit(0);
+}
+
+try {
 $notificationService = new NotificationService();
 $queueService = new NotificationQueueService();
 
@@ -173,6 +195,9 @@ foreach ($users as $user) {
             }
         }
     }
+}
+} finally {
+    $db->query("SELECT RELEASE_LOCK('cron_deadline_reminders')");
 }
 
 // Finished enqueuing deadline reminder notifications without delivering

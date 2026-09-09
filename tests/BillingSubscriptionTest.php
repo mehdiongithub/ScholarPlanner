@@ -513,6 +513,17 @@ class BillingSubscriptionTest {
         $stmtExpired->execute(['uid' => $this->uVisitor, 'pid' => $this->planPremium]);
         $subExpiredId = $this->db->lastInsertId();
 
+        // Seed 5 qualifying delivered messages for subExpiredId so it qualifies for expiry under the minimum-5 rule
+        for ($i = 1; $i <= 5; $i++) {
+            $this->db->exec("
+                INSERT INTO notification_logs (
+                    user_id, subscription_id, notification_type, channel, recipient, status, delivered_at, created_at, updated_at
+                ) VALUES (
+                    {$this->uVisitor}, {$subExpiredId}, 'NEW_MATCH', 'whatsapp', '923001234567', 'delivered', DATE_SUB(NOW(), INTERVAL " . (30 - $i) . " DAY), NOW(), NOW()
+                )
+            ");
+        }
+
         // 2. Create a subscription ending in exactly 3 days
         $stmtRenewal = $this->db->prepare("
             INSERT INTO subscriptions (user_id, plan_id, status, starts_at, ends_at, created_at, updated_at)

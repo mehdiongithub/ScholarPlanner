@@ -311,9 +311,3 @@ class ScholarshipMessageFormatterTest {
         echo "PASS\n";
     }
 }
-
-if (!defined('TESTING_MODE')) {
-    define('TESTING_MODE', true);
-}
-require_once 'c:/laragon/www/scholarship/tests/bootstrap.php';
-(new ScholarshipMessageFormatterTest())->run();

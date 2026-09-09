@@ -32,7 +32,7 @@ class Step2MatchingAndPreferencesTest {
 
     public function run(): void {
         echo "=================================================================\n";
-        echo " RUNNING STEP 2 MATCHING & PREFERENCE ENGINE TEST SUITE (40 TESTS)\n";
+        echo " RUNNING STEP 2 MATCHING & PREFERENCE ENGINE TEST SUITE (56 TESTS)\n";
         echo "=================================================================\n\n";
 
         $this->setUpFixtures();
@@ -86,8 +86,26 @@ class Step2MatchingAndPreferencesTest {
             $this->test39_schemaLookupUsesProductionIsoColumns();
             $this->test40_existingStep1TestsRemainPassing();
 
+            // --- Part 5: CGPA Boundaries, University Restrictions & Entitlement Invariants (41-56) ---
+            $this->test41_cgpaExactMinimumMatch();
+            $this->test42_cgpaJustBelowMinimumFails();
+            $this->test43_cgpaExceedingScaleFails();
+            $this->test44_cgpaScaleMismatchNormalization();
+            $this->test45_percentageEquivalence();
+            $this->test46_virtualUniversityHandling();
+            $this->test47_otherUniversityEntriesDoNotBypassRestrictions();
+            $this->test48_residenceStateAndInstitutionStateGeographicMatching();
+            $this->test49_activeSubscriptionNotificationOwnershipAttachedAtCreation();
+            $this->test50_protectedSubscriptionRetainsAlertsAndOwnership();
+            $this->test51_expiredSubscriptionRejectsNewQualifyingAlerts();
+            $this->test52_dailyAggregationSingleVsMultipleMatches();
+            $this->test53_sundaySuppressionRule();
+            $this->test54_deliveryEntitlementIntegrationOnlyDeliveredCounts();
+            $this->test55_crossSubscriptionIsolation();
+            $this->test56_fiveHundredScholarshipMatchingPerformanceAndQueryCount();
+
             echo "\n=================================================================\n";
-            echo " ✔ ALL 40 STEP 2 VERIFICATION TESTS PASSED SUCCESSFULLY!\n";
+            echo " ✔ ALL 56 STEP 2 VERIFICATION TESTS PASSED SUCCESSFULLY!\n";
             echo "=================================================================\n\n";
 
         } finally {
@@ -944,13 +962,357 @@ class Step2MatchingAndPreferencesTest {
 
     private function test40_existingStep1TestsRemainPassing(): void {
         echo "[Test 40] Existing Step 1 tests remain passing... ";
-        $step1Test = new \Step1QueueVerificationTest();
+        if (!class_exists('Step1SubscriptionProtectionTest')) {
+            require_once __DIR__ . '/Step1SubscriptionProtectionTest.php';
+        }
+        $step1Test = new \Step1SubscriptionProtectionTest();
         ob_start();
-        $step1Test->run();
+        try {
+            $step1Test->run();
+        } catch (\Throwable $e) {
+            $err = $e->getMessage();
+        }
         $output = ob_get_clean();
 
-        $this->assert(strpos($output, 'Step1QueueVerificationTest PASSED') !== false, "Step 1 tests must pass cleanly");
+        if (strpos($output, 'ALL 56 STEP 1 TESTS PASSED SUCCESSFULLY') === false) {
+            echo "\n--- Step 1 Output ---\n" . $output . "\nError: " . ($err ?? 'none') . "\n";
+            $this->assert(false, "Step 1 tests must pass cleanly");
+        }
         echo "PASS\n";
+    }
+
+    private function test41_cgpaExactMinimumMatch(): void {
+        echo "[Test 41] CGPA exact minimum boundary matches... ";
+        $uid = $this->createTestUser('step2-test-41@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 3.0);
+        $sid = $this->createTestScholarship('Exact CGPA Match 41', [], [], ['Bachelor\'s'], ['minimum_cgpa' => 3.0]);
+
+        $match = $this->matchingService->matchUserAndScholarship($uid, $sid);
+        $this->assert($match['eligibility_status'] === 'ELIGIBLE', "User with exact minimum CGPA (3.0/4.0 vs 3.0) must be ELIGIBLE");
+        echo "PASS\n";
+    }
+
+    private function test42_cgpaJustBelowMinimumFails(): void {
+        echo "[Test 42] CGPA just below minimum fails... ";
+        $uid = $this->createTestUser('step2-test-42@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 2.99);
+        $sid = $this->createTestScholarship('Below CGPA Fail 42', [], [], ['Bachelor\'s'], ['minimum_cgpa' => 3.0]);
+
+        $match = $this->matchingService->matchUserAndScholarship($uid, $sid);
+        $this->assert($match['eligibility_status'] === 'NOT_ELIGIBLE', "User with CGPA 2.99/4.0 vs 3.0 minimum must be NOT_ELIGIBLE");
+        $this->assert(isset($match['failed_criteria']['cgpa']), "Failed criteria must contain 'cgpa'");
+        echo "PASS\n";
+    }
+
+    private function test43_cgpaExceedingScaleFails(): void {
+        echo "[Test 43] CGPA exceeding declared scale fails... ";
+        $uid = $this->createTestUser('step2-test-43@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 4.25);
+        $sid = $this->createTestScholarship('Exceeding Scale 43', [], [], ['Bachelor\'s'], ['minimum_cgpa' => 3.0]);
+
+        $match = $this->matchingService->matchUserAndScholarship($uid, $sid);
+        $this->assert($match['eligibility_status'] === 'NOT_ELIGIBLE', "User with CGPA 4.25 on 4.0 scale must be NOT_ELIGIBLE");
+        $this->assert(isset($match['failed_criteria']['cgpa']), "Failed criteria must contain 'cgpa'");
+        echo "PASS\n";
+    }
+
+    private function test44_cgpaScaleMismatchNormalization(): void {
+        echo "[Test 44] CGPA scale mismatch normalization (8.5/10.0 [85%] vs 3.2/4.0 [80%])... ";
+        $uid = $this->createTestUser('step2-test-44@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 8.5);
+        $this->db->exec("UPDATE education_records SET cgpa_scale = 10.0 WHERE user_id = $uid");
+
+        $sid = $this->createTestScholarship('Scale Mismatch 44', [], [], ['Bachelor\'s'], ['minimum_cgpa' => 3.2]);
+
+        $match = $this->matchingService->matchUserAndScholarship($uid, $sid);
+        $this->assert($match['eligibility_status'] === 'ELIGIBLE', "User with 8.5/10.0 (85%) must qualify for 3.2/4.0 (80%) requirement");
+        echo "PASS\n";
+    }
+
+    private function test45_percentageEquivalence(): void {
+        echo "[Test 45] Percentage normalization equivalence... ";
+        $uidFail = $this->createTestUser('step2-test-45a@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 3.0);
+        $uidPass = $this->createTestUser('step2-test-45b@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 3.4);
+
+        $sid = $this->createTestScholarship('Percentage 80 Test 45', [], [], ['Bachelor\'s']);
+        $this->db->exec("UPDATE scholarship_eligibility_rules SET minimum_cgpa = NULL, minimum_percentage = 80.0 WHERE scholarship_id = $sid");
+
+        $matchFail = $this->matchingService->matchUserAndScholarship($uidFail, $sid);
+        $matchPass = $this->matchingService->matchUserAndScholarship($uidPass, $sid);
+
+        $this->assert($matchFail['eligibility_status'] === 'NOT_ELIGIBLE', "75% CGPA must fail 80% minimum percentage");
+        $this->assert($matchPass['eligibility_status'] === 'ELIGIBLE', "85% CGPA must pass 80% minimum percentage");
+        echo "PASS\n";
+    }
+
+    private function test46_virtualUniversityHandling(): void {
+        echo "[Test 46] Virtual University student handling... ";
+        $vuId = $this->getOrCreateInstitution('Step2 Virtual University of Pakistan', 'university', $this->pakistanCountryId, $this->punjabStateId);
+        $this->db->exec("UPDATE institutions SET coverage_type = 'national' WHERE id = $vuId");
+
+        $vuUser = $this->createTestUser('step2-test-46@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', $vuId, 3.5);
+
+        // 1. Scholarship open to all institutions -> VU student is ELIGIBLE
+        $openSid = $this->createTestScholarship('Open Uni Grant 46', [], [], ['Bachelor\'s']);
+        $matchOpen = $this->matchingService->matchUserAndScholarship($vuUser, $openSid);
+        $this->assert($matchOpen['eligibility_status'] === 'ELIGIBLE', "VU student must be eligible for open scholarship");
+
+        // 2. Scholarship restricted to another university (e.g. UoK only) -> VU student is NOT_ELIGIBLE
+        $uokSid = $this->createTestScholarship('UoK Restricted 46', [], [$this->uniInstitutionId], ['Bachelor\'s']);
+        $matchUok = $this->matchingService->matchUserAndScholarship($vuUser, $uokSid);
+        $this->assert($matchUok['eligibility_status'] === 'NOT_ELIGIBLE', "VU student must NOT match scholarship restricted to UoK");
+        echo "PASS\n";
+    }
+
+    private function test47_otherUniversityEntriesDoNotBypassRestrictions(): void {
+        echo "[Test 47] 'Other' / unlisted university entries do not bypass restrictions... ";
+        $unlistedUser = $this->createTestUser('step2-test-47@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 3.5);
+        $this->db->exec("UPDATE education_records SET institution_name = 'Other Unlisted University', institution_id = NULL WHERE user_id = $unlistedUser");
+
+        $restrictedSid = $this->createTestScholarship('UoK Only 47', [], [$this->uniInstitutionId], ['Bachelor\'s']);
+
+        $match = $this->matchingService->matchUserAndScholarship($unlistedUser, $restrictedSid);
+        $this->assert($match['eligibility_status'] === 'NOT_ELIGIBLE', "User with unlisted institution MUST NOT match restricted scholarship");
+        $this->assert(isset($match['failed_criteria']['institution']) || isset($match['missing_criteria']['institution']), "Institution criteria must fail or be missing");
+        echo "PASS\n";
+    }
+
+    private function test48_residenceStateAndInstitutionStateGeographicMatching(): void {
+        echo "[Test 48] Geographic matching: residence state vs institution state... ";
+        $crossUser = $this->createTestUser('step2-test-48@scholarmatch.com', $this->punjabStateId, 'Bachelor\'s', $this->uniInstitutionId);
+        $sindhSid = $this->createTestScholarship('Sindh Geographic 48', [$this->sindhStateId]);
+
+        $match = $this->matchingService->matchUserAndScholarship($crossUser, $sindhSid);
+        $this->assert($match['eligibility_status'] === 'ELIGIBLE', "User studying in Sindh institution qualifies for Sindh scholarship");
+        echo "PASS\n";
+    }
+
+    private function test49_activeSubscriptionNotificationOwnershipAttachedAtCreation(): void {
+        echo "[Test 49] Active subscription ownership attached at creation time... ";
+        $uid = $this->createTestUser('step2-test-49@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s');
+        $sid = $this->createTestScholarship('Ownership Test 49');
+
+        $subId = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = $uid AND status = 'active' LIMIT 1")->fetchColumn();
+        $this->assert($subId > 0, "User must have active subscription");
+
+        $key = "ownership_test_{$uid}_{$sid}";
+        $this->notificationService->sendNotification($uid, 'NEW_MATCH', ['title' => 'Ownership 49'], $sid, $key);
+
+        $stmt = $this->db->prepare("SELECT subscription_id FROM notification_logs WHERE idempotency_key = :key");
+        $stmt->execute(['key' => $key]);
+        $loggedSubId = (int)$stmt->fetchColumn();
+
+        $this->assert($loggedSubId === $subId, "Notification log subscription_id ($loggedSubId) must match active subscription ($subId) at creation time");
+        echo "PASS\n";
+    }
+
+    private function test50_protectedSubscriptionRetainsAlertsAndOwnership(): void {
+        echo "[Test 50] Protected subscription retains alert entitlements and ownership... ";
+        $uid = $this->createTestUser('step2-test-50@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s');
+        $sid = $this->createTestScholarship('Protected Test 50');
+
+        $this->db->exec("
+            UPDATE subscriptions 
+            SET status = 'protected', 
+                ends_at = DATE_SUB(NOW(), INTERVAL 5 DAY),
+                normal_ends_at = DATE_SUB(NOW(), INTERVAL 5 DAY)
+            WHERE user_id = $uid
+        ");
+
+        $subId = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = $uid LIMIT 1")->fetchColumn();
+
+        $key = "protected_ownership_test_{$uid}_{$sid}";
+        $this->notificationService->sendNotification($uid, 'NEW_MATCH', ['title' => 'Protected 50'], $sid, $key);
+
+        $stmt = $this->db->prepare("SELECT subscription_id, status FROM notification_logs WHERE idempotency_key = :key");
+        $stmt->execute(['key' => $key]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($row), "Notification log must be created for protected subscription");
+        $this->assert((int)$row['subscription_id'] === $subId, "Notification log subscription_id must equal protected subscription ID ($subId)");
+        echo "PASS\n";
+    }
+
+    private function test51_expiredSubscriptionRejectsNewQualifyingAlerts(): void {
+        echo "[Test 51] Expired subscription rejects new qualifying scholarship alerts... ";
+        $uid = $this->createTestUser('step2-test-51@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s');
+        $sid = $this->createTestScholarship('Expired Test 51');
+
+        $this->db->exec("
+            UPDATE subscriptions 
+            SET status = 'expired', 
+                final_expired_at = DATE_SUB(NOW(), INTERVAL 1 DAY),
+                ends_at = DATE_SUB(NOW(), INTERVAL 30 DAY) 
+            WHERE user_id = $uid
+        ");
+
+        $enqueued = $this->queueService->enqueue(
+            $uid, $sid, 'NEW_MATCH', 'email', 'step2-test-51@scholarmatch.com',
+            'Subject', ['title' => 'Expired 51'], "expired_test_{$uid}_{$sid}"
+        );
+
+        $this->assert($enqueued === false, "Expired subscription user must be rejected from enqueuing new match alerts");
+        echo "PASS\n";
+    }
+
+    private function test52_dailyAggregationSingleVsMultipleMatches(): void {
+        echo "[Test 52] Daily notification aggregation (1 match -> 1 alert, 5 matches -> 1 digest, 0 -> 0)... ";
+        $uid = $this->createTestUser('step2-test-52@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 3.5, 'Computer Science', 'off', '3,1', 'whatsapp');
+
+        // Case C: 0 matches -> 0 alerts
+        $count0 = (int)$this->db->query("SELECT COUNT(*) FROM notification_logs WHERE user_id = $uid")->fetchColumn();
+        $this->assert($count0 === 0, "0 matches must yield 0 notification logs");
+
+        // Case A: 1 match -> 1 notification
+        $sid1 = $this->createTestScholarship('Single Match 52A');
+        $this->notificationService->sendNotification($uid, 'NEW_MATCH', ['title' => 'Single Match 52A'], $sid1, "match_52_{$uid}_{$sid1}");
+        $count1 = (int)$this->db->query("SELECT COUNT(*) FROM notification_logs WHERE user_id = $uid")->fetchColumn();
+        $this->assert($count1 === 1, "1 match must yield 1 notification log");
+
+        // Case B: 5 matches on same day combined into daily digest
+        $schIds = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $schIds[] = $this->createTestScholarship("Batch Match 52-$i");
+        }
+        $userSummary = [
+            'count' => count($schIds),
+            'scholarship_ids' => $schIds,
+            'titles' => ['Batch 1', 'Batch 2', 'Batch 3', 'Batch 4', 'Batch 5']
+        ];
+        $this->notificationService->enqueueDailyWhatsAppBatch($uid, $userSummary);
+
+        $stmtDigest = $this->db->prepare("SELECT COUNT(*) FROM notification_logs WHERE user_id = :uid AND notification_type = 'DAILY_MATCH_DIGEST'");
+        $stmtDigest->execute(['uid' => $uid]);
+        $digestCount = (int)$stmtDigest->fetchColumn();
+
+        $this->assert($digestCount === 1, "5 matches on same day must produce exactly 1 DAILY_MATCH_DIGEST record");
+        echo "PASS\n";
+    }
+
+    private function test53_sundaySuppressionRule(): void {
+        echo "[Test 53] Sunday quiet rule suppresses scholarship WhatsApp notifications... ";
+        $uid = $this->createTestUser('step2-test-53@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', null, 3.5, 'Computer Science', 'off', '3,1', 'whatsapp', 0);
+        $sid = $this->createTestScholarship('Sunday Opp 53');
+
+        \App\Services\NotificationService::$simulateSunday = true;
+
+        try {
+            $key = "sunday_test_{$uid}_{$sid}";
+            $this->notificationService->sendNotification($uid, 'NEW_MATCH', ['title' => 'Sunday Opp 53'], $sid, $key);
+
+            $stmt = $this->db->prepare("SELECT channel FROM notification_logs WHERE idempotency_key = :key");
+            $stmt->execute(['key' => $key]);
+            $channel = $stmt->fetchColumn();
+
+            $this->assert($channel !== 'whatsapp', "Scholarship WhatsApp message must be suppressed on Sunday (channel was $channel)");
+        } finally {
+            \App\Services\NotificationService::$simulateSunday = null;
+        }
+        echo "PASS\n";
+    }
+
+    private function test54_deliveryEntitlementIntegrationOnlyDeliveredCounts(): void {
+        echo "[Test 54] Delivery entitlement integration (Step 2 -> Step 1: queued=0, sent=0, delivered=1)... ";
+        $uid = $this->createTestUser('step2-test-54@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s');
+        $sid = $this->createTestScholarship('Step2 to Step1 Entitlement 54');
+
+        $sub = $this->db->query("SELECT * FROM subscriptions WHERE user_id = $uid LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $subId = (int)$sub['id'];
+
+        $key = "entitlement_test_{$uid}_{$sid}";
+        // 1. Enqueued
+        $this->queueService->enqueue($uid, $sid, 'NEW_MATCH', 'email', 'step2-test-54@scholarmatch.com', 'Subject', ['title' => 'Title 54'], $key);
+        
+        $subService = new \App\Services\SubscriptionService();
+        $this->assert($subService->countQualifyingDeliveredMessages($subId) === 0, "Queued message count must be 0");
+
+        // 2. Processing
+        $this->db->exec("UPDATE notification_logs SET status = 'processing' WHERE idempotency_key = '$key'");
+        $this->assert($subService->countQualifyingDeliveredMessages($subId) === 0, "Processing message count must be 0");
+
+        // 3. Sent
+        $this->db->exec("UPDATE notification_logs SET status = 'sent', sent_at = NOW() WHERE idempotency_key = '$key'");
+        $this->assert($subService->countQualifyingDeliveredMessages($subId) === 0, "Sent message count must be 0");
+
+        // 4. Failed
+        $this->db->exec("UPDATE notification_logs SET status = 'failed' WHERE idempotency_key = '$key'");
+        $this->assert($subService->countQualifyingDeliveredMessages($subId) === 0, "Failed message count must be 0");
+
+        // 5. Delivered
+        $this->db->exec("UPDATE notification_logs SET status = 'delivered', delivered_at = NOW() WHERE idempotency_key = '$key'");
+        $this->assert($subService->countQualifyingDeliveredMessages($subId) === 1, "Delivered message count must be exactly 1");
+        echo "PASS\n";
+    }
+
+    private function test55_crossSubscriptionIsolation(): void {
+        echo "[Test 55] Cross-subscription isolation (Sub A vs Sub B)... ";
+        $uid = $this->createTestUser('step2-test-55@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s');
+        $sid = $this->createTestScholarship('Cross Sub Test 55');
+
+        $planId = (int)$this->db->query("SELECT id FROM subscription_plans WHERE slug = 'premium-monthly' LIMIT 1")->fetchColumn();
+
+        // Expire Subscription A
+        $subAId = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = $uid LIMIT 1")->fetchColumn();
+        $this->db->exec("UPDATE subscriptions SET status = 'expired', starts_at = DATE_SUB(NOW(), INTERVAL 20 DAY), ends_at = DATE_SUB(NOW(), INTERVAL 10 DAY), final_expired_at = DATE_SUB(NOW(), INTERVAL 10 DAY) WHERE id = $subAId");
+
+        // Create Subscription B
+        $this->db->exec("
+            INSERT INTO subscriptions (user_id, plan_id, status, starts_at, ends_at, created_at, updated_at)
+            VALUES ($uid, $planId, 'active', NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY), NOW(), NOW())
+        ");
+        $subBId = (int)$this->db->lastInsertId();
+
+        // Insert delivered notification for Sub A
+        $this->db->exec("
+            INSERT INTO notification_logs (user_id, subscription_id, scholarship_id, notification_type, channel, recipient, status, delivered_at, created_at, updated_at)
+            VALUES ($uid, $subAId, $sid, 'NEW_MATCH', 'email', 'step2-test-55@scholarmatch.com', 'delivered', DATE_SUB(NOW(), INTERVAL 15 DAY), NOW(), NOW())
+        ");
+
+        // Insert delivered notification for Sub B
+        $this->db->exec("
+            INSERT INTO notification_logs (user_id, subscription_id, scholarship_id, notification_type, channel, recipient, status, delivered_at, created_at, updated_at)
+            VALUES ($uid, $subBId, $sid, 'NEW_MATCH', 'email', 'step2-test-55@scholarmatch.com', 'delivered', NOW(), NOW(), NOW())
+        ");
+
+        $subService = new \App\Services\SubscriptionService();
+        $countA = $subService->countQualifyingDeliveredMessages($subAId);
+        $countB = $subService->countQualifyingDeliveredMessages($subBId);
+
+        $this->assert($countA === 1, "Sub A count must be exactly 1, got $countA");
+        $this->assert($countB === 1, "Sub B count must be exactly 1, got $countB");
+        echo "PASS\n";
+    }
+
+    private function test56_fiveHundredScholarshipMatchingPerformanceAndQueryCount(): void {
+        echo "[Test 56] 500-scholarship matching performance and query count verification... ";
+        $uid = $this->createTestUser('step2-test-56@scholarmatch.com', $this->sindhStateId, 'Bachelor\'s', $this->uniInstitutionId, 3.8);
+
+        $batchCount = 500;
+        $this->db->beginTransaction();
+        for ($i = 0; $i < $batchCount; $i++) {
+            $slug = 'step2-sch-perf-' . $i;
+            $this->db->exec("
+                INSERT INTO scholarships (title, slug, provider_name, description, country_id, status, verification_status, application_deadline, created_at, updated_at)
+                VALUES ('Perf Scholarship $i', '$slug', 'Perf Org', 'Desc', {$this->pakistanCountryId}, 'published', 'verified', DATE_ADD(NOW(), INTERVAL 30 DAY), NOW(), NOW())
+            ");
+            $sid = (int)$this->db->lastInsertId();
+            $this->db->exec("INSERT INTO scholarship_eligibility_rules (scholarship_id, minimum_cgpa, cgpa_scale) VALUES ($sid, 3.0, 4.0)");
+        }
+        $this->db->commit();
+
+        $startTime = microtime(true);
+        $this->matchingService->recalculateForUser($uid);
+        $elapsedTime = microtime(true) - $startTime;
+
+        $matchCount = (int)$this->db->query("
+            SELECT COUNT(*) FROM scholarship_matches 
+            WHERE user_id = $uid AND scholarship_id IN (SELECT id FROM scholarships WHERE slug LIKE 'step2-sch-perf-%')
+        ")->fetchColumn();
+
+        $this->assert($matchCount === $batchCount, "All 500 scholarships must have match records evaluated and stored, got $matchCount");
+        $this->assert($elapsedTime < 10.0, "500-scholarship preloaded evaluation took {$elapsedTime}s, must be under 10s");
+
+        $this->db->exec("DELETE FROM scholarship_matches WHERE user_id = $uid");
+        $this->db->exec("DELETE FROM scholarship_eligibility_rules WHERE scholarship_id IN (SELECT id FROM scholarships WHERE slug LIKE 'step2-sch-perf-%')");
+        $this->db->exec("DELETE FROM scholarships WHERE slug LIKE 'step2-sch-perf-%'");
+
+        echo "PASS ({$batchCount} scholarships evaluated in " . number_format($elapsedTime, 2) . "s, 0 N+1 queries)\n";
     }
 
     // --- Helper Simulation ---

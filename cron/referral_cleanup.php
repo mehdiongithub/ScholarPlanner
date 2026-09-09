@@ -36,6 +36,13 @@ try {
     exit(1);
 }
 
+$lockStmt = $db->prepare("SELECT GET_LOCK('cron_referral_cleanup', 0)");
+$lockStmt->execute();
+if ((int)$lockStmt->fetchColumn() !== 1) {
+    echo "ℹ Another referral cleanup process is currently running. Exiting.\n";
+    exit(0);
+}
+
 echo "Starting referral discount reservations cleanup job...\n";
 
 try {
@@ -46,8 +53,10 @@ try {
 
     echo "✔ Successfully processed referral claims cleanup. Expired {$expiredCount} abandoned reservations.\n";
     Logger::info("Referral cleanup cron: expired {$expiredCount} abandoned reservations with TTL {$ttl}m.");
+    $db->query("SELECT RELEASE_LOCK('cron_referral_cleanup')");
     exit(0);
 } catch (\Exception $e) {
+    $db->query("SELECT RELEASE_LOCK('cron_referral_cleanup')");
     echo "❌ Error during referral claims cleanup: " . $e->getMessage() . "\n";
     Logger::error("Referral cleanup cron error: " . $e->getMessage());
     exit(1);
