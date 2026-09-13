@@ -2,7 +2,7 @@
 return [
     'cashmaal' => [
         'web_id' => $_ENV['CASHMAAL_WEB_ID'] ?? '',
-        'ipn_key' => $_ENV['CASHMAAL_IPN_KEY'] ?? '',
+        'ipn_key' => $_ENV['CASHMAAL_IPN_KEY'] ?? ($_ENV['CASHMAAL_PASSWORD'] ?? ''),
         'pay_url' => $_ENV['CASHMAAL_PAY_URL'] ?? 'https://cmaal.com/Pay/',
         'verify_url' => $_ENV['CASHMAAL_VERIFY_URL'] ?? 'https://api.cmaal.com/verify_v2',
         'timeout' => (int)($_ENV['CASHMAAL_TIMEOUT'] ?? 15),

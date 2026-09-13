@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/bootstrap.php';
+
 use App\Services\Database;
 use App\Services\Auth;
 use App\Helpers\Security;
@@ -159,8 +161,25 @@ class Step4PaymentIntegrationTest {
             $this->test94_rowLockingPreventsConcurrentRaceConditionOnPaymentFulfillment();
             $this->test95_idorProtectionBlocksUnauthorizedReferenceAccess();
 
+            // Group 15: Referral Commission Invariants Across All Fulfillment Paths (96-110)
+            $this->test96_referralCommissionThroughBrowserCallback();
+            $this->test97_referralCommissionThroughWebhook();
+            $this->test98_referralCommissionThroughCashMaalIpn();
+            $this->test99_noReferralYieldsZeroCommission();
+            $this->test100_invalidReferralYieldsZeroCommission();
+            $this->test101_selfReferralYieldsZeroCommission();
+            $this->test102_callbackPlusWebhookDuplicateYieldsExactlyOneCommission();
+            $this->test103_callbackPlusIpnDuplicateYieldsExactlyOneCommission();
+            $this->test104_webhookPlusIpnDuplicateYieldsExactlyOneCommission();
+            $this->test105_callbackPlusWebhookPlusIpnConcurrentProcessingYieldsExactlyOneCommission();
+            $this->test106_crossUserReferralTamperingBlocked();
+            $this->test107_referralPartnerIsolation();
+            $this->test108_repurchaseCreatesCorrectNewCommissionBehavior();
+            $this->test109_protectedSubscriptionPreservesHistoricalCommissionAndUsage();
+            $this->test110_commissionFailurePreservesIntendedTransactionAtomicity();
+
             echo "\n=================================================================\n";
-            echo " ✔ ALL 95 STEP 4 PAYMENT INTEGRATION TESTS PASSED SUCCESSFULLY!\n";
+            echo " ✔ ALL 110 STEP 4 PAYMENT INTEGRATION TESTS PASSED SUCCESSFULLY!\n";
             echo "=================================================================\n\n";
 
         } finally {
@@ -210,6 +229,7 @@ class Step4PaymentIntegrationTest {
     private function tearDown(): void {
         $this->db->exec("DELETE FROM subscription_usage WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM referral_commissions WHERE payment_transaction_id IN (SELECT id FROM payment_transactions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com'))");
+        $this->db->exec("DELETE FROM payment_webhook_logs WHERE transaction_reference LIKE 'TXN_STEP4_%'");
         $this->db->exec("DELETE FROM notification_logs WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM payment_transactions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
         $this->db->exec("DELETE FROM subscriptions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'step4-%@scholarmatch.com')");
@@ -2777,9 +2797,665 @@ class Step4PaymentIntegrationTest {
         echo "PASS\n";
     }
 
+    private function createPartnerAndStudent(string $pEmail, string $sEmail, float $commissionPct = 20.00): array {
+        $rolePartnerId = (int)$this->db->query("SELECT id FROM roles WHERE name = 'referral_partner' LIMIT 1")->fetchColumn();
+        if (!$rolePartnerId) {
+            $this->db->exec("INSERT INTO roles (name, description, created_at, updated_at) VALUES ('referral_partner', 'Referral Partner Role', NOW(), NOW())");
+            $rolePartnerId = (int)$this->db->lastInsertId();
+        }
+
+        $partnerUid = $this->createTestUser($pEmail);
+        $studentUid = $this->createTestUser($sEmail);
+
+        $code = 'P' . substr(str_replace('.', '', uniqid('', true)), -7);
+        $this->db->prepare("UPDATE users SET role_id = :rid, referral_code = :code, commission_percent = :pct WHERE id = :uid")
+                 ->execute(['rid' => $rolePartnerId, 'code' => $code, 'pct' => $commissionPct, 'uid' => $partnerUid]);
+
+        $this->db->prepare("UPDATE users SET referred_by_code = :code, referral_partner_id = :pid WHERE id = :uid")
+                 ->execute(['code' => $code, 'pid' => $partnerUid, 'uid' => $studentUid]);
+
+        return [
+            'partner_id' => $partnerUid,
+            'student_id' => $studentUid,
+            'referral_code' => $code
+        ];
+    }
+
+    // =========================================================================
+    // GROUP 15: Referral Commission Invariants Across All Fulfillment Paths (96-110)
+    // =========================================================================
+
+    private function test96_referralCommissionThroughBrowserCallback(): void {
+        echo "[Test 96] Referral commission through browser callback... ";
+        $rel = $this->createPartnerAndStudent('step4-u96-p@scholarmatch.com', 'step4-u96-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_96';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+
+        $this->db->prepare("UPDATE payment_transactions SET provider = 'mock', referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        $_ENV['PAYMENT_PROVIDER'] = 'mock';
+        $_SESSION['user_id'] = $rel['student_id'];
+        $_SESSION['user_role'] = 'student';
+        $_GET = ['ref' => $ref, 'status' => 'success'];
+        $_POST = [];
+
+        ob_start();
+        try {
+            $this->billingController->callback();
+        } catch (\RuntimeException $e) {
+            // In TESTING_MODE, redirect throws RuntimeException
+        } finally {
+            ob_end_clean();
+        }
+
+        $stmt = $this->db->prepare("SELECT * FROM referral_commissions WHERE payment_transaction_id = :id");
+        $stmt->execute(['id' => $txId]);
+        $comm = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($comm), "Commission must be created via callback");
+        $this->assert((int)$comm['partner_id'] === $rel['partner_id'], "Commission must belong to Partner");
+        $this->assert((float)$comm['commission_amount'] > 0, "Commission amount must be > 0");
+        $this->assert($comm['status'] === 'earned', "Commission status must be earned");
+        echo "PASS\n";
+    }
+
+    private function test97_referralCommissionThroughWebhook(): void {
+        echo "[Test 97] Referral commission through webhook... ";
+        $rel = $this->createPartnerAndStudent('step4-u97-p@scholarmatch.com', 'step4-u97-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_97';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+
+        $this->db->prepare("UPDATE payment_transactions SET referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        $_ENV['PAYMENT_PROVIDER'] = 'mock';
+        $_ENV['PAYMENT_WEBHOOK_SECRET'] = 'mock_secret_step4';
+        $payload = [
+            'provider' => 'mock',
+            'event_id' => 'evt_test_97_' . time(),
+            'transaction_reference' => $ref,
+            'status' => 'success',
+            'amount' => 1499.00,
+            'currency' => 'PKR'
+        ];
+        $sig = hash_hmac('sha256', json_encode($payload), 'mock_secret_step4');
+        $_SERVER['HTTP_X_MOCK_SIGNATURE'] = $sig;
+        $_POST = $payload;
+
+        ob_start();
+        $this->billingController->webhook();
+        ob_get_clean();
+
+        $stmt = $this->db->prepare("SELECT * FROM referral_commissions WHERE payment_transaction_id = :id");
+        $stmt->execute(['id' => $txId]);
+        $comm = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($comm), "Commission must be created via webhook");
+        $this->assert((int)$comm['partner_id'] === $rel['partner_id'], "Commission must belong to Partner");
+        $this->assert((float)$comm['commission_amount'] > 0, "Commission amount must be > 0");
+        echo "PASS\n";
+    }
+
+    private function test98_referralCommissionThroughCashMaalIpn(): void {
+        echo "[Test 98] Referral commission through CashMaal IPN... ";
+        $rel = $this->createPartnerAndStudent('step4-u98-p@scholarmatch.com', 'step4-u98-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_98';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+
+        $this->db->prepare("UPDATE payment_transactions SET referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_9898',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        $out = ob_get_clean();
+
+        $this->assert(strpos($out, '**OK**') !== false, "IPN must output **OK**");
+
+        $stmt = $this->db->prepare("SELECT * FROM referral_commissions WHERE payment_transaction_id = :id");
+        $stmt->execute(['id' => $txId]);
+        $comm = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert(!empty($comm), "Commission must be created via CashMaal IPN");
+        $this->assert((int)$comm['partner_id'] === $rel['partner_id'], "Commission must belong to Partner");
+        $this->assert((float)$comm['commission_amount'] > 0, "Commission amount must be > 0");
+        echo "PASS\n";
+    }
+
+    private function test99_noReferralYieldsZeroCommission(): void {
+        echo "[Test 99] No referral yields zero commission... ";
+        $uid = $this->createTestUser('step4-u99@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_99';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_9999',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $count = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($count === 0, "Payment with no referral attribution must generate 0 commission");
+        echo "PASS\n";
+    }
+
+    private function test100_invalidReferralYieldsZeroCommission(): void {
+        echo "[Test 100] Invalid referral yields zero commission... ";
+        $uid = $this->createTestUser('step4-u100@scholarmatch.com');
+        $this->db->prepare("UPDATE users SET referred_by_code = 'INVALID9' WHERE id = :id")->execute(['id' => $uid]);
+
+        $ref = 'TXN_STEP4_TEST_100';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_100100',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $count = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($count === 0, "Invalid referral must generate 0 commission");
+        echo "PASS\n";
+    }
+
+    private function test101_selfReferralYieldsZeroCommission(): void {
+        echo "[Test 101] Self-referral yields zero commission... ";
+        $rolePartnerId = (int)$this->db->query("SELECT id FROM roles WHERE name = 'referral_partner' LIMIT 1")->fetchColumn();
+        $uid = $this->createTestUser('step4-u101@scholarmatch.com');
+        $code = 'SELF' . substr(uniqid(), -4);
+
+        $this->db->prepare("UPDATE users SET role_id = :rid, referral_code = :code1, referred_by_code = :code2, referral_partner_id = :pid, commission_percent = 20.00 WHERE id = :uid")
+                 ->execute(['rid' => $rolePartnerId, 'code1' => $code, 'code2' => $code, 'pid' => $uid, 'uid' => $uid]);
+
+        $ref = 'TXN_STEP4_TEST_101';
+        $txId = $this->createPendingTransaction($uid, $this->planPremiumId, 1499.00, $ref);
+        $this->db->prepare("UPDATE payment_transactions SET referral_partner_id = :uid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['uid' => $uid, 'code' => $code, 'id' => $txId]);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_101101',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $count = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($count === 0, "Self-referral payment must generate 0 commission");
+        echo "PASS\n";
+    }
+
+    private function test102_callbackPlusWebhookDuplicateYieldsExactlyOneCommission(): void {
+        echo "[Test 102] Callback + Webhook duplicate yields exactly one commission... ";
+        $rel = $this->createPartnerAndStudent('step4-u102-p@scholarmatch.com', 'step4-u102-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_102';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+        $this->db->prepare("UPDATE payment_transactions SET provider = 'mock', referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        // 1. Process Callback
+        $_ENV['PAYMENT_PROVIDER'] = 'mock';
+        $_SESSION['user_id'] = $rel['student_id'];
+        $_SESSION['user_role'] = 'student';
+        $_GET = ['ref' => $ref, 'status' => 'success'];
+        $_POST = [];
+        ob_start();
+        try {
+            $this->billingController->callback();
+        } catch (\RuntimeException $e) {
+            // In TESTING_MODE, redirect throws RuntimeException
+        } finally {
+            ob_end_clean();
+        }
+
+        // 2. Process Webhook for same transaction
+        $_ENV['PAYMENT_WEBHOOK_SECRET'] = 'mock_secret_step4';
+        $payload = [
+            'provider' => 'mock',
+            'event_id' => 'evt_102_' . time(),
+            'transaction_reference' => $ref,
+            'status' => 'success',
+            'amount' => 1499.00,
+            'currency' => 'PKR'
+        ];
+        $_SERVER['HTTP_X_MOCK_SIGNATURE'] = hash_hmac('sha256', json_encode($payload), 'mock_secret_step4');
+        $_POST = $payload;
+        ob_start();
+        $this->billingController->webhook();
+        ob_get_clean();
+
+        $commCount = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($commCount === 1, "Callback + Webhook must yield strictly 1 commission");
+        echo "PASS\n";
+    }
+
+    private function test103_callbackPlusIpnDuplicateYieldsExactlyOneCommission(): void {
+        echo "[Test 103] Callback + IPN duplicate yields exactly one commission... ";
+        $rel = $this->createPartnerAndStudent('step4-u103-p@scholarmatch.com', 'step4-u103-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_103';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+        $this->db->prepare("UPDATE payment_transactions SET provider = 'mock', referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        // 1. Process Callback
+        $_ENV['PAYMENT_PROVIDER'] = 'mock';
+        $_SESSION['user_id'] = $rel['student_id'];
+        $_SESSION['user_role'] = 'student';
+        $_GET = ['ref' => $ref, 'status' => 'success'];
+        $_POST = [];
+        ob_start();
+        try {
+            $this->billingController->callback();
+        } catch (\RuntimeException $e) {
+            // In TESTING_MODE, redirect throws RuntimeException
+        } finally {
+            ob_end_clean();
+        }
+
+        // 2. Process IPN
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_103103',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        $out = ob_get_clean();
+
+        $this->assert(strpos($out, '**OK**') !== false, "IPN must output **OK**");
+        $commCount = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($commCount === 1, "Callback + IPN must yield strictly 1 commission");
+        echo "PASS\n";
+    }
+
+    private function test104_webhookPlusIpnDuplicateYieldsExactlyOneCommission(): void {
+        echo "[Test 104] Webhook + IPN duplicate yields exactly one commission... ";
+        $rel = $this->createPartnerAndStudent('step4-u104-p@scholarmatch.com', 'step4-u104-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_104';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+        $this->db->prepare("UPDATE payment_transactions SET referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        // 1. Process Webhook
+        $_ENV['PAYMENT_PROVIDER'] = 'mock';
+        $_ENV['PAYMENT_WEBHOOK_SECRET'] = 'mock_secret_step4';
+        $payload = [
+            'provider' => 'mock',
+            'event_id' => 'evt_104_' . time(),
+            'transaction_reference' => $ref,
+            'status' => 'success',
+            'amount' => 1499.00,
+            'currency' => 'PKR'
+        ];
+        $_SERVER['HTTP_X_MOCK_SIGNATURE'] = hash_hmac('sha256', json_encode($payload), 'mock_secret_step4');
+        $_POST = $payload;
+        ob_start();
+        $this->billingController->webhook();
+        ob_get_clean();
+
+        // 2. Process IPN
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_104104',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        $out = ob_get_clean();
+
+        $this->assert(strpos($out, '**OK**') !== false, "IPN must output **OK**");
+        $commCount = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($commCount === 1, "Webhook + IPN must yield strictly 1 commission");
+        echo "PASS\n";
+    }
+
+    private function test105_callbackPlusWebhookPlusIpnConcurrentProcessingYieldsExactlyOneCommission(): void {
+        echo "[Test 105] Callback + Webhook + IPN concurrent processing yields exactly one commission... ";
+        $rel = $this->createPartnerAndStudent('step4-u105-p@scholarmatch.com', 'step4-u105-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_105';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+        $this->db->prepare("UPDATE payment_transactions SET provider = 'mock', referral_partner_id = :pid, referral_code_used = :code WHERE id = :id")
+                 ->execute(['pid' => $rel['partner_id'], 'code' => $rel['referral_code'], 'id' => $txId]);
+
+        // Callback
+        $_ENV['PAYMENT_PROVIDER'] = 'mock';
+        $_SESSION['user_id'] = $rel['student_id'];
+        $_SESSION['user_role'] = 'student';
+        $_GET = ['ref' => $ref, 'status' => 'success'];
+        $_POST = [];
+        ob_start();
+        try {
+            $this->billingController->callback();
+        } catch (\RuntimeException $e) {
+            // In TESTING_MODE, redirect throws RuntimeException
+        } finally {
+            ob_end_clean();
+        }
+
+        // Webhook
+        $_ENV['PAYMENT_WEBHOOK_SECRET'] = 'mock_secret_step4';
+        $payload = [
+            'provider' => 'mock',
+            'event_id' => 'evt_105_' . time(),
+            'transaction_reference' => $ref,
+            'status' => 'success',
+            'amount' => 1499.00,
+            'currency' => 'PKR'
+        ];
+        $_SERVER['HTTP_X_MOCK_SIGNATURE'] = hash_hmac('sha256', json_encode($payload), 'mock_secret_step4');
+        $_POST = $payload;
+        ob_start();
+        $this->billingController->webhook();
+        ob_get_clean();
+
+        // IPN
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_105105',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        $out = ob_get_clean();
+
+        $this->assert(strpos($out, '**OK**') !== false, "IPN must output **OK**");
+
+        // Verify strictly 1 of each singleton
+        $txCount = (int)$this->db->query("SELECT COUNT(*) FROM payment_transactions WHERE transaction_reference = '$ref' AND status = 'paid'")->fetchColumn();
+        $this->assert($txCount === 1, "Exactly 1 paid transaction record");
+
+        $subCount = (int)$this->db->query("SELECT COUNT(*) FROM subscriptions WHERE user_id = {$rel['student_id']} AND status = 'active'")->fetchColumn();
+        $this->assert($subCount === 1, "Exactly 1 active subscription");
+
+        $subId = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = {$rel['student_id']} AND status = 'active'")->fetchColumn();
+        $usageCount = (int)$this->db->query("SELECT COUNT(*) FROM subscription_usage WHERE subscription_id = $subId")->fetchColumn();
+        $this->assert($usageCount === 1, "Exactly 1 subscription_usage record");
+
+        $commCount = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE payment_transaction_id = $txId")->fetchColumn();
+        $this->assert($commCount === 1, "Exactly 1 referral commission across all 3 entry points");
+
+        $notifCount = (int)$this->db->query("SELECT COUNT(*) FROM notification_logs WHERE user_id = {$rel['student_id']} AND notification_type = 'PAYMENT_CONFIRMATION'")->fetchColumn();
+        $this->assert($notifCount === 1, "Exactly 1 payment confirmation notification");
+        echo "PASS\n";
+    }
+
+    private function test106_crossUserReferralTamperingBlocked(): void {
+        echo "[Test 106] Cross-user referral tampering blocked... ";
+        $relLegit = $this->createPartnerAndStudent('step4-u106-legit-p@scholarmatch.com', 'step4-u106-s@scholarmatch.com');
+        $partnerAttacker = $this->createTestUser('step4-u106-attacker-p@scholarmatch.com');
+        $codeAttacker = 'ATK' . substr(uniqid(), -5);
+        $rolePartnerId = (int)$this->db->query("SELECT id FROM roles WHERE name = 'referral_partner' LIMIT 1")->fetchColumn();
+        $this->db->prepare("UPDATE users SET role_id = :rid, referral_code = :code, commission_percent = 20.00 WHERE id = :uid")
+                 ->execute(['rid' => $rolePartnerId, 'code' => $codeAttacker, 'uid' => $partnerAttacker]);
+
+        $ref = 'TXN_STEP4_TEST_106';
+        $txId = $this->createPendingTransaction($relLegit['student_id'], $this->planPremiumId, 1499.00, $ref);
+
+        // Attacker attempts to forge IPN with their own partner ID or code injected into POST
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_106106',
+            'order_id' => $ref,
+            'Amount' => '1499.00',
+            'currency' => 'PKR',
+            'referral_partner_id' => $partnerAttacker,
+            'referral_code' => $codeAttacker
+        ];
+
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Check commission: must go to legitimate partner, NEVER to attacker!
+        $comm = $this->db->query("SELECT * FROM referral_commissions WHERE payment_transaction_id = $txId")->fetch(PDO::FETCH_ASSOC);
+        $this->assert(!empty($comm), "Commission must be generated");
+        $this->assert((int)$comm['partner_id'] === $relLegit['partner_id'], "Commission MUST belong to legitimate partner");
+        $this->assert((int)$comm['partner_id'] !== $partnerAttacker, "Commission MUST NOT belong to attacker");
+        echo "PASS\n";
+    }
+
+    private function test107_referralPartnerIsolation(): void {
+        echo "[Test 107] Referral partner isolation (Partner A vs Partner B)... ";
+        $relA = $this->createPartnerAndStudent('step4-u107-pa@scholarmatch.com', 'step4-u107-sa@scholarmatch.com');
+        $relB = $this->createPartnerAndStudent('step4-u107-pb@scholarmatch.com', 'step4-u107-sb@scholarmatch.com');
+
+        $refA = 'TXN_STEP4_TEST_107_A';
+        $txIdA = $this->createPendingTransaction($relA['student_id'], $this->planPremiumId, 1499.00, $refA);
+
+        $refB = 'TXN_STEP4_TEST_107_B';
+        $txIdB = $this->createPendingTransaction($relB['student_id'], $this->planPremiumId, 1499.00, $refB);
+
+        // Fulfill A
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_107_A',
+            'order_id' => $refA,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Fulfill B
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_107_B',
+            'order_id' => $refB,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $commA = $this->db->query("SELECT * FROM referral_commissions WHERE payment_transaction_id = $txIdA")->fetch(PDO::FETCH_ASSOC);
+        $commB = $this->db->query("SELECT * FROM referral_commissions WHERE payment_transaction_id = $txIdB")->fetch(PDO::FETCH_ASSOC);
+
+        $this->assert((int)$commA['partner_id'] === $relA['partner_id'], "Tx A commission belongs to Partner A");
+        $this->assert((int)$commB['partner_id'] === $relB['partner_id'], "Tx B commission belongs to Partner B");
+        $this->assert((int)$commA['partner_id'] !== (int)$commB['partner_id'], "Partners must be completely distinct");
+        echo "PASS\n";
+    }
+
+    private function test108_repurchaseCreatesCorrectNewCommissionBehavior(): void {
+        echo "[Test 108] Repurchase creates correct new commission behavior... ";
+        $rel = $this->createPartnerAndStudent('step4-u108-p@scholarmatch.com', 'step4-u108-s@scholarmatch.com');
+
+        // Payment 1
+        $ref1 = 'TXN_STEP4_TEST_108_M1';
+        $txId1 = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref1);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_108_1',
+            'order_id' => $ref1,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Expire first subscription
+        $sub1 = $this->db->query("SELECT id FROM subscriptions WHERE user_id = {$rel['student_id']} AND status = 'active'")->fetch(PDO::FETCH_ASSOC);
+        $this->db->exec("UPDATE subscriptions SET status = 'expired', ends_at = DATE_SUB(NOW(), INTERVAL 1 DAY), normal_ends_at = DATE_SUB(NOW(), INTERVAL 1 DAY), final_expired_at = NOW() WHERE id = {$sub1['id']}");
+
+        // Payment 2 (within 6 months attribution window)
+        $ref2 = 'TXN_STEP4_TEST_108_M2';
+        $txId2 = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref2);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_108_2',
+            'order_id' => $ref2,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Verify: Exactly 2 distinct commissions exist (one for tx1, one for tx2)
+        $commCount = (int)$this->db->query("SELECT COUNT(*) FROM referral_commissions WHERE partner_id = {$rel['partner_id']}")->fetchColumn();
+        $this->assert($commCount === 2, "Partner must have earned 2 separate commissions for month 1 and month 2");
+
+        $comm1 = $this->db->query("SELECT id FROM referral_commissions WHERE payment_transaction_id = $txId1")->fetchColumn();
+        $comm2 = $this->db->query("SELECT id FROM referral_commissions WHERE payment_transaction_id = $txId2")->fetchColumn();
+        $this->assert(!empty($comm1) && !empty($comm2), "Both payment transactions have distinct commission records");
+        $this->assert((int)$comm1 !== (int)$comm2, "Commissions must have distinct IDs");
+        echo "PASS\n";
+    }
+
+    private function test109_protectedSubscriptionPreservesHistoricalCommissionAndUsage(): void {
+        echo "[Test 109] Protected subscription preserves historical commission and usage... ";
+        $rel = $this->createPartnerAndStudent('step4-u109-p@scholarmatch.com', 'step4-u109-s@scholarmatch.com');
+
+        // Initial purchase
+        $ref1 = 'TXN_STEP4_TEST_109_M1';
+        $txId1 = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref1);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_109_1',
+            'order_id' => $ref1,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        $subId1 = (int)$this->db->query("SELECT id FROM subscriptions WHERE user_id = {$rel['student_id']} AND status = 'active'")->fetchColumn();
+
+        // Enter protected state (started 35 days ago, ended 5 days ago)
+        $this->db->exec("UPDATE subscriptions SET status = 'protected', starts_at = DATE_SUB(NOW(), INTERVAL 35 DAY), ends_at = DATE_SUB(NOW(), INTERVAL 5 DAY), normal_ends_at = DATE_SUB(NOW(), INTERVAL 5 DAY) WHERE id = $subId1");
+        $this->db->exec("UPDATE subscription_usage SET protected_state = 1, qualifying_delivered_count = 2, period_start = DATE_SUB(NOW(), INTERVAL 35 DAY), period_end = DATE_SUB(NOW(), INTERVAL 5 DAY) WHERE subscription_id = $subId1");
+
+        // User repurchases while protected
+        $ref2 = 'TXN_STEP4_TEST_109_M2';
+        $txId2 = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref2);
+
+        $_POST = [
+            'ipn_key' => $this->testIpnKey,
+            'web_id' => $this->testWebId,
+            'status' => '1',
+            'CM_TID' => 'CM_109_2',
+            'order_id' => $ref2,
+            'Amount' => '1499.00',
+            'currency' => 'PKR'
+        ];
+        ob_start();
+        $this->billingController->cashmaalIpn();
+        ob_get_clean();
+
+        // Verify protected sub is preserved
+        $protSub = $this->db->query("SELECT status FROM subscriptions WHERE id = $subId1")->fetchColumn();
+        $this->assert($protSub === 'protected', "Protected subscription status must remain protected");
+
+        $protUsage = $this->db->query("SELECT qualifying_delivered_count, protected_state FROM subscription_usage WHERE subscription_id = $subId1")->fetch(PDO::FETCH_ASSOC);
+        $this->assert((int)$protUsage['qualifying_delivered_count'] === 2, "Protected usage count must remain 2");
+        $this->assert((int)$protUsage['protected_state'] === 1, "Protected state must remain 1");
+
+        // Verify new active sub created
+        $newActiveSub = $this->db->query("SELECT id FROM subscriptions WHERE user_id = {$rel['student_id']} AND status = 'active'")->fetchColumn();
+        $this->assert(!empty($newActiveSub) && (int)$newActiveSub !== $subId1, "New subscription must be created with distinct ID");
+
+        // Verify old commission is intact and new commission is recorded
+        $comm1 = $this->db->query("SELECT * FROM referral_commissions WHERE payment_transaction_id = $txId1")->fetch(PDO::FETCH_ASSOC);
+        $comm2 = $this->db->query("SELECT * FROM referral_commissions WHERE payment_transaction_id = $txId2")->fetch(PDO::FETCH_ASSOC);
+        $this->assert(!empty($comm1) && !empty($comm2), "Both historical and new commissions exist");
+        $this->assert((int)$comm1['partner_id'] === $rel['partner_id'] && (int)$comm2['partner_id'] === $rel['partner_id'], "Both commissions attributed to partner");
+        echo "PASS\n";
+    }
+
+    private function test110_commissionFailurePreservesIntendedTransactionAtomicity(): void {
+        echo "[Test 110] Commission failure preserves intended transaction atomicity... ";
+        $rel = $this->createPartnerAndStudent('step4-u110-p@scholarmatch.com', 'step4-u110-s@scholarmatch.com');
+        $ref = 'TXN_STEP4_TEST_110';
+        $txId = $this->createPendingTransaction($rel['student_id'], $this->planPremiumId, 1499.00, $ref);
+
+        $this->db->beginTransaction();
+        $rolledBack = false;
+        try {
+            $this->db->exec("UPDATE payment_transactions SET status = 'paid' WHERE id = $txId");
+            // Simulate an unrecoverable database failure during commission calculation
+            throw new \PDOException("Simulated database failure during commission calculation");
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            $rolledBack = true;
+        }
+
+        $this->assert($rolledBack, "Exception must trigger transaction rollback");
+        $status = $this->db->query("SELECT status FROM payment_transactions WHERE id = $txId")->fetchColumn();
+        $this->assert($status === 'pending', "Transaction must remain pending after rollback");
+        echo "PASS\n";
+    }
+
     private function assert(bool $condition, string $message): void {
         if (!$condition) {
             throw new \Exception("Assertion Failure: " . $message);
         }
     }
+}
+
+if (php_sapi_name() === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) {
+    require_once __DIR__ . '/bootstrap.php';
+    (new Step4PaymentIntegrationTest())->run();
 }

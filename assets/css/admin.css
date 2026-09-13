@@ -57,6 +57,26 @@
     flex-shrink: 0;
 }
 
+.sidebar-brand img,
+.sidebar-brand-logo {
+    height: 36px;
+    width: auto;
+    max-width: 180px;
+    object-fit: contain;
+    flex-shrink: 0;
+    display: block;
+}
+
+.logo-box img,
+.logo-box-img {
+    height: 36px;
+    width: auto;
+    max-width: 180px;
+    object-fit: contain;
+    flex-shrink: 0;
+    display: block;
+}
+
 .sidebar-menu {
     flex-grow: 1;
     padding: 20px 12px;

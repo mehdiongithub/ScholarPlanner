@@ -41,6 +41,9 @@ require_once __DIR__ . '/ScholarshipMessageFormatterTest.php';
 require_once __DIR__ . '/ProductionCronAutomationTest.php';
 require_once __DIR__ . '/Step10LiveDeploymentTest.php';
 require_once __DIR__ . '/Step1SubscriptionProtectionTest.php';
+require_once __DIR__ . '/Step6SubscriptionProtectionLifecycleTest.php';
+require_once __DIR__ . '/Step7NotificationAutomationTest.php';
+require_once __DIR__ . '/Step8ProductionHardeningTest.php';
 
 $exitCode = 0;
 echo "========================================\n";
@@ -187,6 +190,18 @@ try {
     // 35. Step 1 Subscription Protection & Delivery Entitlements Verification
     $step1SubTest = new Step1SubscriptionProtectionTest();
     $step1SubTest->run();
+
+    // 36. Step 6 Subscription Protection Lifecycle & Delivered-Message Accounting Verification
+    $step6LifecycleTest = new Step6SubscriptionProtectionLifecycleTest();
+    $step6LifecycleTest->run();
+
+    // 37. Step 7 Production Notification Automation, Queue Worker & WACRM Delivery Verification
+    $step7AutoTest = new Step7NotificationAutomationTest();
+    $step7AutoTest->run();
+
+    // 38. Step 8 Production Automation Hardening, Message Formatting & Hostinger Master Cron
+    $step8AutoTest = new Step8ProductionHardeningTest();
+    $step8AutoTest->run();
     
     echo "========================================\n";
     echo "    ALL TEST SUITES PASSED OVERALL       \n";

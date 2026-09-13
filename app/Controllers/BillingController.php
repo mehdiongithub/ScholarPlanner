@@ -92,7 +92,19 @@ class BillingController {
         }
 
         $planSlug = trim($_POST['plan_slug'] ?? '');
-        $provider = trim($_POST['payment_provider'] ?? 'mock');
+        $selectedProvider = strtolower(trim($_POST['payment_provider'] ?? 'jazzcash'));
+
+        // Route JazzCash and Easypaisa wallets through CashMaal gateway
+        if ($selectedProvider === 'jazzcash' || $selectedProvider === 'easypaisa') {
+            $provider = 'cashmaal';
+            $payMethod = $selectedProvider;
+        } elseif ($selectedProvider === 'cashmaal') {
+            $provider = 'cashmaal';
+            $payMethod = '';
+        } else {
+            $provider = $selectedProvider;
+            $payMethod = '';
+        }
 
         $stmt = $this->db->prepare("SELECT * FROM subscription_plans WHERE slug = :slug AND status = 'active' LIMIT 1");
         $stmt->execute(['slug' => $planSlug]);
@@ -124,11 +136,11 @@ class BillingController {
 
             $stmtTx = $this->db->prepare("
                 INSERT INTO payment_transactions (
-                    user_id, subscription_id, plan_id, provider, transaction_reference, 
+                    user_id, subscription_id, plan_id, provider, payment_method, transaction_reference,
                     amount, original_amount, referral_discount_amount, discount_percent, 
                     referral_code_used, referral_partner_id, currency, status, created_at, updated_at
                 ) VALUES (
-                    :uid, :sub_id, :pid, :provider, :ref, 
+                    :uid, :sub_id, :pid, :provider, :payment_method, :ref,
                     :amount, :orig_amount, :disc_amount, :discount_percent, 
                     :referral_code_used, :partner_id, :currency, 'pending', NOW(), NOW()
                 )
@@ -138,6 +150,7 @@ class BillingController {
                 'sub_id' => $subId,
                 'pid' => $plan['id'],
                 'provider' => $provider,
+                'payment_method' => $payMethod ?: $selectedProvider,
                 'ref' => $ref,
                 'amount' => $finalAmount,
                 'orig_amount' => $originalAmount,
@@ -166,17 +179,47 @@ class BillingController {
         $_ENV['PAYMENT_PROVIDER'] = $provider;
         $gateway = PaymentService::gateway($provider);
 
-        $checkoutData = $gateway->createCheckout([
-            'user_id' => $userId,
-            'amount' => $finalAmount,
-            'currency' => $plan['currency'],
-            'email' => $_SESSION['user_email'] ?? '',
-            'callback_url' => url("/checkout/callback"),
-            'transaction_reference' => $ref,
-            'plan_name' => $plan['name']
-        ]);
+        $userEmail = $_SESSION['user_email'] ?? '';
+        if (empty($userEmail)) {
+            $user = Auth::currentUser();
+            $userEmail = $user['email'] ?? '';
+        }
+
+        $appUrl = rtrim($_ENV['APP_URL'] ?? 'http://localhost', '/');
+        $callbackUrl = (strpos(url('/checkout/callback'), 'http') === 0)
+            ? url('/checkout/callback')
+            : $appUrl . url('/checkout/callback');
+        $cancelUrl = (strpos(url('/pricing?cancelled=1'), 'http') === 0)
+            ? url('/pricing?cancelled=1')
+            : $appUrl . url('/pricing?cancelled=1');
+
+        $callbackSeparator = (strpos($callbackUrl, '?') === false) ? '?' : '&';
+        $callbackUrlWithRef = $callbackUrl . $callbackSeparator . 'ref=' . urlencode($ref);
+
+        try {
+            $checkoutData = $gateway->createCheckout([
+                'user_id' => $userId,
+                'amount' => $finalAmount,
+                'currency' => $plan['currency'],
+                'email' => $userEmail,
+                'callback_url' => $callbackUrlWithRef,
+                'cancel_url' => $cancelUrl,
+                'transaction_reference' => $ref,
+                'plan_name' => $plan['name'],
+                'pay_method' => $payMethod
+            ]);
+        } catch (Exception $e) {
+            $cleanMsg = \App\Services\Logger::redactSensitiveString($e->getMessage());
+            $this->redirect(url('/pricing?error=' . urlencode("Payment initiation failed: $cleanMsg")));
+            return;
+        }
 
         Auth::logAudit($userId, 'payment_created', 'billing', 'payment_transactions', 0, null, ['ref' => $ref]);
+
+        if ($provider === 'cashmaal' && !empty($checkoutData['post_data'])) {
+            $this->renderAutoPostForm($gateway->getPayUrl(), $checkoutData['post_data']);
+            return;
+        }
 
         $this->redirect($checkoutData['checkout_url']);
     }
@@ -192,7 +235,7 @@ class BillingController {
         }
 
         Auth::requireAuth();
-        $ref = trim($_GET['ref'] ?? $_GET['pp_TxnRefNo'] ?? $_GET['orderId'] ?? '');
+        $ref = trim($_GET['ref'] ?? $_GET['pp_TxnRefNo'] ?? $_GET['orderId'] ?? $_GET['order_id'] ?? $_POST['order_id'] ?? '');
         
         $stmt = $this->db->prepare("SELECT * FROM payment_transactions WHERE transaction_reference = :ref LIMIT 1");
         $stmt->execute(['ref' => $ref]);
@@ -246,8 +289,8 @@ class BillingController {
             if ($res['status'] === 'success') {
                 // Update transaction status
                 $stmtUpd = $this->db->prepare("
-                    UPDATE payment_transactions 
-                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = NOW(), updated_at = NOW() 
+                    UPDATE payment_transactions
+                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = COALESCE(paid_at, NOW()), updated_at = NOW()
                     WHERE id = :id
                 ");
                 $stmtUpd->execute([
@@ -484,8 +527,8 @@ class BillingController {
 
             if ($res['status'] === 'success') {
                 $stmtUpd = $this->db->prepare("
-                    UPDATE payment_transactions 
-                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = NOW(), updated_at = NOW() 
+                    UPDATE payment_transactions
+                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = COALESCE(paid_at, NOW()), updated_at = NOW()
                     WHERE id = :id
                 ");
                 $stmtUpd->execute([
@@ -645,7 +688,7 @@ class BillingController {
             }
 
             // 4. Idempotency Check: if already paid, return **OK** immediately without creating duplicates
-            if (in_array($tx['status'], ['paid', 'successful'])) {
+            if (in_array($tx['status'], ['paid', 'success'], true)) {
                 $this->db->commit();
                 echo '**OK**';
                 if (defined('TESTING_MODE') && TESTING_MODE) return;
@@ -716,8 +759,8 @@ class BillingController {
             // 7. Status check
             if ($res['status'] === 'success') {
                 $stmtUpd = $this->db->prepare("
-                    UPDATE payment_transactions 
-                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = NOW(), gateway_response_message = 'Verified via CashMaal IPN', updated_at = NOW() 
+                    UPDATE payment_transactions
+                    SET status = 'paid', provider_transaction_id = :ptx, paid_at = COALESCE(paid_at, NOW()), gateway_response_message = 'Verified via CashMaal IPN', updated_at = NOW()
                     WHERE id = :id
                 ");
                 $stmtUpd->execute([
@@ -1162,7 +1205,9 @@ class BillingController {
             </div>
         </body>
         </html>";
-        if (defined('TESTING_MODE') && TESTING_MODE) { return; }
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            throw new RuntimeException("Redirect to " . $url);
+        }
         exit();
     }
 }

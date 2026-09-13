@@ -24,21 +24,31 @@ class ReferralService {
 
     /**
      * Validate referral code format:
-     * Maximum 8 characters, letters and numbers only, no spaces or special characters.
+     * Exactly 3 to 8 characters, letters and numbers only, no whitespace (leading, trailing, or internal),
+     * and no special characters.
+     *
+     * Validates RAW input without prior trimming so that leading/trailing whitespace is rejected.
      */
     public static function validateCode(?string $code): bool {
-        if ($code === null) {
+        if ($code === null || $code === '') {
             return false;
         }
-        $trimmed = trim($code);
-        return (bool)preg_match('/^[A-Za-z0-9]{1,8}$/', $trimmed);
+        // Reject ANY whitespace (spaces, tabs, newlines, carriage returns) anywhere in the string
+        if (preg_match('/\s/', $code)) {
+            return false;
+        }
+        // Strict format validation on RAW input:
+        // Must be exactly 3 to 8 alphanumeric characters [A-Za-z0-9].
+        // /D modifier ensures $ matches only at the absolute end, never before trailing newline.
+        return (bool)preg_match('/^[A-Za-z0-9]{3,8}$/D', $code);
     }
 
     /**
-     * Normalize referral code: uppercase and trimmed.
+     * Normalize referral code: uppercase.
+     * Only to be called after format validation.
      */
     public static function normalizeCode(?string $code): string {
-        return strtoupper(trim((string)$code));
+        return strtoupper((string)$code);
     }
 
     /**
@@ -723,8 +733,8 @@ class ReferralService {
             return null;
         }
 
-        // Payment MUST be successful
-        if (!in_array($tx['status'], ['paid', 'success'], true)) {
+        // Payment MUST be successful and have authoritative paid_at settlement timestamp
+        if (!in_array($tx['status'], ['paid', 'success'], true) || empty($tx['paid_at'])) {
             return null;
         }
 
@@ -780,7 +790,7 @@ class ReferralService {
         }
 
         $attrEndStr = self::calculateAttributionExpiry($registeredAt, $windowMonths, $db);
-        $paymentDateStr = !empty($tx['paid_at']) ? $tx['paid_at'] : $tx['created_at'];
+        $paymentDateStr = $tx['paid_at'];
 
         $paymentTimestamp = strtotime($paymentDateStr);
         $attributionEndTimestamp = strtotime($attrEndStr);
@@ -832,7 +842,7 @@ class ReferralService {
         $commPctStr = sprintf('%d.%02d', intdiv($commPctBps, 100), $commPctBps % 100);
         $baseAmountStr = sprintf('%d.%02d', intdiv($baseMinor, 100), $baseMinor % 100);
 
-        $paymentDateStr = date('Y-m-d H:i:s', $paymentTimestamp);
+        $paymentDateStr = $tx['paid_at'];
         $attrStartStr = date('Y-m-d H:i:s', strtotime($registeredAt));
         $attrEndStr = date('Y-m-d H:i:s', $attributionEndTimestamp);
 
@@ -936,29 +946,46 @@ class ReferralService {
         $stmtPaidUsers->execute(['pid' => $partnerId, 'pid2' => $partnerId]);
         $totalPaidUsers = (int)$stmtPaidUsers->fetchColumn();
 
-        // 3. Current-month paid users & payments
+        $dt = \DateTimeImmutable::createFromFormat('!Y-m', $targetMonth);
+        if (!$dt) {
+            $dt = new \DateTimeImmutable(date('Y-m-01 00:00:00'));
+        }
+        $monthStart = $dt->format('Y-m-01 00:00:00');
+        $nextMonthStart = $dt->modify('+1 month')->format('Y-m-01 00:00:00');
+
+        // 3. Current-month paid users & payments (canonical paid_at date boundaries)
         $stmtMonth = $db->prepare("
             SELECT COUNT(DISTINCT pt.user_id) AS month_users, COUNT(pt.id) AS month_payments
             FROM payment_transactions pt
             JOIN users u ON pt.user_id = u.id
             WHERE (pt.referral_partner_id = :pid OR (pt.referral_partner_id IS NULL AND u.referral_partner_id = :pid2))
               AND pt.status IN ('paid', 'success')
-              AND DATE_FORMAT(COALESCE(pt.paid_at, pt.created_at), '%Y-%m') = :month
+              AND pt.paid_at IS NOT NULL
+              AND pt.paid_at >= :month_start AND pt.paid_at < :next_month_start
         ");
-        $stmtMonth->execute(['pid' => $partnerId, 'pid2' => $partnerId, 'month' => $targetMonth]);
+        $stmtMonth->execute([
+            'pid' => $partnerId,
+            'pid2' => $partnerId,
+            'month_start' => $monthStart,
+            'next_month_start' => $nextMonthStart
+        ]);
         $monthStats = $stmtMonth->fetch(PDO::FETCH_ASSOC);
 
         $curMonthPaidUsers = (int)($monthStats['month_users'] ?? 0);
         $curMonthPayments = (int)($monthStats['month_payments'] ?? 0);
 
-        // 4. Current-month commission from referral_commissions
+        // 4. Current-month commission from referral_commissions (canonical payment_date boundaries)
         $stmtMonthComm = $db->prepare("
             SELECT COALESCE(SUM(commission_amount), 0.00) 
             FROM referral_commissions 
             WHERE partner_id = :pid 
-              AND DATE_FORMAT(payment_date, '%Y-%m') = :month
+              AND payment_date >= :month_start AND payment_date < :next_month_start
         ");
-        $stmtMonthComm->execute(['pid' => $partnerId, 'month' => $targetMonth]);
+        $stmtMonthComm->execute([
+            'pid' => $partnerId,
+            'month_start' => $monthStart,
+            'next_month_start' => $nextMonthStart
+        ]);
         $rawMonthComm = (string)$stmtMonthComm->fetchColumn();
         $monthCommMinor = PaymentService::normalizeToMinorUnits($rawMonthComm !== '' ? $rawMonthComm : '0.00', 2) ?? 0;
         $curMonthCommission = sprintf('%d.%02d', intdiv($monthCommMinor, 100), $monthCommMinor % 100);
@@ -995,16 +1022,29 @@ class ReferralService {
         $db = $db ?? Database::connection();
         $offset = max(0, ($page - 1) * $perPage);
 
-        // Count total matching payments
+        $dt = \DateTimeImmutable::createFromFormat('!Y-m', $month);
+        if (!$dt) {
+            $dt = new \DateTimeImmutable(date('Y-m-01 00:00:00'));
+        }
+        $monthStart = $dt->format('Y-m-01 00:00:00');
+        $nextMonthStart = $dt->modify('+1 month')->format('Y-m-01 00:00:00');
+
+        // Count total matching payments (canonical paid_at date boundaries)
         $stmtCount = $db->prepare("
             SELECT COUNT(pt.id)
             FROM payment_transactions pt
             JOIN users u ON pt.user_id = u.id
             WHERE (pt.referral_partner_id = :pid OR (pt.referral_partner_id IS NULL AND u.referral_partner_id = :pid2))
               AND pt.status IN ('paid', 'success')
-              AND DATE_FORMAT(COALESCE(pt.paid_at, pt.created_at), '%Y-%m') = :month
+              AND pt.paid_at IS NOT NULL
+              AND pt.paid_at >= :month_start AND pt.paid_at < :next_month_start
         ");
-        $stmtCount->execute(['pid' => $partnerId, 'pid2' => $partnerId, 'month' => $month]);
+        $stmtCount->execute([
+            'pid' => $partnerId,
+            'pid2' => $partnerId,
+            'month_start' => $monthStart,
+            'next_month_start' => $nextMonthStart
+        ]);
         $totalItems = (int)$stmtCount->fetchColumn();
 
         // Fetch records
@@ -1035,13 +1075,15 @@ class ReferralService {
             LEFT JOIN referral_commissions rc ON pt.id = rc.payment_transaction_id
             WHERE (pt.referral_partner_id = :pid OR (pt.referral_partner_id IS NULL AND u.referral_partner_id = :pid2))
               AND pt.status IN ('paid', 'success')
-              AND DATE_FORMAT(COALESCE(pt.paid_at, pt.created_at), '%Y-%m') = :month
-            ORDER BY COALESCE(pt.paid_at, pt.created_at) DESC
+              AND pt.paid_at IS NOT NULL
+              AND pt.paid_at >= :month_start AND pt.paid_at < :next_month_start
+            ORDER BY pt.paid_at DESC
             LIMIT :limit OFFSET :offset
         ");
         $stmt->bindValue(':pid', $partnerId, PDO::PARAM_INT);
         $stmt->bindValue(':pid2', $partnerId, PDO::PARAM_INT);
-        $stmt->bindValue(':month', $month, PDO::PARAM_STR);
+        $stmt->bindValue(':month_start', $monthStart, PDO::PARAM_STR);
+        $stmt->bindValue(':next_month_start', $nextMonthStart, PDO::PARAM_STR);
         $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
@@ -1054,11 +1096,11 @@ class ReferralService {
         // Decorate with attribution status, display name, and active subscription status
         foreach ($records as &$rec) {
             $rec['display_name'] = trim(($rec['first_name'] ?? '') . ' ' . ($rec['last_name'] ?? '')) ?: ($rec['email'] ?? 'Referred User');
-            $rec['payment_date'] = !empty($rec['paid_at']) ? $rec['paid_at'] : $rec['payment_created_at'];
+            $rec['payment_date'] = $rec['paid_at'];
             $rec['status'] = !empty($rec['commission_id']) ? 'earned' : 'paid';
 
             $attrEndStr = self::calculateAttributionExpiry($rec['user_registered_at'], $windowMonths, $db);
-            $paymentTimestamp = !empty($rec['paid_at']) ? strtotime($rec['paid_at']) : strtotime($rec['payment_created_at']);
+            $paymentTimestamp = strtotime($rec['paid_at']);
             $attrEndTimestamp = strtotime($attrEndStr);
 
             $rec['is_attribution_active'] = ($paymentTimestamp <= $attrEndTimestamp);

@@ -53,7 +53,16 @@ function closeMenu() {
     mobileMenuBtn.focus();
 }
 
-if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', openMenu);
+function toggleMenu() {
+    if (!mobileMenu || !mobileMenuOverlay || !mobileMenuBtn) return;
+    if (mobileMenu.classList.contains('active')) {
+        closeMenu();
+    } else {
+        openMenu();
+    }
+}
+
+if (mobileMenuBtn) mobileMenuBtn.addEventListener('click', toggleMenu);
 if (mobileMenuClose) mobileMenuClose.addEventListener('click', closeMenu);
 if (mobileMenuOverlay) mobileMenuOverlay.addEventListener('click', closeMenu);
 

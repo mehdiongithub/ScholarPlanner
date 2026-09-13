@@ -19,7 +19,7 @@ class SubscriptionService {
         'active' => ['past_due', 'cancelled', 'expired', 'protected'],
         'protected' => ['expired', 'active', 'cancelled'],
         'past_due' => ['active', 'cancelled', 'expired'],
-        'cancelled' => ['expired', 'active', 'protected'],
+        'cancelled' => ['expired', 'active'],
         'expired' => ['active'],
         'failed' => ['pending']
     ];
@@ -604,6 +604,73 @@ class SubscriptionService {
 
                 $deliveredCount = self::countQualifyingDeliveredMessages($subId, $db);
 
+                // Voluntarily cancelled subscriptions never qualify for minimum-delivery protection.
+                // Upon reaching nominal expiry (ends_at <= NOW()), they transition directly to expired.
+                if ($lockedSub['status'] === 'cancelled') {
+                    $stmtExp = $db->prepare("
+                        UPDATE subscriptions
+                        SET status = 'expired',
+                            final_expired_at = NOW(),
+                            expiry_reason = 'cancelled_completion',
+                            updated_at = NOW()
+                        WHERE id = :id
+                    ");
+                    $stmtExp->execute(['id' => $subId]);
+
+                    self::syncSubscriptionUsage($subId, $db);
+
+                    // Fetch user details for notification
+                    $stmtUser = $db->prepare("SELECT id, email, first_name, last_name FROM users WHERE id = :id LIMIT 1");
+                    $stmtUser->execute(['id' => $userId]);
+                    $user = $stmtUser->fetch(PDO::FETCH_ASSOC);
+
+                    if ($user && !empty($user['email'])) {
+                        $userName = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: 'Scholar';
+                        $subject = "Your ScholarPlanner Subscription Has Ended";
+                        $bodySummary = "Hello {$userName},\n\n"
+                            . "Your cancelled ScholarPlanner subscription has reached the end of its billing period and is now expired.\n\n"
+                            . "Visit your subscription page to choose a plan and continue your scholarship journey.";
+
+                        $queueService->enqueue(
+                            $userId,
+                            null,
+                            'SUBSCRIPTION_EXPIRED',
+                            'email',
+                            $user['email'],
+                            $subject,
+                            [
+                                'summary' => $bodySummary,
+                                'detail_url' => url('/pricing'),
+                                'user_name' => $userName,
+                                'subscription_id' => $subId
+                            ],
+                            "sub_expired_alert_{$subId}",
+                            null,
+                            $subId
+                        );
+                    }
+
+                    Auth::logAudit(
+                        $userId,
+                        'subscription_expired',
+                        'subscriptions',
+                        'subscriptions',
+                        $subId,
+                        null,
+                        [
+                            'normal_ends_at' => $lockedSub['normal_ends_at'] ?: $lockedSub['ends_at'],
+                            'final_expired_at' => date('Y-m-d H:i:s'),
+                            'qualifying_delivered' => $deliveredCount,
+                            'minimum_required' => $minRequired,
+                            'reason' => 'cancelled_completion'
+                        ]
+                    );
+
+                    $db->commit();
+                    $metrics['expired']++;
+                    continue;
+                }
+
                 if ($deliveredCount < $minRequired) {
                     // DEFICIT: Subscription remains protected!
                     if ($lockedSub['status'] !== 'protected') {
@@ -633,11 +700,11 @@ class SubscriptionService {
                     // SATISFIED (count >= minRequired): Transition to expired
                     $reason = ($lockedSub['status'] === 'protected') ? 'minimum_delivery_satisfied' : 'normal_completion';
                     $stmtExp = $db->prepare("
-                        UPDATE subscriptions 
-                        SET status = 'expired', 
-                            final_expired_at = NOW(), 
-                            expiry_reason = :reason, 
-                            updated_at = NOW() 
+                        UPDATE subscriptions
+                        SET status = 'expired',
+                            final_expired_at = NOW(),
+                            expiry_reason = :reason,
+                            updated_at = NOW()
                         WHERE id = :id
                     ");
                     $stmtExp->execute([

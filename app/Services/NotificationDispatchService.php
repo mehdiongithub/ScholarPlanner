@@ -460,7 +460,7 @@ class NotificationDispatchService {
         // Map read to delivered for notification_logs status
         $dbStatus = ($normalizedStatus === 'read') ? 'delivered' : (($normalizedStatus === 'undelivered') ? 'failed' : $normalizedStatus);
 
-        $stmtFind = $this->db->prepare("SELECT id, status, provider_message_id FROM notification_logs WHERE provider_message_id = :msg_id LIMIT 1 FOR UPDATE");
+        $stmtFind = $this->db->prepare("SELECT id, user_id, subscription_id, status, provider_message_id FROM notification_logs WHERE provider_message_id = :msg_id LIMIT 1 FOR UPDATE");
         
         $openedTx = false;
         if (!$this->db->inTransaction()) {
@@ -515,6 +515,20 @@ class NotificationDispatchService {
                     WHERE id = :id
                 ");
                 $stmtUpdate->execute(['id' => $id, 'delivered_at' => $deliveredAt]);
+
+                // Synchronize subscription usage accounting
+                $subId = !empty($record['subscription_id']) ? (int)$record['subscription_id'] : null;
+                if (!$subId && !empty($record['user_id'])) {
+                    $stmtFindSub = $this->db->prepare("SELECT id FROM subscriptions WHERE user_id = :uid AND status IN ('active', 'protected') ORDER BY id DESC LIMIT 1");
+                    $stmtFindSub->execute(['uid' => $record['user_id']]);
+                    $foundSubId = $stmtFindSub->fetchColumn();
+                    if ($foundSubId) {
+                        $subId = (int)$foundSubId;
+                    }
+                }
+                if ($subId) {
+                    SubscriptionService::syncSubscriptionUsage($subId, $this->db);
+                }
             } elseif ($dbStatus === 'failed') {
                 $stmtUpdate = $this->db->prepare("
                     UPDATE notification_logs 

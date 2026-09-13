@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 36" fill="none">
+  <rect x="2" y="3" width="30" height="30" rx="7" fill="#ED1C24" />
+  <circle cx="22" cy="9" r="3.5" fill="#FFC20E" />
+  <path d="M12 12h6v8a5 5 0 0 1-5 5h-1a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1h1a2 2 0 0 0 2-2v-9z" fill="#FFFFFF" />
+  <text x="38" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="900" fill="#ED1C24" letter-spacing="-0.5">Jazz</text>
+  <text x="82" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="19" font-weight="700" fill="#1C1917" letter-spacing="-0.5">cash</text>
+</svg>

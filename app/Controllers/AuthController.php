@@ -34,8 +34,11 @@ class AuthController {
         }
 
         $old = [];
-        if (!empty($_GET['ref'])) {
-            $old['referral_code'] = trim($_GET['ref']);
+        if (isset($_GET['ref'])) {
+            $rawRef = (string)$_GET['ref'];
+            if (\App\Services\ReferralService::validateCode($rawRef)) {
+                $old['referral_code'] = \App\Services\ReferralService::normalizeCode($rawRef);
+            }
         }
 
         view('auth.register', [
@@ -65,7 +68,7 @@ class AuthController {
         $password = $_POST['password'] ?? '';
         $confirmPassword = $_POST['confirm_password'] ?? '';
         $terms = isset($_POST['terms']) ? 1 : 0;
-        $referralCode = trim($_POST['referral_code'] ?? '');
+        $referralCode = isset($_POST['referral_code']) ? (string)$_POST['referral_code'] : '';
 
         // Validation checks
         if (empty($firstName)) $errors['first_name'] = "First name is required.";
@@ -108,7 +111,7 @@ class AuthController {
         // Validate Referral Code if provided
         $partnerId = null;
         $validRefCode = null;
-        if (!empty($referralCode)) {
+        if ($referralCode !== '') {
             $partner = \App\Services\ReferralService::findPartnerByCode($referralCode, $db);
             if ($partner) {
                 // Self-referral prevention: partner cannot refer their own registration/email

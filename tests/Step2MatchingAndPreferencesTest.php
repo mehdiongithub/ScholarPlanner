@@ -1402,3 +1402,8 @@ class Step2MatchingAndPreferencesTest {
         }
     }
 }
+
+if (php_sapi_name() === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) {
+    require_once __DIR__ . '/bootstrap.php';
+    (new Step2MatchingAndPreferencesTest())->run();
+}

@@ -72,16 +72,30 @@ class CashMaalPaymentGateway implements PaymentGatewayInterface {
 
         $currency = strtoupper(trim((string)($data['currency'] ?? $this->currency)));
         $email = trim((string)($data['email'] ?? ''));
+        if (empty($email)) {
+            $email = trim((string)($_SESSION['user_email'] ?? 'customer@scholarplanner.com'));
+        }
+
+        $appUrl = rtrim($_ENV['APP_URL'] ?? 'http://localhost', '/');
         $callbackUrl = $data['callback_url'] ?? url('/checkout/callback');
+        if (strpos($callbackUrl, 'http://') !== 0 && strpos($callbackUrl, 'https://') !== 0) {
+            $callbackUrl = $appUrl . '/' . ltrim($callbackUrl, '/');
+        }
+
         $cancelUrl = $data['cancel_url'] ?? url('/pricing?cancelled=1');
+        if (strpos($cancelUrl, 'http://') !== 0 && strpos($cancelUrl, 'https://') !== 0) {
+            $cancelUrl = $appUrl . '/' . ltrim($cancelUrl, '/');
+        }
+
         $addiInfo = trim((string)($data['plan_name'] ?? 'ScholarPlanner Subscription'));
 
         // CashMaal pay parameters
         $postData = [
-            'pay_method' => '',
+            'pay_method' => trim((string)($data['pay_method'] ?? '')),
             'amount' => $amount,
             'currency' => $currency,
             'succes_url' => $callbackUrl,
+            'success_url' => $callbackUrl,
             'cancel_url' => $cancelUrl,
             'client_email' => $email,
             'web_id' => $this->webId,

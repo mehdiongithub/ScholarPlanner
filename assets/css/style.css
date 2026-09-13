@@ -274,6 +274,56 @@
             height: 18px;
         }
 
+        .logo-img {
+            height: 46px;
+            width: auto;
+            max-width: 220px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+            transition: height 200ms ease;
+        }
+
+        .header.scrolled .logo-img {
+            height: 38px;
+        }
+
+        @media (max-width: 768px) {
+            .logo-img {
+                height: 38px;
+                max-width: 170px;
+            }
+        }
+
+        .auth-logo-img {
+            height: 48px;
+            width: auto;
+            max-width: 220px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+            flex-shrink: 0;
+        }
+
+        .logo-box img,
+        .logo-box-img {
+            height: 36px;
+            width: auto;
+            max-width: 180px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+        }
+
+        .footer-logo-img {
+            height: 38px;
+            width: auto;
+            max-width: 170px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+        }
+
         .logo-text {
             font-size: 1.125rem;
             font-weight: 600;
@@ -413,38 +463,90 @@
             background: var(--bg-50);
         }
 
+        .mobile-menu-body,
         .mobile-menu-nav {
-            padding: 12px 16px;
+            padding: 24px 20px;
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
         }
 
+        .mobile-menu-body > a:not(.btn):not(.btn-login),
         .mobile-menu-nav a {
             display: flex;
             align-items: center;
-            padding: 12px 12px;
-            font-size: 0.9375rem;
-            font-weight: 450;
-            color: var(--text-700);
-            border-radius: var(--radius-sm);
-            transition: all 150ms ease;
-        }
-
-        .mobile-menu-nav a:hover {
-            background: var(--bg-50);
-            color: var(--text-900);
-        }
-
-        .mobile-menu-footer {
-            padding: 16px 20px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            flex-shrink: 0;
-        }
-
-        .mobile-menu-footer .btn {
+            justify-content: center;
             width: 100%;
+            padding: 12px 16px;
+            font-size: 1.0625rem;
+            font-weight: 500;
+            color: var(--text-700);
+            border-radius: var(--radius-md);
+            text-align: center;
+            transition: all 200ms ease;
+            text-decoration: none;
+        }
+
+        .mobile-menu-body > a:not(.btn):not(.btn-login):hover,
+        .mobile-menu-body > a:not(.btn):not(.btn-login):focus,
+        .mobile-menu-nav a:hover {
+            background: var(--primary-50, #eff6ff);
+            color: var(--primary, #2563eb);
+            transform: translateY(-1px);
+        }
+
+        .mobile-menu-body hr {
+            width: 100%;
+            border: 0;
+            border-top: 1px solid var(--border);
+            margin: 16px 0;
+        }
+
+        .mobile-menu-body .btn-login {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-800);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            margin-bottom: 8px;
+            transition: all 200ms ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .mobile-menu-body .btn-login:hover {
+            background: var(--bg-100, #f1f5f9);
+            color: var(--text-900);
+            border-color: var(--border-hover, #cbd5e1);
+        }
+
+        .mobile-menu-body .btn-primary,
+        .mobile-menu-footer .btn {
+            display: flex;
+            width: 100%;
+            justify-content: center;
+            align-items: center;
+            padding: 12px 16px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            text-align: center;
+            border-radius: var(--radius-md);
+            transition: all 200ms ease;
+        }
+
+        .mobile-menu-body .btn-primary:hover,
+        .mobile-menu-footer .btn:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
         }
 
         /* Body scroll lock */

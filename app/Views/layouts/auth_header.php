@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= e($title ?? 'Sign In') ?> | ScholarMatch</title>
+    <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -47,10 +49,13 @@
             align-items: center;
             justify-content: center;
         }
-        .auth-logo .logo-text {
-            font-size: 1.5rem;
-            font-weight: 700;
-            letter-spacing: -0.025em;
+        .auth-logo-img {
+            height: 48px;
+            width: auto;
+            max-width: 220px;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
         }
         .auth-title {
             font-size: 1.5rem;
@@ -183,10 +188,7 @@
 <div class="auth-wrapper">
     <div class="auth-card">
         <a href="<?= url('/') ?>" class="auth-logo" aria-label="ScholarMatch Home">
-            <div class="logo-icon">
-                <i data-lucide="graduation-cap"></i>
-            </div>
-            <span class="logo-text">ScholarMatch</span>
+            <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="auth-logo-img">
         </a>
         
         <h1 class="auth-title"><?= e($title ?? 'Welcome Back') ?></h1>

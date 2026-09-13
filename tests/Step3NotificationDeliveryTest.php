@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/bootstrap.php';
+
 use App\Services\Database;
 use App\Services\Auth;
 use App\Helpers\Security;
@@ -1162,4 +1164,9 @@ class Step3NotificationDeliveryTest {
             throw new \Exception("Assertion Failure: " . $message);
         }
     }
+}
+
+if (php_sapi_name() === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) {
+    require_once __DIR__ . '/bootstrap.php';
+    (new Step3NotificationDeliveryTest())->run();
 }

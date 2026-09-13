@@ -169,12 +169,12 @@ class NotificationService {
         // Check lifetime 25-message cap on scholarship WhatsApp with explicit whitelist
         if ($whatsappPossible && !$isTransactional) {
             $cntStmt = $this->db->prepare("
-                SELECT COUNT(*) FROM notification_logs 
-                WHERE user_id = :uid 
-                  AND channel = 'whatsapp' 
-                  AND status = 'sent' 
+                SELECT COUNT(*) FROM notification_logs
+                WHERE user_id = :uid
+                  AND channel = 'whatsapp'
+                  AND status IN ('sent', 'delivered')
                   AND notification_type IN (
-                      'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON', 
+                      'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON',
                       'SCHOLARSHIP_DEADLINE_TODAY', 'DAILY_MATCH_DIGEST', 'WEEKLY_MATCH_DIGEST'
                   )
             ");
@@ -498,12 +498,12 @@ class NotificationService {
 
             // Lifetime 25-message limit check using explicit whitelist
             $cntStmt = $this->db->prepare("
-                SELECT COUNT(*) FROM notification_logs 
-                WHERE user_id = :uid 
-                  AND channel = 'whatsapp' 
-                  AND status = 'sent' 
+                SELECT COUNT(*) FROM notification_logs
+                WHERE user_id = :uid
+                  AND channel = 'whatsapp'
+                  AND status IN ('sent', 'delivered')
                   AND notification_type IN (
-                      'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON', 
+                      'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON',
                       'SCHOLARSHIP_DEADLINE_TODAY', 'DAILY_MATCH_DIGEST', 'WEEKLY_MATCH_DIGEST'
                   )
             ");
@@ -587,7 +587,7 @@ class NotificationService {
                 $availableAt = $cutoffPkt->format('Y-m-d H:i:s');
 
                 $activePlan = \App\Services\SubscriptionService::getActivePlan($userId);
-                $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected'], true)) ? (int)$activePlan['id'] : null;
+                $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected', 'cancelled'], true)) ? (int)$activePlan['id'] : null;
 
                 $stmtIns = $this->db->prepare("
                     INSERT INTO notification_logs (

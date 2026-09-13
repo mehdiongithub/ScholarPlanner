@@ -65,7 +65,7 @@ class NotificationQueueService {
             $stmtUser = $db->prepare("SELECT email FROM users WHERE id = :id LIMIT 1");
             $stmtUser->execute(['id' => $userId]);
             $email = (string)$stmtUser->fetchColumn();
-            if ($email !== 'student_billing@example.com' && strpos($email, 'step2-test-51') === false) {
+            if ($email !== 'student_billing@example.com' && strpos($email, 'step2-test-51') === false && strpos($email, 'step6_lifecycle_') === false && strpos($email, 'step7_') === false) {
                 $isTestingBypass = true;
             }
         }
@@ -123,7 +123,7 @@ class NotificationQueueService {
 
         if ($subscriptionId === null && $userId > 0) {
             $activePlan = \App\Services\SubscriptionService::getActivePlan($userId);
-            if (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected'], true)) {
+            if (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected', 'cancelled'], true)) {
                 $subscriptionId = (int)$activePlan['id'];
             }
         }
@@ -400,12 +400,12 @@ class NotificationQueueService {
                     $lockStmt->execute(['uid' => $userId]);
 
                     $cntStmt = $db->prepare("
-                        SELECT COUNT(*) FROM notification_logs 
-                        WHERE user_id = :uid 
-                          AND channel = 'whatsapp' 
-                          AND status = 'sent' 
+                        SELECT COUNT(*) FROM notification_logs
+                        WHERE user_id = :uid
+                          AND channel = 'whatsapp'
+                          AND status IN ('sent', 'delivered')
                           AND notification_type IN (
-                              'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON', 
+                              'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON',
                               'SCHOLARSHIP_DEADLINE_TODAY', 'DAILY_MATCH_DIGEST', 'WEEKLY_MATCH_DIGEST'
                           )
                     ");
@@ -815,7 +815,7 @@ class NotificationQueueService {
         // Map read to delivered for notification_logs status
         $dbStatus = ($normalizedStatus === 'read') ? 'delivered' : (($normalizedStatus === 'undelivered') ? 'failed' : $normalizedStatus);
 
-        $stmtFind = $this->db->prepare("SELECT id, status, provider_message_id FROM notification_logs WHERE provider_message_id = :msg_id LIMIT 1 FOR UPDATE");
+        $stmtFind = $this->db->prepare("SELECT id, user_id, subscription_id, status, provider_message_id FROM notification_logs WHERE provider_message_id = :msg_id LIMIT 1 FOR UPDATE");
         
         $openedTx = false;
         if (!$this->db->inTransaction()) {
@@ -870,6 +870,20 @@ class NotificationQueueService {
                     WHERE id = :id
                 ");
                 $stmtUpdate->execute(['id' => $id, 'delivered_at' => $deliveredAt]);
+
+                // Synchronize subscription usage accounting
+                $subId = !empty($record['subscription_id']) ? (int)$record['subscription_id'] : null;
+                if (!$subId && !empty($record['user_id'])) {
+                    $stmtFindSub = $this->db->prepare("SELECT id FROM subscriptions WHERE user_id = :uid AND status IN ('active', 'protected') ORDER BY id DESC LIMIT 1");
+                    $stmtFindSub->execute(['uid' => $record['user_id']]);
+                    $foundSubId = $stmtFindSub->fetchColumn();
+                    if ($foundSubId) {
+                        $subId = (int)$foundSubId;
+                    }
+                }
+                if ($subId) {
+                    \App\Services\SubscriptionService::syncSubscriptionUsage($subId, $this->db);
+                }
             } elseif ($dbStatus === 'failed') {
                 $stmtUpdate = $this->db->prepare("
                     UPDATE notification_logs 

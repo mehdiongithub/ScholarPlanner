@@ -98,6 +98,7 @@ class NotificationController {
                 SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
                 SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) as processing,
                 SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) as sent,
+                SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END) as delivered,
                 SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed,
                 SUM(CASE WHEN status='retrying' THEN 1 ELSE 0 END) as retrying,
                 SUM(CASE WHEN status='skipped' THEN 1 ELSE 0 END) as skipped,
@@ -261,6 +262,122 @@ class NotificationController {
         if (!headers_sent()) {
             header("Location: " . url("/admin/notifications"));
         }
+        exit();
+    }
+
+    /**
+     * POST /api/notifications/wacrm/webhook
+     * Webhook ingestion endpoint for external WACRM / Meta WhatsApp delivery status callbacks
+     */
+    public function wacrmWebhook(): void {
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
+
+        $rawBody = file_get_contents('php://input');
+        $payload = json_decode($rawBody, true);
+        if (!$payload && !empty($_POST)) {
+            $payload = $_POST;
+        }
+
+        if (empty($payload) || !is_array($payload)) {
+            if (!headers_sent()) {
+                http_response_code(400);
+            }
+            echo json_encode(['status' => 'error', 'message' => 'Empty or invalid JSON payload']);
+            if (defined('TESTING_MODE') && TESTING_MODE) { return; }
+            exit();
+        }
+
+        $queueService = new NotificationQueueService();
+        $processed = 0;
+        $results = [];
+
+        // Support both Meta WhatsApp Business API webhook structure and flattened/WACRM payload
+        $statusUpdates = [];
+        if (!empty($payload['entry']) && is_array($payload['entry'])) {
+            foreach ($payload['entry'] as $entry) {
+                if (!empty($entry['changes']) && is_array($entry['changes'])) {
+                    foreach ($entry['changes'] as $change) {
+                        $statuses = $change['value']['statuses'] ?? [];
+                        if (is_array($statuses)) {
+                            foreach ($statuses as $st) {
+                                $statusUpdates[] = [
+                                    'message_id' => $st['id'] ?? '',
+                                    'status' => $st['status'] ?? '',
+                                    'timestamp' => isset($st['timestamp']) ? date('Y-m-d H:i:s', (int)$st['timestamp']) : null,
+                                    'error' => isset($st['errors'][0]['message']) ? $st['errors'][0]['message'] : null
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        } elseif (!empty($payload['statuses']) && is_array($payload['statuses'])) {
+            foreach ($payload['statuses'] as $st) {
+                $statusUpdates[] = [
+                    'message_id' => $st['id'] ?? ($st['message_id'] ?? ''),
+                    'status' => $st['status'] ?? '',
+                    'timestamp' => $st['timestamp'] ?? null,
+                    'error' => $st['error'] ?? null
+                ];
+            }
+        } else {
+            // Flattened single callback
+            $msgId = $payload['provider_message_id'] ?? ($payload['message_id'] ?? ($payload['id'] ?? ($payload['wamid'] ?? '')));
+            $status = $payload['status'] ?? '';
+            $timestamp = $payload['timestamp'] ?? ($payload['delivered_at'] ?? null);
+            $error = $payload['error'] ?? ($payload['error_message'] ?? null);
+
+            if (!empty($msgId) && !empty($status)) {
+                $statusUpdates[] = [
+                    'message_id' => $msgId,
+                    'status' => $status,
+                    'timestamp' => $timestamp,
+                    'error' => $error
+                ];
+            }
+        }
+
+        if (empty($statusUpdates)) {
+            if (!headers_sent()) {
+                http_response_code(422);
+            }
+            echo json_encode(['status' => 'error', 'message' => 'No valid status records found in payload']);
+            if (defined('TESTING_MODE') && TESTING_MODE) { return; }
+            exit();
+        }
+
+        foreach ($statusUpdates as $update) {
+            $msgId = trim((string)$update['message_id']);
+            $st = trim((string)$update['status']);
+            $ts = $update['timestamp'] ?? null;
+            $err = $update['error'] ?? null;
+
+            if ($msgId === '' || $st === '') {
+                continue;
+            }
+
+            $res = $queueService->recordDeliveryStatus($msgId, $st, $ts, $err);
+            $results[] = [
+                'message_id' => $msgId,
+                'status' => $st,
+                'result' => $res
+            ];
+            if (!empty($res['success'])) {
+                $processed++;
+            }
+        }
+
+        if (!headers_sent()) {
+            http_response_code(200);
+        }
+        echo json_encode([
+            'status' => 'success',
+            'processed' => $processed,
+            'details' => $results
+        ]);
+        if (defined('TESTING_MODE') && TESTING_MODE) { return; }
         exit();
     }
 }

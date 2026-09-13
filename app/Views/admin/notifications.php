@@ -130,6 +130,7 @@
         .status-pending { background: #fef3c7; color: #92400e; }
         .status-processing { background: #e0f2fe; color: #0369a1; }
         .status-sent { background: #d1fae5; color: #065f46; }
+        .status-delivered { background: #bbf7d0; color: #166534; }
         .status-failed { background: #fee2e2; color: #991b1b; }
         .status-retrying { background: #f3e8ff; color: #6b21a8; }
         .status-skipped { background: #e2e8f0; color: #475569; }
@@ -194,6 +195,10 @@
                 <div class="metric-card">
                     <div class="metric-label">Sent</div>
                     <div class="metric-value" style="color:#047857;"><?= (int)($summary['sent'] ?? 0) ?></div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Delivered</div>
+                    <div class="metric-value" style="color:#166534;"><?= (int)($summary['delivered'] ?? 0) ?></div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-label">Failed</div>

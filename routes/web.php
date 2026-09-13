@@ -121,6 +121,8 @@ $router->get('/admin/notifications', ['App\Controllers\NotificationController', 
 $router->get('/admin/notifications/{id}', ['App\Controllers\NotificationController', 'show']);
 $router->post('/admin/notifications/{id}/retry', ['App\Controllers\NotificationController', 'retry']);
 $router->post('/admin/notifications/providers/test', ['App\Controllers\NotificationController', 'testProvider']);
+$router->post('/api/notifications/wacrm/webhook', ['App\Controllers\NotificationController', 'wacrmWebhook']);
+$router->post('/api/notifications/webhook', ['App\Controllers\NotificationController', 'wacrmWebhook']);
 
 // Document Management Routes
 $router->get('/documents', ['App\Controllers\DocumentController', 'index']);

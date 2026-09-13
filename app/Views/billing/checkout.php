@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Checkout | ScholarMatch</title>
+    <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -110,14 +112,38 @@
         .method-label {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             font-weight: 600;
             color: var(--text-800);
             cursor: pointer;
             width: 100%;
         }
-        .method-label span {
+        .method-card:has(input[type="radio"]:checked) {
+            border-color: var(--primary);
+            background: #f0fdf4;
+            box-shadow: 0 0 0 1px var(--primary);
+        }
+        .payment-method-logo {
+            height: 30px;
+            width: auto;
+            max-width: 120px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+        .payment-method-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .payment-method-title {
             font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--text-900);
+        }
+        .payment-method-desc {
+            font-size: 0.75rem;
+            color: var(--text-500);
+            font-weight: 400;
         }
         .secure-footer {
             display: flex;
@@ -134,8 +160,7 @@
     <div class="checkout-layout">
         <header class="main-header" role="banner">
             <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-box-img">
             </a>
         </header>
 
@@ -166,30 +191,27 @@
                     <div style="font-size:0.875rem; font-weight:700; color:var(--text-800); margin-bottom:16px;">Select Payment Method</div>
                     
                     <div class="method-options">
-                        <!-- Mock Sandbox Gateway Option -->
+                        <!-- JazzCash Option (via CashMaal) -->
                         <label class="method-card">
-                            <input type="radio" name="payment_provider" value="mock" checked>
+                            <input type="radio" name="payment_provider" value="jazzcash" checked>
                             <div class="method-label">
-                                <i data-lucide="credit-card" style="color:var(--primary); width:20px; height:20px;"></i>
-                                <span>Mock Sandbox Gateway (Credit/Debit Card)</span>
+                                <img src="<?= asset('assets/images/jazzcash.svg') ?>" alt="JazzCash" class="payment-method-logo">
+                                <div class="payment-method-details">
+                                    <span class="payment-method-title">JazzCash Sandbox Wallet</span>
+                                    <span class="payment-method-desc">Pay instantly with your JazzCash mobile account</span>
+                                </div>
                             </div>
                         </label>
 
-                        <!-- JazzCash Gateway Option -->
-                        <label class="method-card">
-                            <input type="radio" name="payment_provider" value="jazzcash">
-                            <div class="method-label">
-                                <i data-lucide="wallet" style="color:#f59e0b; width:20px; height:20px;"></i>
-                                <span>JazzCash Sandbox Wallet</span>
-                            </div>
-                        </label>
-
-                        <!-- Easypaisa Gateway Option -->
+                        <!-- Easypaisa Option (via CashMaal) -->
                         <label class="method-card">
                             <input type="radio" name="payment_provider" value="easypaisa">
                             <div class="method-label">
-                                <i data-lucide="wallet-2" style="color:#10b981; width:20px; height:20px;"></i>
-                                <span>Easypaisa Sandbox Wallet</span>
+                                <img src="<?= asset('assets/images/easypaisa.svg') ?>" alt="Easypaisa" class="payment-method-logo">
+                                <div class="payment-method-details">
+                                    <span class="payment-method-title">Easypaisa Sandbox Wallet</span>
+                                    <span class="payment-method-desc">Pay instantly with your Easypaisa mobile account</span>
+                                </div>
                             </div>
                         </label>
                     </div>

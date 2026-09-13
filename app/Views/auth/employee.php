@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Employee Portal | ScholarMatch</title>
+    <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -205,8 +207,7 @@
     <div class="dashboard-layout">
         <header class="dashboard-header" role="banner">
             <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch Employee</span>
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Employee Logo" class="logo-box-img">
             </a>
             
             <div class="user-menu">

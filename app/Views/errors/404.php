@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 Page Not Found | ScholarMatch</title>
+    <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -65,10 +67,7 @@
     <header class="header scrolled" id="header" role="banner" style="position: relative;">
         <div class="header-inner">
             <a href="<?= url('/') ?>" class="logo" aria-label="ScholarMatch Home">
-                <div class="logo-icon">
-                    <i data-lucide="graduation-cap"></i>
-                </div>
-                <span class="logo-text">ScholarMatch</span>
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-img">
             </a>
         </div>
     </header>

@@ -815,9 +815,9 @@ class Step1SubscriptionProtectionTest {
         $ref = 'STP1_TXN_REF_31';
         $stmt = $this->db->prepare("
             INSERT INTO payment_transactions (
-                user_id, plan_id, provider, transaction_reference, amount, currency, referral_partner_id, referral_code_used, status, created_at, updated_at
+                user_id, plan_id, provider, transaction_reference, amount, currency, referral_partner_id, referral_code_used, status, paid_at, created_at, updated_at
             ) VALUES (
-                :uid, :pid, 'cashmaal', :ref, 1350.00, 'PKR', :pid2, 'STP1P31', 'paid', NOW(), NOW()
+                :uid, :pid, 'cashmaal', :ref, 1350.00, 'PKR', :pid2, 'STP1P31', 'paid', NOW(), NOW(), NOW()
             )
         ");
         $stmt->execute(['uid' => $userId, 'pid' => $this->planPremiumId, 'ref' => $ref, 'pid2' => $partnerId]);
@@ -1277,24 +1277,26 @@ class Step1SubscriptionProtectionTest {
     private function test51_subscriptionUsageDiscrepancyDoesNotForceExpiry(): void {
         echo "[Test 51] Subscription usage discrepancy does not force expiry (notification_logs is authoritative)... ";
         $uid = $this->createUser('step1_u51@example.com');
-        $subId = $this->createSubscription($uid, 'active', date('Y-m-d H:i:s', strtotime('-35 days')), date('Y-m-d H:i:s', strtotime('-1 day')));
+        $startsAt = date('Y-m-d H:i:s', strtotime('-35 days'));
+        $endsAt = date('Y-m-d H:i:s', strtotime('-1 day'));
+        $subId = $this->createSubscription($uid, 'active', $startsAt, $endsAt);
 
         // Insert exactly 4 qualifying delivered messages in notification_logs
         for ($i = 1; $i <= 4; $i++) {
             $this->addDeliveredNotification($uid, $subId, date('Y-m-d H:i:s', strtotime("-{$i} days")));
         }
 
-        // Artificially inflate subscription_usage to 5
+        // Artificially inflate subscription_usage to 5 using exact subscription period bounds
         $stmtUsage = $this->db->prepare("
             INSERT INTO subscription_usage (
                 user_id, subscription_id, feature, usage_count, qualifying_delivered_count,
                 minimum_required, protected_state, final_expired_state, period_start, period_end, created_at, updated_at
             ) VALUES (
                 :uid, :sub_id, 'qualifying_scholarship_alerts', 5, 5,
-                5, 0, 0, DATE_SUB(NOW(), INTERVAL 35 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY), NOW(), NOW()
+                5, 0, 0, :p_start, :p_end, NOW(), NOW()
             ) ON DUPLICATE KEY UPDATE usage_count = 5, qualifying_delivered_count = 5
         ");
-        $stmtUsage->execute(['uid' => $uid, 'sub_id' => $subId]);
+        $stmtUsage->execute(['uid' => $uid, 'sub_id' => $subId, 'p_start' => $startsAt, 'p_end' => $endsAt]);
 
         // Run lifecycle: notification_logs only has 4 -> must remain protected!
         SubscriptionService::processDailyLifecycle($this->db);
@@ -1303,7 +1305,7 @@ class Step1SubscriptionProtectionTest {
         $this->assert($status === 'protected', "Subscription must remain protected when notification_logs has 4 even if subscription_usage had 5, got $status");
 
         // Verify that syncSubscriptionUsage corrected the discrepancy
-        $syncedUsage = (int)$this->db->query("SELECT qualifying_delivered_count FROM subscription_usage WHERE subscription_id = $subId")->fetchColumn();
+        $syncedUsage = (int)$this->db->query("SELECT qualifying_delivered_count FROM subscription_usage WHERE subscription_id = $subId ORDER BY id DESC LIMIT 1")->fetchColumn();
         $this->assert($syncedUsage === 4, "Usage count must be resynced to authoritative notification_logs count (4), got $syncedUsage");
         echo "PASS\n";
     }
@@ -1604,3 +1606,7 @@ class Step1SubscriptionProtectionTest {
     }
 }
 
+if (php_sapi_name() === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)) {
+    require_once __DIR__ . '/bootstrap.php';
+    (new Step1SubscriptionProtectionTest())->run();
+}

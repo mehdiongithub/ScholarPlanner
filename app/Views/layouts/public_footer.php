@@ -6,10 +6,7 @@
             <div class="footer-grid">
                 <div class="footer-brand">
                     <div class="footer-logo">
-                        <div class="footer-logo-icon">
-                            <i data-lucide="graduation-cap"></i>
-                        </div>
-                        <span class="footer-logo-text">ScholarMatch</span>
+                        <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="footer-logo-img">
                     </div>
                     <p>Find scholarships that match your profile. Receive personalized alerts through WhatsApp and email.</p>
                 </div>

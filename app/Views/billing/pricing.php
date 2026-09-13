@@ -150,8 +150,7 @@ if ($isStudent) {
     <div class="pricing-layout">
         <header class="main-header" role="banner">
             <a href="/" class="logo-box">
-                <i data-lucide="graduation-cap"></i>
-                <span>ScholarMatch</span>
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-box-img">
             </a>
             <div class="nav-links">
                 <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>

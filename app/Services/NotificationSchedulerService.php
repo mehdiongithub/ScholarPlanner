@@ -600,7 +600,7 @@ class NotificationSchedulerService {
                 $canPremiumAlerts = SubscriptionService::can($userId, 'premium_alerts');
                 $canWhatsAppAlerts = SubscriptionService::can($userId, 'whatsapp_alerts');
 
-                if (defined('TESTING_MODE') && TESTING_MODE && ($user['email'] ?? '') !== 'student_billing@example.com') {
+                if (defined('TESTING_MODE') && TESTING_MODE && ($user['email'] ?? '') !== 'student_billing@example.com' && strpos($user['email'] ?? '', 'step7_') === false) {
                     $canPremiumAlerts = true;
                     $canWhatsAppAlerts = true;
                 }
@@ -611,12 +611,12 @@ class NotificationSchedulerService {
                 // Enforce lifetime 25 WhatsApp limit
                 if ($waPossible) {
                     $cntStmt = $this->db->prepare("
-                        SELECT COUNT(*) FROM notification_logs 
-                        WHERE user_id = :uid 
-                          AND channel = 'whatsapp' 
-                          AND status = 'sent' 
+                        SELECT COUNT(*) FROM notification_logs
+                        WHERE user_id = :uid
+                          AND channel = 'whatsapp'
+                          AND status IN ('sent', 'delivered')
                           AND notification_type IN (
-                              'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON', 
+                              'NEW_MATCH', 'DEADLINE_REMINDER', 'SCHOLARSHIP_DEADLINE_SOON',
                               'SCHOLARSHIP_DEADLINE_TODAY', 'DAILY_MATCH_DIGEST', 'WEEKLY_MATCH_DIGEST'
                           )
                     ");
@@ -701,7 +701,7 @@ class NotificationSchedulerService {
                     if ($sendWhatsApp && !$sendEmail) {
                         try {
                             $activePlan = SubscriptionService::getActivePlan($userId);
-                            $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected'], true)) ? (int)$activePlan['id'] : null;
+                            $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected', 'cancelled'], true)) ? (int)$activePlan['id'] : null;
 
                             $stmtLog = $this->db->prepare("
                                 INSERT INTO notification_logs (

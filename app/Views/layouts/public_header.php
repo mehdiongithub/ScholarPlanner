@@ -10,6 +10,8 @@ $user = \App\Services\Auth::currentUser();
     <meta name="description" content="<?= e($description ?? 'Discover scholarship opportunities matched to your education, academic background and goals.') ?>">
     <link rel="canonical" href="<?= e(($_ENV['APP_URL'] ?? 'http://localhost') . parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH)) ?>">
     <meta property="og:title" content="<?= e($title ?? 'Personalized Scholarship Alerts | ScholarMatch') ?>">
+    <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -29,10 +31,7 @@ $user = \App\Services\Auth::currentUser();
     <header class="header" id="header" role="banner">
         <div class="header-inner">
             <a href="<?= url('/') ?>" class="logo" aria-label="ScholarMatch Home">
-                <div class="logo-icon">
-                    <i data-lucide="graduation-cap"></i>
-                </div>
-                <span class="logo-text">ScholarMatch</span>
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-img">
             </a>
 
             <nav class="nav-desktop" aria-label="Main navigation">
@@ -68,7 +67,9 @@ $user = \App\Services\Auth::currentUser();
     <!-- Mobile menu drawer -->
     <nav class="mobile-menu" id="mobileMenu" role="dialog" aria-label="Mobile navigation" aria-hidden="true">
         <div class="mobile-menu-header">
-            <span class="logo-text">ScholarMatch</span>
+            <a href="<?= url('/') ?>" class="logo" style="text-decoration:none">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-img">
+            </a>
             <button class="mobile-menu-close" id="mobileMenuClose" aria-label="Close menu">
                 <i data-lucide="x"></i>
             </button>
