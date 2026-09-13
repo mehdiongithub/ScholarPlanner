@@ -60,7 +60,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = ScholarMatchDataTable('#logs-datatable', {
+    var table = ScholarPlannerDataTable('#logs-datatable', {
         ajax: {
             url: '<?= url("/admin/audit-logs/data") ?>',
             type: 'GET',

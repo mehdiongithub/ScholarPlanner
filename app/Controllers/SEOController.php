@@ -13,7 +13,7 @@ class SEOController {
     public function robots(): void {
         header('Content-Type: text/plain; charset=utf-8');
         
-        $appUrl = rtrim(url('/'), '/');
+        $appUrl = 'https://scholarplanner.com';
         
         echo "User-agent: *\n";
         echo "Allow: /\n";
@@ -50,7 +50,7 @@ class SEOController {
         header('Content-Type: application/xml; charset=utf-8');
         
         $db = Database::connection();
-        $appUrl = rtrim(url('/'), '/');
+        $appUrl = 'https://scholarplanner.com';
         
         echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";

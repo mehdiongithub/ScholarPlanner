@@ -61,14 +61,25 @@ if (!function_exists('view')) {
 
 if (!function_exists('asset')) {
     /**
-     * Resolve public assets paths, handling subdirectory routing.
+     * Resolve public assets paths, handling subdirectory routing and cache busting.
      */
     function asset(string $path): string {
+        $cleanPath = ltrim($path, '/');
+
         $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-        if ($scriptName !== '/' && $scriptName !== '\\' && !empty($scriptName)) {
-            return rtrim($scriptName, '/') . '/' . ltrim($path, '/');
+        $prefix = ($scriptName !== '/' && $scriptName !== '\\' && !empty($scriptName))
+            ? rtrim($scriptName, '/') . '/'
+            : '/';
+
+        $url = $prefix . $cleanPath;
+
+        // Append file modification timestamp query string for immutable cache busting
+        $fullPath = ROOT_PATH . '/' . $cleanPath;
+        if (file_exists($fullPath)) {
+            $url .= '?v=' . filemtime($fullPath);
         }
-        return '/' . ltrim($path, '/');
+
+        return $url;
     }
 }
 

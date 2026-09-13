@@ -1,6 +1,20 @@
 <?php
-$title = $pageTitle ?? 'Search Scholarships | ScholarMatch';
-$description = $metaDescription ?? 'Search over verified opportunities matched to your qualifications.';
+$title = $pageTitle ?? 'Search Scholarships Worldwide | ScholarPlanner';
+$description = $metaDescription ?? 'Explore scholarships from around the world and discover opportunities by country, degree level, field of study and funding type with ScholarPlanner.';
+$canonicalUrl = $canonicalUrl ?? 'https://scholarplanner.com/scholarships';
+$schemaJsonLd = [
+    '@context' => 'https://schema.org',
+    '@type' => 'CollectionPage',
+    'name' => $title,
+    'description' => $description,
+    'url' => $canonicalUrl,
+    'isPartOf' => [
+        '@type' => 'WebSite',
+        'name' => 'ScholarPlanner',
+        'url' => 'https://scholarplanner.com/'
+    ]
+];
+$needsSelect2 = true;
 include ROOT_PATH . '/app/Views/layouts/public_header.php';
 ?>
 

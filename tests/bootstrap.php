@@ -30,6 +30,9 @@ $_ENV['WHATSAPP_PROVIDER'] = 'log';
 if (!defined('TESTING_MODE')) {
     define('TESTING_MODE', true);
 }
+if (!defined('BYPASS_SUNDAY_RULE')) {
+    define('BYPASS_SUNDAY_RULE', true);
+}
 
 // Start logger
 \App\Services\Logger::init();

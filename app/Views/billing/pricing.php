@@ -1,5 +1,7 @@
 <?php
-$title = 'Pricing Plans | ScholarMatch';
+$title = 'Subscription & Pricing Plans | ScholarPlanner';
+$description = 'Affordable plans for students to discover verified international scholarships, get eligibility match alerts, and direct WhatsApp notifications.';
+$canonicalUrl = 'https://scholarplanner.com/pricing';
 $isStudent = \App\Services\Auth::isAuthenticated() && \App\Services\Auth::currentUser()['role_name'] === 'visitor';
 
 if ($isStudent) {
@@ -150,7 +152,7 @@ if ($isStudent) {
     <div class="pricing-layout">
         <header class="main-header" role="banner">
             <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-box-img">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-box-img">
             </a>
             <div class="nav-links">
                 <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>
@@ -241,7 +243,7 @@ if ($isStudent) {
                     <p class="plan-desc">Unlock advanced filters, full recommendation alerts, and tracking.</p>
                     <div class="plan-price">
                         <span class="price-curr">PKR</span>
-                        <span class="price-num">1,499</span>
+                        <span class="price-num">999</span>
                         <span class="price-interval">/ month</span>
                     </div>
                     <ul class="plan-features">

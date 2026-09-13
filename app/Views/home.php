@@ -1,4 +1,31 @@
-<?php include ROOT_PATH . '/app/Views/layouts/public_header.php'; ?>
+<?php
+$title = 'Scholarships & Scholarship Alerts | ScholarPlanner';
+$description = 'Discover verified scholarships worldwide with ScholarPlanner. Find opportunities that match your education, field of study, destination and goals.';
+$canonicalUrl = 'https://scholarplanner.com/';
+$schemaJsonLd = [
+    [
+        '@context' => 'https://schema.org',
+        '@type' => 'WebSite',
+        'name' => 'ScholarPlanner',
+        'url' => 'https://scholarplanner.com/',
+        'potentialAction' => [
+            '@type' => 'SearchAction',
+            'target' => 'https://scholarplanner.com/scholarships?q={search_term_string}',
+            'query-input' => 'required name=search_term_string'
+        ]
+    ],
+    [
+        '@context' => 'https://schema.org',
+        '@type' => 'Organization',
+        'name' => 'ScholarPlanner',
+        'url' => 'https://scholarplanner.com/',
+        'logo' => 'https://scholarplanner.com/assets/images/logo.webp'
+    ]
+];
+$needsCarousel = true;
+$lcpPreload = url('/storage/banners/german-scholarship.webp');
+include ROOT_PATH . '/app/Views/layouts/public_header.php';
+?>
 
     <main>
         <!-- ============================================
@@ -7,6 +34,7 @@
         <style>
         .banner-carousel-wrapper {
             width: 100%;
+            min-height: 480px;
             margin-bottom: 0;
             overflow: hidden;
             background-color: #0f172a;
@@ -19,6 +47,18 @@
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+        /* Zero-CLS: Render first slide statically before Owl Carousel JS loads */
+        .main-banner-carousel:not(.owl-loaded) {
+            display: block !important;
+            height: 480px;
+        }
+        .main-banner-carousel:not(.owl-loaded) .item {
+            display: none;
+        }
+        .main-banner-carousel:not(.owl-loaded) .item:first-child {
+            display: flex !important;
+            height: 480px;
         }
         .main-banner-carousel .carousel-overlay {
             position: absolute;
@@ -125,8 +165,13 @@
 
         /* Responsiveness media queries */
         @media (max-width: 768px) {
-            .main-banner-carousel .item {
-                height: 380px;
+            .banner-carousel-wrapper {
+                min-height: 380px;
+            }
+            .main-banner-carousel .item,
+            .main-banner-carousel:not(.owl-loaded),
+            .main-banner-carousel:not(.owl-loaded) .item:first-child {
+                height: 380px !important;
             }
             .main-banner-carousel .carousel-content h2 {
                 font-size: 2rem;
@@ -140,8 +185,13 @@
             }
         }
         @media (max-width: 480px) {
-            .main-banner-carousel .item {
-                height: 320px;
+            .banner-carousel-wrapper {
+                min-height: 320px;
+            }
+            .main-banner-carousel .item,
+            .main-banner-carousel:not(.owl-loaded),
+            .main-banner-carousel:not(.owl-loaded) .item:first-child {
+                height: 320px !important;
             }
             .main-banner-carousel .carousel-content h2 {
                 font-size: 1.5rem;
@@ -371,7 +421,7 @@
                     <div class="problem-after reveal reveal-delay-2">
                         <span class="problem-tag">
                             <i data-lucide="check"></i>
-                            With ScholarMatch
+                            With ScholarPlanner
                         </span>
                         <h3>What Students Should Do</h3>
                         <div class="problem-list">
@@ -587,7 +637,7 @@
                                 <i data-lucide="graduation-cap"></i>
                             </div>
                             <div>
-                                <div class="whatsapp-name">ScholarMatch</div>
+                                <div class="whatsapp-name">ScholarPlanner</div>
                                 <div class="whatsapp-status">Online</div>
                             </div>
                         </div>
@@ -614,7 +664,7 @@
                             </div>
                             <div class="email-subject-bar">
                                 <div class="email-subject">3 New Scholarship Opportunities Match Your Profile</div>
-                                <div class="email-from">ScholarMatch &lt;alerts@scolarmatch.com&gt;</div>
+                                <div class="email-from">ScholarPlanner &lt;alerts@scholarplanner.com&gt;</div>
                             </div>
                             <div class="email-body">
                                 <p class="email-greeting">Hi Ahmed, here are your latest scholarship matches:</p>
@@ -806,7 +856,7 @@
                 <div class="section-header reveal">
                     <span class="section-label">
                         <i data-lucide="compass" style="width:14px;height:14px"></i>
-                        Why ScholarMatch
+                        Why ScholarPlanner
                     </span>
                     <h2>Everything You Need Before You Apply</h2>
                     <p>A clear path from discovery to application — designed around how students actually search for scholarships.</p>
@@ -1130,7 +1180,7 @@
                         <span class="pricing-popular">Most Popular</span>
                         <div class="pricing-plan-name">Premium</div>
                         <div class="pricing-price">
-                            <span class="pricing-amount">PKR 1,499</span>
+                            <span class="pricing-amount">PKR 999</span>
                             <span class="pricing-period"> / month</span>
                         </div>
                         <div class="pricing-cancel">Cancel anytime</div>
@@ -1187,7 +1237,7 @@
                         Testimonials
                     </span>
                     <h2>What Students Say</h2>
-                    <p>Real feedback from students using ScholarMatch.</p>
+                    <p>Real feedback from students using ScholarPlanner.</p>
                 </div>
 
                 <div class="testimonials-grid">
@@ -1235,7 +1285,7 @@
                             <i data-lucide="star"></i>
                             <i data-lucide="star"></i>
                         </div>
-                        <p class="testimonial-text">"I missed a scholarship deadline last year because I didn't know about it. With ScholarMatch alerts, that won't happen again."</p>
+                        <p class="testimonial-text">"I missed a scholarship deadline last year because I didn't know about it. With ScholarPlanner alerts, that won't happen again."</p>
                         <div class="testimonial-author">
                             <div class="testimonial-avatar">MR</div>
                             <div>
@@ -1259,7 +1309,7 @@
                         FAQ
                     </span>
                     <h2>Frequently Asked Questions</h2>
-                    <p>Answers to common questions about ScholarMatch.</p>
+                    <p>Answers to common questions about ScholarPlanner.</p>
                 </div>
 
                 <div class="faq-list" role="list">
@@ -1270,7 +1320,7 @@
                         </button>
                         <div class="faq-answer" role="region">
                             <div class="faq-answer-inner">
-                                <p>ScholarMatch is a scholarship discovery platform that matches scholarship opportunities to your academic profile. You create a profile with your education details, and the system finds relevant scholarships and sends you alerts through WhatsApp and email.</p>
+                                <p>ScholarPlanner is a scholarship discovery platform that matches scholarship opportunities to your academic profile. You create a profile with your education details, and the system finds relevant scholarships and sends you alerts through WhatsApp and email.</p>
                             </div>
                         </div>
                     </div>
@@ -1410,8 +1460,8 @@
 
     <!-- Initialize Owl Carousel for Home Page Banners -->
     <script>
-    $(document).ready(function() {
-        if ($.fn.owlCarousel) {
+    function initHomeCarousel() {
+        if (typeof $ !== 'undefined' && $.fn.owlCarousel) {
             $(".main-banner-carousel").owlCarousel({
                 items: 1,
                 loop: true,
@@ -1430,8 +1480,15 @@
                     }
                 }
             });
+        } else {
+            setTimeout(initHomeCarousel, 60);
         }
-    });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initHomeCarousel);
+    } else {
+        initHomeCarousel();
+    }
     </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/public_footer.php'; ?>

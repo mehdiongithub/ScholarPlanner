@@ -61,6 +61,7 @@
 .sidebar-brand-logo {
     height: 36px;
     width: auto;
+    aspect-ratio: 4 / 1;
     max-width: 180px;
     object-fit: contain;
     flex-shrink: 0;
@@ -71,6 +72,7 @@
 .logo-box-img {
     height: 36px;
     width: auto;
+    aspect-ratio: 4 / 1;
     max-width: 180px;
     object-fit: contain;
     flex-shrink: 0;

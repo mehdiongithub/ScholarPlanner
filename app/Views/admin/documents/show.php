@@ -163,7 +163,7 @@
     <div class="review-layout">
         <header class="review-header" role="banner">
             <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Admin Logo" class="logo-box-img">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Admin Logo" class="logo-box-img">
             </a>
             
             <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-800);">

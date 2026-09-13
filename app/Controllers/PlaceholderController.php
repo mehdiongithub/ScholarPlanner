@@ -72,7 +72,7 @@ class PlaceholderController {
     }
 
     /**
-     * Redirects to the homepage "Why ScholarMatch" section
+     * Redirects to the homepage "Why ScholarPlanner" section
      */
     public function about() {
         header('Location: ' . url('/#why'));

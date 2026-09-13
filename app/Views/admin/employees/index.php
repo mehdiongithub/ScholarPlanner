@@ -41,7 +41,7 @@
 const rolesList = <?= json_encode($roles) ?>;
 
 $(document).ready(function() {
-    ScholarMatchDataTable('#employees-datatable', {
+    ScholarPlannerDataTable('#employees-datatable', {
         ajax: {
             url: '<?= url("/admin/employees/data") ?>',
             type: 'GET'

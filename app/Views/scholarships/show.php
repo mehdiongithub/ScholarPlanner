@@ -1,6 +1,9 @@
 <?php
-$title = $scholarship['title'] . ' | ScholarMatch';
+$title = $scholarship['title'] . ' | ScholarPlanner';
 $description = $scholarship['short_description'] ?: substr(strip_tags($scholarship['description']), 0, 160);
+$canonicalUrl = 'https://scholarplanner.com/scholarships/' . $scholarship['slug'];
+$ogType = 'article';
+$ogImage = !empty($scholarship['cover_image']) ? (str_starts_with($scholarship['cover_image'], 'http') ? $scholarship['cover_image'] : 'https://scholarplanner.com' . url($scholarship['cover_image'])) : 'https://scholarplanner.com/assets/images/logo.webp';
 include ROOT_PATH . '/app/Views/layouts/public_header.php';
 ?>
 
@@ -294,7 +297,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
     <div class="page-layout">
         <header class="main-header" role="banner">
             <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-box-img">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-box-img">
             </a>
             <div class="nav-links">
                 <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>

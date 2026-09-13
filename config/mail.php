@@ -6,6 +6,6 @@ return [
     'username' => $_ENV['MAIL_USERNAME'] ?? null,
     'password' => $_ENV['MAIL_PASSWORD'] ?? null,
     'encryption' => $_ENV['MAIL_ENCRYPTION'] ?? null,
-    'from_address' => $_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@scholarmatch.com',
-    'from_name' => $_ENV['MAIL_FROM_NAME'] ?? 'ScholarMatch',
+    'from_address' => $_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@scholarplanner.com',
+    'from_name' => $_ENV['MAIL_FROM_NAME'] ?? 'ScholarPlanner',
 ];

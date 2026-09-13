@@ -1,0 +1,25 @@
+﻿User-agent: *
+Allow: /
+Allow: /scholarships
+Allow: /scholarships/country/
+Allow: /scholarships/field/
+Allow: /scholarships/degree/
+
+# Disallow private administrative and user-restricted segments
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /profile/
+Disallow: /documents/
+Disallow: /applications/
+Disallow: /api/
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /logout
+
+# Disallow checkout/transaction URLs
+Disallow: /payment/
+Disallow: /subscription/
+
+Sitemap: https://scholarplanner.com/sitemap.xml

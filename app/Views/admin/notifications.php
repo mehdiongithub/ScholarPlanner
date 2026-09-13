@@ -265,7 +265,7 @@
                             <span style="font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:600; background:#dcfce7; color:#166534;">Email Delivery</span>
                         </div>
                         <div style="font-size:0.8125rem; color:#64748b; margin-bottom:4px;">Host: <?= e($_ENV['MAIL_HOST'] ?? 'smtp.gmail.com') ?>:<?= e($_ENV['MAIL_PORT'] ?? '587') ?> (<?= e($_ENV['MAIL_ENCRYPTION'] ?? 'TLS') ?>)</div>
-                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:12px;">From: <?= e($_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@scholarmatch.com') ?></div>
+                        <div style="font-size:0.8125rem; color:#64748b; margin-bottom:12px;">From: <?= e($_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@scholarplanner.com') ?></div>
                         <form method="POST" action="<?= url('/admin/notifications/providers/test') ?>">
                             <input type="hidden" name="csrf_token" value="<?= e(\App\Helpers\Security::csrfToken()) ?>">
                             <input type="hidden" name="provider" value="smtp">

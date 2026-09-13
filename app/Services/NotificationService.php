@@ -265,7 +265,7 @@ class NotificationService {
             case 'WEEKLY_MATCH_DIGEST':
                 return "📰 Your Weekly Scholarship Digest";
             default:
-                return "ScholarMatch Notification";
+                return "ScholarPlanner Notification";
         }
     }
 

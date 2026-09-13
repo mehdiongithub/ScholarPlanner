@@ -49,7 +49,7 @@
 
         <div class="form-group">
             <label class="form-label" for="email">Email Address</label>
-            <input type="email" name="email" id="email" class="form-control" placeholder="staffname@scholarmatch.com" required>
+            <input type="email" name="email" id="email" class="form-control" placeholder="staffname@scholarplanner.com" required>
         </div>
 
         <div class="form-group">

@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mock Payment Gateway Terminal | ScholarMatch</title>
+    <title>Mock Payment Gateway Terminal | ScholarPlanner</title>
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -121,7 +122,7 @@
                 <div>
                     <span class="sandbox-badge">Mock Sandbox Payment Terminal</span>
                 </div>
-                <h1 style="margin-top: 10px;">ScholarMatch Fulfill Terminal</h1>
+                <h1 style="margin-top: 10px;">ScholarPlanner Fulfill Terminal</h1>
                 <p style="color:#94a3b8; font-size:0.875rem;">Simulating external provider billing interfaces</p>
             </div>
 

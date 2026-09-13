@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compare Scholarships | ScholarMatch</title>
+    <title>Compare Scholarships | ScholarPlanner</title>
+    <meta name="robots" content="noindex, follow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -133,7 +134,7 @@
     <div class="page-layout">
         <header class="main-header" role="banner">
             <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-box-img">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-box-img">
             </a>
             <div class="nav-links">
                 <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>

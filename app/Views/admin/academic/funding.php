@@ -52,7 +52,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#funding-datatable', {
+    ScholarPlannerDataTable('#funding-datatable', {
         ajax: {
             url: '<?= url("/admin/academic/funding/data") ?>',
             type: 'GET'

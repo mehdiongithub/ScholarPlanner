@@ -13,7 +13,8 @@ function formatBytes($bytes, $precision = 2) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Documents | ScholarMatch</title>
+    <title>My Documents | ScholarPlanner</title>
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -300,7 +301,7 @@ function formatBytes($bytes, $precision = 2) {
     <div class="docs-layout">
         <header class="docs-header" role="banner">
             <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-box-img">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-box-img">
             </a>
             
             <div class="nav-links">

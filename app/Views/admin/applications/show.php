@@ -299,7 +299,7 @@
     <div class="detail-layout">
         <header class="detail-header" role="banner">
             <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Admin Logo" class="logo-box-img">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Admin Logo" class="logo-box-img">
             </a>
             
             <div class="nav-links">

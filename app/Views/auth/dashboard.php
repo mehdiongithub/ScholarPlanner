@@ -1667,7 +1667,7 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                         <div class="wa-mockup">
                             <div class="wa-mockup-header">
                                 <div class="wa-mockup-avatar"><i data-lucide="graduation-cap"></i></div>
-                                <div class="wa-mockup-name">ScholarMatch Alerts</div>
+                                <div class="wa-mockup-name">ScholarPlanner Alerts</div>
                             </div>
                             <div class="wa-mockup-body">
                                 <div class="wa-mockup-bubble">

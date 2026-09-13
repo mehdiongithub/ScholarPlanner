@@ -1,6 +1,6 @@
 # Authentication & User Account System Documentation
 
-This document explains the security mechanics, registration requirements, session parameters, and token rotation implemented in ScholarMatch.
+This document explains the security mechanics, registration requirements, session parameters, and token rotation implemented in ScholarPlanner.
 
 ---
 

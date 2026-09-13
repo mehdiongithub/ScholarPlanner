@@ -1,6 +1,6 @@
 # Database Architecture & CLI Runners
 
-This directory houses the complete InnoDB schema migration definitions and seeder files for the ScholarMatch platform.
+This directory houses the complete InnoDB schema migration definitions and seeder files for the ScholarPlanner platform.
 
 ---
 

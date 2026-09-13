@@ -1756,8 +1756,8 @@ class ScholarshipController {
         }, 86400);
 
         // 4. Generate SEO Metadata & Canonical URL logic to prevent duplicate indexing
-        $pageTitle = "Search Scholarships | ScholarMatch";
-        $metaDescription = "Search over verified opportunities matched to your qualifications and preferences.";
+        $pageTitle = "Search Scholarships Worldwide | ScholarPlanner";
+        $metaDescription = "Search over verified international scholarships matched to your qualifications, degree level, and preferences on ScholarPlanner.";
         
         $countrySlug = isset($_GET['seo_country_slug']) ? trim($_GET['seo_country_slug']) : '';
         $fieldSlug = isset($_GET['seo_field_slug']) ? trim($_GET['seo_field_slug']) : '';
@@ -1765,23 +1765,23 @@ class ScholarshipController {
 
         if ($countrySlug !== '') {
             $countryName = $db->query("SELECT name FROM countries WHERE id = " . (int)$countryId)->fetchColumn();
-            $pageTitle = "Scholarships in {$countryName} | ScholarMatch";
+            $pageTitle = "Scholarships in {$countryName} | ScholarPlanner";
             $metaDescription = "Find and apply for active scholarships in {$countryName}. Browse fully-funded opportunities, study options, and degree level requirements.";
-            $canonicalUrl = url('/scholarships/country/' . $countrySlug);
+            $canonicalUrl = 'https://scholarplanner.com/scholarships/country/' . $countrySlug;
             $robotsDirective = "index, follow";
         } elseif ($fieldSlug !== '') {
             $fieldName = $db->query("SELECT name FROM fields_of_study WHERE id = " . (int)$fieldId)->fetchColumn();
-            $pageTitle = "{$fieldName} Scholarships | ScholarMatch";
+            $pageTitle = "{$fieldName} Scholarships | ScholarPlanner";
             $metaDescription = "Discover scholarship opportunities in the field of {$fieldName}. Compare funding, degree levels, and eligibility criteria.";
-            $canonicalUrl = url('/scholarships/field/' . $fieldSlug);
+            $canonicalUrl = 'https://scholarplanner.com/scholarships/field/' . $fieldSlug;
             $robotsDirective = "index, follow";
         } elseif ($degreeSlug !== '') {
-            $pageTitle = "{$degree} Level Scholarships | ScholarMatch";
+            $pageTitle = "{$degree} Level Scholarships | ScholarPlanner";
             $metaDescription = "Explore active {$degree} degree level scholarships. Search requirements, deadlines, and fully-funded awards.";
-            $canonicalUrl = url('/scholarships/degree/' . $degreeSlug);
+            $canonicalUrl = 'https://scholarplanner.com/scholarships/degree/' . $degreeSlug;
             $robotsDirective = "index, follow";
         } else {
-            $canonicalUrl = url('/scholarships');
+            $canonicalUrl = 'https://scholarplanner.com/scholarships';
             // If custom search parameters or sorting details are selected, set to noindex to prevent indexing duplicates
             if ($search !== '' || $funding !== '' || $verified !== '' || $featured !== '' || $nationality !== '' || $sort !== 'published_at' || $hostCountryId !== null || $studyDestinationId !== null || $deadlineStatus !== '' || $fullyFunded !== '') {
                 $robotsDirective = "noindex, follow";

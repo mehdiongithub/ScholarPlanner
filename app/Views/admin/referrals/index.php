@@ -131,7 +131,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#partners-datatable', {
+    ScholarPlannerDataTable('#partners-datatable', {
         ajax: {
             url: '<?= url("/admin/referrals/data") ?>',
             type: 'GET'

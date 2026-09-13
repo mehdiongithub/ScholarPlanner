@@ -58,7 +58,8 @@ if ($userId) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($title ?? 'Student Dashboard') ?> | ScholarMatch</title>
+    <title><?= e($title ?? 'Student Dashboard') ?> | ScholarPlanner</title>
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -89,7 +90,7 @@ if ($userId) {
     <!-- Student Sidebar Navigation -->
     <aside class="admin-sidebar" id="adminSidebar">
         <a href="<?= url('/dashboard') ?>" class="sidebar-brand">
-            <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="sidebar-brand-logo">
+            <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="sidebar-brand-logo">
         </a>
 
         <!-- User profile details container -->
@@ -138,7 +139,7 @@ if ($userId) {
         </div>
         
         <div style="padding:16px 20px; font-size:0.6875rem; color:#64748b; border-top: 1px solid rgba(255,255,255,0.05)">
-            ScholarMatch Student Portal v2.0
+            ScholarPlanner Student Portal v2.0
         </div>
     </aside>
 

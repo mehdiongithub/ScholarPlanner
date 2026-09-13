@@ -78,7 +78,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = ScholarMatchDataTable('#users-datatable', {
+    var table = ScholarPlannerDataTable('#users-datatable', {
         ajax: {
             url: '<?= url("/admin/users/data") ?>',
             type: 'GET',

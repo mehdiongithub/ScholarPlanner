@@ -1,6 +1,6 @@
 # Scholarship Matching & Recommendation Engine Architecture
 
-This document describes the design, scoring algorithm, status transitions, and optimized bulk preloading architecture for the deterministic matching engine in ScholarMatch.
+This document describes the design, scoring algorithm, status transitions, and optimized bulk preloading architecture for the deterministic matching engine in ScholarPlanner.
 
 ---
 

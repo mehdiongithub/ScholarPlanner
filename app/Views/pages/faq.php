@@ -1,6 +1,45 @@
 <?php
 $title = $title ?? 'Frequently Asked Questions — ScholarPlanner';
 $description = $description ?? 'Find answers to common questions about ScholarPlanner — how matching works, WhatsApp alerts, pricing, subscriptions, and privacy.';
+$canonicalUrl = 'https://scholarplanner.com/faq';
+$schemaJsonLd = [
+    '@context' => 'https://schema.org',
+    '@type' => 'FAQPage',
+    'mainEntity' => [
+        [
+            '@type' => 'Question',
+            'name' => 'What is ScholarPlanner?',
+            'acceptedAnswer' => [
+                '@type' => 'Answer',
+                'text' => 'ScholarPlanner is a premier scholarship matching and notification platform. You create an academic profile, and our matching engine scans hundreds of verified international scholarship opportunities. When a scholarship aligns with your degree, GPA, and preferences, you receive automated alerts via WhatsApp and email.'
+            ]
+        ],
+        [
+            '@type' => 'Question',
+            'name' => 'Who is ScholarPlanner for?',
+            'acceptedAnswer' => [
+                '@type' => 'Answer',
+                'text' => 'ScholarPlanner is designed for students seeking undergraduate, master\'s, PhD, and research scholarships across Europe, North America, Asia, and worldwide.'
+            ]
+        ],
+        [
+            '@type' => 'Question',
+            'name' => 'How does scholarship matching work?',
+            'acceptedAnswer' => [
+                '@type' => 'Answer',
+                'text' => 'When you fill in your academic profile, our matching engine compares your GPA, degree level, field of study, nationality, and funding preferences against scholarship eligibility criteria, generating an eligibility score.'
+            ]
+        ],
+        [
+            '@type' => 'Question',
+            'name' => 'How do WhatsApp scholarship notifications work?',
+            'acceptedAnswer' => [
+                '@type' => 'Answer',
+                'text' => 'Premium subscribers receive instant WhatsApp notifications whenever a newly published scholarship matches their qualifications, along with upcoming deadline reminders and direct portal links.'
+            ]
+        ]
+    ]
+];
 include ROOT_PATH . '/app/Views/layouts/public_header.php';
 ?>
 

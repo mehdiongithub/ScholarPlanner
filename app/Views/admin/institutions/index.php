@@ -48,7 +48,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#institutions-datatable', {
+    ScholarPlannerDataTable('#institutions-datatable', {
         ajax: {
             url: '<?= url("/admin/institutions/data") ?>',
             type: 'GET'

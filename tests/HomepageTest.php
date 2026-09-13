@@ -53,7 +53,7 @@ class HomepageTest {
             
             $indicators = [
                 '<!DOCTYPE html>',
-                'ScholarMatch',
+                'ScholarPlanner',
                 'Find Scholarships That Match You',
                 'assets/css/style.css',
                 'assets/js/main.js'

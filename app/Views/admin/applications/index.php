@@ -97,7 +97,7 @@
 
 <script>
 $(document).ready(function() {
-    var table = ScholarMatchDataTable('#applications-datatable', {
+    var table = ScholarPlannerDataTable('#applications-datatable', {
         ajax: {
             url: '<?= url("/admin/applications/data") ?>',
             type: 'GET',

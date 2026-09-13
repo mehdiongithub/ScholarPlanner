@@ -57,7 +57,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#fields-datatable', {
+    ScholarPlannerDataTable('#fields-datatable', {
         ajax: {
             url: '<?= url("/admin/academic/fields/data") ?>',
             type: 'GET'

@@ -70,7 +70,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#cities-datatable', {
+    ScholarPlannerDataTable('#cities-datatable', {
         ajax: {
             url: '<?= url("/admin/locations/cities/data") ?>',
             type: 'GET'

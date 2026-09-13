@@ -155,7 +155,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
 });
 
 // ---- Global DataTables Initialization Helper ----
-window.ScholarMatchDataTable = function(selector, options) {
+window.ScholarPlannerDataTable = window.ScholarMatchDataTable = function(selector, options) {
     const defaults = {
         processing: true,
         serverSide: true,
@@ -164,6 +164,6 @@ window.ScholarMatchDataTable = function(selector, options) {
     if (typeof $ !== 'undefined' && $.fn.DataTable) {
         return $(selector).DataTable(Object.assign({}, defaults, options));
     }
-    console.warn("jQuery or DataTables library not loaded when ScholarMatchDataTable called.");
+    console.warn("jQuery or DataTables library not loaded when ScholarPlannerDataTable called.");
     return null;
 };

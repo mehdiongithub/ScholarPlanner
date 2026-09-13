@@ -6,7 +6,7 @@
             <div class="footer-grid">
                 <div class="footer-brand">
                     <div class="footer-logo">
-                        <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="footer-logo-img">
+                        <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="footer-logo-img" width="152" height="38">
                     </div>
                     <p>Find scholarships that match your profile. Receive personalized alerts through WhatsApp and email.</p>
                 </div>
@@ -45,7 +45,7 @@
             </div>
 
             <div class="footer-bottom">
-                <span>&copy; <?= date('Y') ?> ScholarMatch. All rights reserved.</span>
+                <span>&copy; <?= date('Y') ?> ScholarPlanner. All rights reserved.</span>
                 <span>
                     <a href="#" style="margin-left:16px;color:var(--text-400);transition:color 150ms" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-400)'">Help Center</a>
                 </span>
@@ -53,28 +53,52 @@
         </div>
     </footer>
 
-    <!-- Initialize icons & scripts -->
-    <!-- Owl Carousel JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
-    <script src="<?= asset('assets/js/main.js') ?>"></script>
+    <!-- Deferred Scripts -->
+    <?php if (!empty($needsCarousel)): ?>
+    <!-- Owl Carousel JS (loaded only when carousel present) -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
+    <?php endif; ?>
+    <script defer src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script defer src="https://unpkg.com/lucide@0.460.0"></script>
+    <script defer src="<?= asset('assets/js/main.js') ?>"></script>
+    <?php if (!empty($needsSelect2)): ?>
+    <!-- Select2 JS (loaded only when searchable selects present) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
-        try {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-        } catch (e) {
-            console.error("Lucide load error:", e);
-        }
-
-        // Initialize Select2 for all dropdowns on public pages
-        $(document).ready(function() {
-            if ($.fn.select2) {
+        function initPublicSelect2() {
+            if (typeof $ !== 'undefined' && $.fn.select2) {
                 $('.select2').select2({
                     width: '100%',
                     minimumResultsForSearch: 10
                 });
+            } else {
+                setTimeout(initPublicSelect2, 50);
             }
-        });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPublicSelect2);
+        } else {
+            initPublicSelect2();
+        }
+    </script>
+    <?php endif; ?>
+    <script>
+        function initLucideSafe() {
+            if (typeof lucide !== 'undefined' && lucide.createIcons) {
+                try {
+                    lucide.createIcons();
+                } catch (e) {
+                    console.error("Lucide load error:", e);
+                }
+            } else {
+                setTimeout(initLucideSafe, 50);
+            }
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initLucideSafe);
+        } else {
+            initLucideSafe();
+        }
     </script>
 </body>
 </html>

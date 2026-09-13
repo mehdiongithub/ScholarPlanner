@@ -27,7 +27,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#payments-datatable', {
+    ScholarPlannerDataTable('#payments-datatable', {
         ajax: {
             url: '<?= url("/admin/payments/data") ?>',
             type: 'GET'

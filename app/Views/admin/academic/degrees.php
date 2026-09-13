@@ -58,7 +58,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#degrees-datatable', {
+    ScholarPlannerDataTable('#degrees-datatable', {
         ajax: {
             url: '<?= url("/admin/academic/degrees/data") ?>',
             type: 'GET'

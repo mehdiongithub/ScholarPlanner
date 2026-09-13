@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= e($title ?? 'Sign In') ?> | ScholarMatch</title>
+    <title><?= e($title ?? 'Sign In') ?> | ScholarPlanner</title>
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -187,8 +188,8 @@
 
 <div class="auth-wrapper">
     <div class="auth-card">
-        <a href="<?= url('/') ?>" class="auth-logo" aria-label="ScholarMatch Home">
-            <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="auth-logo-img">
+        <a href="<?= url('/') ?>" class="auth-logo" aria-label="ScholarPlanner Home">
+            <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="auth-logo-img">
         </a>
         
         <h1 class="auth-title"><?= e($title ?? 'Welcome Back') ?></h1>

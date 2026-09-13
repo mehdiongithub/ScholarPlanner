@@ -82,8 +82,8 @@ class EmailNotificationService {
         $username = $this->config['username'] ?? '';
         $password = $this->config['password'] ?? '';
         $encryption = $this->config['encryption'] ?? ''; // 'ssl', 'tls', or null
-        $fromAddress = $this->config['from_address'] ?? 'noreply@scholarmatch.com';
-        $fromName = $this->config['from_name'] ?? 'ScholarMatch';
+        $fromAddress = $this->config['from_address'] ?? 'noreply@scholarplanner.com';
+        $fromName = $this->config['from_name'] ?? 'ScholarPlanner';
 
         $socketHost = $host;
         if (strtolower($encryption) === 'ssl') {

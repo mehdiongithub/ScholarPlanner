@@ -69,7 +69,7 @@
 
 <script>
 $(document).ready(function() {
-    ScholarMatchDataTable('#countries-datatable', {
+    ScholarPlannerDataTable('#countries-datatable', {
         ajax: {
             url: '<?= url("/admin/locations/countries/data") ?>',
             type: 'GET'

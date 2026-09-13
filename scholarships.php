@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scholarships — ScholarMatch</title>
+    <title>Search Scholarships Worldwide | ScholarPlanner</title>
     <meta name="description" content="Browse scholarship opportunities matched to your profile. Filter by country, level, funding type, and field of study.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -911,9 +911,9 @@
     <!-- ===== HEADER ===== -->
     <header class="header" role="banner">
         <div class="header-inner container">
-            <a href="/" class="logo" aria-label="ScholarMatch Home">
+            <a href="/" class="logo" aria-label="ScholarPlanner Home">
                 <div class="logo-icon"><i data-lucide="graduation-cap"></i></div>
-                <span class="logo-text">ScholarMatch</span>
+                <span class="logo-text">ScholarPlanner</span>
             </a>
 
             <nav class="nav-desktop" aria-label="Main navigation">
@@ -942,7 +942,7 @@
     <!-- Mobile menu -->
     <nav class="mobile-menu" id="mobileMenu" aria-label="Mobile navigation" aria-hidden="true">
         <div class="mobile-menu-header">
-            <span class="logo-text">ScholarMatch</span>
+            <span class="logo-text">ScholarPlanner</span>
             <button class="mobile-menu-close" id="mobileMenuClose" aria-label="Close menu">
                 <i data-lucide="x"></i>
             </button>
@@ -1452,7 +1452,7 @@
     <!-- ===== FOOTER (minimal for inner pages) ===== -->
     <footer style="background:var(--text-900);padding:24px 0;text-align:center">
         <div class="container">
-            <p style="font-size:0.75rem;color:var(--text-500)">&copy; 2025 ScholarMatch. All rights reserved.</p>
+            <p style="font-size:0.75rem;color:var(--text-500)">&copy; <?= date('Y') ?> ScholarPlanner. All rights reserved.</p>
         </div>
     </footer>
 

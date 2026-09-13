@@ -1,6 +1,6 @@
-# ScholarMatch — Scholarship Discovery and Alerts Platform
+# ScholarPlanner — Scholarship Discovery and Alerts Platform
 
-ScholarMatch is a production-ready SaaS platform built using clean, vanilla Core PHP and MySQL for personalized scholarship matching and automated notifications via WhatsApp and email.
+ScholarPlanner is a production-ready SaaS platform built using clean, vanilla Core PHP and MySQL for personalized scholarship matching and automated notifications via WhatsApp and email.
 
 ---
 

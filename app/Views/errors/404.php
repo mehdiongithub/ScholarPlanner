@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>404 Page Not Found | ScholarMatch</title>
+    <title>404 Page Not Found | ScholarPlanner</title>
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -66,8 +67,8 @@
 <body>
     <header class="header scrolled" id="header" role="banner" style="position: relative;">
         <div class="header-inner">
-            <a href="<?= url('/') ?>" class="logo" aria-label="ScholarMatch Home">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarMatch Logo" class="logo-img">
+            <a href="<?= url('/') ?>" class="logo" aria-label="ScholarPlanner Home">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-img">
             </a>
         </div>
     </header>
@@ -90,7 +91,7 @@
 
     <footer class="footer" role="contentinfo" style="padding: 24px 0;">
         <div class="container" style="text-align: center; font-size: 0.75rem; color: var(--text-500);">
-            &copy; 2025 ScholarMatch. All rights reserved.
+            &copy; <?= date('Y') ?> ScholarPlanner. All rights reserved.
         </div>
     </footer>
 

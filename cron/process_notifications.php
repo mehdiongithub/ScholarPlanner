@@ -53,7 +53,7 @@ $tzName = $settings['whatsapp_timezone'] ?? ($_ENV['APP_TIMEZONE'] ?? 'Asia/Kara
 date_default_timezone_set($tzName);
 
 echo "==================================================\n";
-echo " ScholarMatch — Notification Scheduler & Worker   \n";
+echo " ScholarPlanner — Notification Scheduler & Worker   \n";
 echo " Timezone: {$tzName} | Current Time: " . date('Y-m-d H:i:s (l)') . "\n";
 echo "==================================================\n";
 

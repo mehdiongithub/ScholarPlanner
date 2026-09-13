@@ -49,7 +49,7 @@
         <div style="border-bottom:1px solid #f1f5f9; padding-bottom:18px; margin-bottom:18px;">
             <div style="font-weight:600; color:#334155; margin-bottom:6px;">Preferred Delivery Channel Policy</div>
             <p style="font-size:0.8125rem; color:#64748b; margin-top:0; margin-bottom:12px;">
-                By default, ScholarMatch delivers exactly one notification per matching opportunity to your preferred channel to prevent duplicate messages.
+                By default, ScholarPlanner delivers exactly one notification per matching opportunity to your preferred channel to prevent duplicate messages.
             </p>
             <?php 
                 $preferredChannel = $userPref['preferred_channel'] ?? 'email';

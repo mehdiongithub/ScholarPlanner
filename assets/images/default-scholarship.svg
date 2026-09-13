@@ -15,6 +15,6 @@
   <path d="M440 205 L440 232 L435 232" fill="none" stroke="#2563eb" stroke-width="2"/>
   <circle cx="435" cy="234" r="3" fill="#2563eb"/>
 
-  <text x="400" y="320" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#1e293b" text-anchor="middle">ScholarMatch</text>
+  <text x="400" y="320" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#1e293b" text-anchor="middle">ScholarPlanner</text>
   <text x="400" y="348" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="500" fill="#64748b" text-anchor="middle">Academic Opportunity</text>
 </svg>

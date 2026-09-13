@@ -200,7 +200,7 @@
 
 <div class="welcome-banner">
     <h1>Admin Dashboard</h1>
-    <p>Manage scholarships, students, applications and the ScholarMatch platform.</p>
+    <p>Manage scholarships, students, applications and the ScholarPlanner platform.</p>
 </div>
 
 <!-- Admin Quick Actions -->
