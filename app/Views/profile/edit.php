@@ -8,7 +8,34 @@ unset($_SESSION['verify_success_toast']);
 
 $currentCompletion = $user['profile_completion_percentage'] ?? 0;
 ?>
-<style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Profile Onboarding | ScholarPlanner</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@0.460.0"></script>
+    
+    <!-- CSS Dependencies -->
+    <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
+    
+    <!-- External JS Dependencies -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <!-- Core JS Helper -->
+    <script src="<?= asset('assets/js/main.js') ?>"></script>
+
+    <style>
         /* Select2 Custom Styles to match Tailwind/Slate UI */
         .select2-container--default .select2-selection--single {
             border: 1px solid var(--border) !important;
@@ -368,6 +395,12 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
         }
         
         @media (max-width: 480px) {
+            .profile-header {
+                padding: 12px 16px;
+            }
+            .user-greeting {
+                display: none;
+            }
             .wizard-progress-bar {
                 flex-direction: column;
                 align-items: flex-start;
@@ -396,22 +429,41 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     </style>
 </head>
 <body>
-<?php
-$title = 'Complete Profile Onboarding';
-include ROOT_PATH . '/app/Views/layouts/student_header.php';
-?>
-
-    <?php if (!empty($verifySuccessToast)): ?>
-        <script>
-            $(document).ready(function() {
-                if (typeof showToast === 'function') {
-                    showToast(<?= json_encode($verifySuccessToast) ?>, 'success');
-                }
-            });
-        </script>
-    <?php endif; ?>
+    <div class="profile-layout">
+        <!-- Minimal Distraction-Free Header: ScholarPlanner Branding & Logout -->
+        <header class="profile-header" role="banner">
+            <a href="<?= url('/') ?>" class="logo-box" title="ScholarPlanner Home">
+                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" style="height: 38px; width: auto; object-fit: contain;">
+            </a>
+            
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="font-size: 0.875rem; color: var(--text-600); font-weight: 500;" class="user-greeting">
+                    Signed in as <strong style="color: var(--text-900);"><?= e(trim(($user['first_name'] ?? 'Student') . ' ' . ($user['last_name'] ?? ''))) ?></strong>
+                </span>
+                <form action="<?= url('/logout') ?>" method="POST" style="margin: 0;">
+                    <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
+                    <button type="submit" class="btn-action btn-secondary" style="min-height: 36px; padding: 6px 14px; font-size: 0.8125rem;">
+                        <i data-lucide="log-out"></i>
+                        <span>Logout</span>
+                    </button>
+                </form>
+            </div>
+        </header>
 
         <main class="profile-content">
+            <?php if (!empty($verifySuccessToast)): ?>
+                <div class="alert alert-success" style="display:flex; align-items:center; gap:10px; margin-bottom:24px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:8px; padding:14px 18px; font-weight:500;">
+                    <i data-lucide="circle-check" style="width:20px; height:20px; color:#059669; flex-shrink:0;"></i>
+                    <span><?= e($verifySuccessToast) ?></span>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($success_message)): ?>
+                <div class="alert alert-success" style="display:flex; align-items:center; gap:10px; margin-bottom:24px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:8px; padding:14px 18px; font-weight:500;">
+                    <i data-lucide="circle-check" style="width:20px; height:20px; color:#059669; flex-shrink:0;"></i>
+                    <span><?= e($success_message) ?></span>
+                </div>
+            <?php endif; ?>
             
             <!-- Wizard Step Indicators -->
             <nav class="wizard-progress-bar" aria-label="Onboarding Progress">
@@ -1863,4 +1915,10 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                       .replace(/'/g, '&#039;');
         }
     </script>
-<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>
+    <script>
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>

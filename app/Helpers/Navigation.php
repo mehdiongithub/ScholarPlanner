@@ -337,8 +337,8 @@ class Navigation {
                 'type' => 'link',
                 'label' => 'Settings',
                 'icon' => 'settings',
-                'url' => '/profile/edit#step-1',
-                'active_prefix' => '/profile/edit#step-1'
+                'url' => '/settings',
+                'active_prefix' => '/settings'
             ]
         ];
     }

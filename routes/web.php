@@ -83,10 +83,7 @@ $router->post('/profile/complete', ['App\Controllers\ProfileController', 'comple
 $router->get('/profile/edit', ['App\Controllers\ProfileController', 'edit']);
 $router->get('/notifications', ['App\Controllers\ProfileController', 'notifications']);
 $router->get('/matches', ['App\Controllers\DashboardController', 'matches']);
-$router->get('/settings', function() {
-    header('Location: ' . url('/profile/edit#step-3'));
-    exit;
-});
+$router->get('/settings', ['App\Controllers\SettingsController', 'index']);
 
 $router->post('/profile/update', ['App\Controllers\ProfileController', 'update']);
 

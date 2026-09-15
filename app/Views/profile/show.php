@@ -362,8 +362,6 @@
             }
         }
     </style>
-</head>
-<body>
 <?php
 $title = 'My Profile';
 include ROOT_PATH . '/app/Views/layouts/student_header.php';

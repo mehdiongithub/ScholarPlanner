@@ -373,8 +373,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
+            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Profile updated successfully.' : url('/profile/edit?success=Profile updated successfully.');
             if (!headers_sent()) {
-                header("Location: " . url('/profile/edit?success=Profile updated successfully.'));
+                header("Location: " . $redirectUrl);
             }
             $this->halt("Redirect profile update success");
 
@@ -611,8 +612,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
+            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Education record added successfully.' : url('/profile/edit?success=Education record added successfully.');
             if (!headers_sent()) {
-                header("Location: " . url('/profile/edit?success=Education record added successfully.'));
+                header("Location: " . $redirectUrl);
             }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
@@ -941,8 +943,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
+            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Education record deleted successfully.' : url('/profile/edit?success=Education record deleted successfully.');
             if (!headers_sent()) {
-                header("Location: " . url('/profile/edit?success=Education record deleted successfully.'));
+                header("Location: " . $redirectUrl);
             }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
@@ -1073,8 +1076,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
+            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Preferences updated successfully.' : url('/profile/edit?success=Preferences updated successfully.');
             if (!headers_sent()) {
-                header("Location: " . url('/profile/edit?success=Preferences updated successfully.'));
+                header("Location: " . $redirectUrl);
             }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
@@ -1378,6 +1382,7 @@ class ProfileController {
 
         // Success toast session
         $_SESSION['dashboard_success'] = "Profile completed successfully!";
+        $_SESSION['success'] = "Profile completed successfully! Welcome to your student dashboard.";
 
         $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
         if ($isAjax) {
@@ -1559,7 +1564,8 @@ class ProfileController {
                 $this->halt("AJAX notification preferences success");
             }
 
-            header("Location: " . url('/notifications?success=Notification settings saved successfully.'));
+            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Notification settings saved successfully.' : url('/notifications?success=Notification settings saved successfully.');
+            header("Location: " . $redirectUrl);
             $this->halt("Redirect notifications");
 
         } catch (Exception $e) {
