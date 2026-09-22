@@ -115,9 +115,12 @@ $(document).ready(function() {
                 d.status = $('select[name="status"]').val();
             }
         },
+        order: [[1, 'asc']],
         columns: [
             {
                 data: 'cover_image',
+                orderable: false,
+                searchable: false,
                 render: function(data, type, row) {
                     var defaultImg = '<?= url("/assets/images/default-scholarship.svg") ?>';
                     var src = data ? '<?= url("/") ?>' + '/' + data : defaultImg;
@@ -189,9 +192,10 @@ $(document).ready(function() {
                             '</form>';
                     }
 
-                    var deleteForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/delete" method="POST" onsubmit="return confirm(\'Are you sure you want to permanently delete this scholarship?\');" style="display:inline;">' +
+                    var safeTitle = $('<div>').text(row.title || '').html();
+                    var deleteForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/delete" method="POST" style="display:inline;">' +
                         '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
-                        '<button type="submit" class="action-link danger" style="background:none; border:none; cursor:pointer; font-family:inherit;">Delete</button>' +
+                        '<button type="button" class="action-link danger btn-delete-scholarship" style="background:none; border:none; cursor:pointer; font-family:inherit;" data-title="' + safeTitle + '">Delete</button>' +
                         '</form>';
 
                     return '<div style="display: flex; gap: 6px;">' +
@@ -211,6 +215,12 @@ $(document).ready(function() {
             }
         }
     });
+
+    $(document).on('click', '.btn-delete-scholarship', function(e) {
+        e.preventDefault();
+        adminConfirmDelete(this, 'scholarship', $(this).attr('data-title'));
+    });
+});
 
     // Handle filter form submission
     $('.filter-form').on('submit', function(e) {

@@ -89,10 +89,61 @@ if (!function_exists('url')) {
      */
     function url(string $path): string {
         $scriptName = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-        if ($scriptName !== '/' && $scriptName !== '\\' && !empty($scriptName)) {
+        $scriptName = str_replace('\\', '/', $scriptName);
+        if ($scriptName !== '/' && !empty($scriptName) && $scriptName !== '.') {
             return rtrim($scriptName, '/') . '/' . ltrim($path, '/');
         }
         return '/' . ltrim($path, '/');
+    }
+}
+
+if (!function_exists('absolute_url')) {
+    /**
+     * Resolve fully-qualified absolute URL with scheme and host for emails and external links.
+     */
+    function absolute_url(string $path): string {
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+
+        $configuredAppUrl = rtrim(config('app.url', $_ENV['APP_URL'] ?? 'http://localhost/scholarship'), '/');
+        $cleanPath = '/' . ltrim($path, '/');
+
+        if (!empty($_SERVER['HTTP_HOST'])) {
+            $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
+                || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+            $scheme = $isHttps ? 'https://' : 'http://';
+
+            $subDir = '';
+            if (!empty($_SERVER['SCRIPT_NAME'])) {
+                $dir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
+                if ($dir !== '/' && $dir !== '.' && !empty($dir)) {
+                    $subDir = '/' . trim($dir, '/');
+                }
+            }
+            if (empty($subDir) && !empty($configuredAppUrl)) {
+                $p = parse_url($configuredAppUrl, PHP_URL_PATH);
+                if (!empty($p) && $p !== '/') {
+                    $subDir = '/' . trim($p, '/');
+                }
+            }
+            $base = $scheme . $_SERVER['HTTP_HOST'] . $subDir;
+        } else {
+            $base = $configuredAppUrl ?: 'http://localhost/scholarship';
+        }
+
+        // Avoid duplicating subpath if $cleanPath already includes the base subpath
+        $basePath = parse_url($base, PHP_URL_PATH) ?? '';
+        if (!empty($basePath) && $basePath !== '/') {
+            $basePath = '/' . trim($basePath, '/');
+            if (strpos($cleanPath, $basePath . '/') === 0) {
+                $cleanPath = substr($cleanPath, strlen($basePath));
+            } elseif ($cleanPath === $basePath) {
+                $cleanPath = '/';
+            }
+        }
+
+        return rtrim($base, '/') . '/' . ltrim($cleanPath, '/');
     }
 }
 

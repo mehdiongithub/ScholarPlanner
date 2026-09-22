@@ -27,7 +27,11 @@ if ($userId) {
             SELECT COUNT(*) 
             FROM scholarship_matches m 
             JOIN scholarships s ON m.scholarship_id = s.id 
-            WHERE m.user_id = :uid AND s.status = 'published'
+            WHERE m.user_id = :uid 
+              AND s.status = 'published'
+              AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE')
+              AND m.match_score > 0
+              AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
         ");
         $stmtCount->execute(['uid' => $userId]);
         $matchesCount = (int)$stmtCount->fetchColumn();
@@ -132,10 +136,10 @@ if ($userId) {
                 }
             }
             ?>
-            <a href="<?= url('/checkout?plan=premium-monthly') ?>" class="menu-item sidebar-link-whatsapp" id="sidebarWaLink" style="display:flex; align-items:center; margin-top:12px; border-top:1px solid rgba(255,255,255,0.05); padding-top:16px; color:#25D366">
+            <!-- <a href="https://wa.me/923251371826" target="_blank" rel="noopener noreferrer" class="menu-item sidebar-link-whatsapp" id="sidebarWaLink" style="display:flex; align-items:center; margin-top:12px; border-top:1px solid rgba(255,255,255,0.05); padding-top:16px; color:#25D366">
                 <i data-lucide="message-square"></i>
                 <span>WhatsApp Alerts</span>
-            </a>
+            </a> -->
         </div>
         
         <div style="padding:16px 20px; font-size:0.6875rem; color:#64748b; border-top: 1px solid rgba(255,255,255,0.05)">

@@ -133,12 +133,12 @@ class SettingsController {
         $stmtReminders->execute(['user_id' => $userId]);
         $selectedReminders = $stmtReminders->fetchAll(PDO::FETCH_ASSOC);
 
-        // 10. Determine Active Tab (profile, reminders, plan)
+        // 10. Determine Active Tab (profile, reminders) - plan tab hidden for now
         $activeTab = trim($_GET['tab'] ?? 'profile');
         if ($activeTab === 'reminders' && !$isSubscribed) {
             $activeTab = 'profile';
         }
-        if (!in_array($activeTab, ['profile', 'reminders', 'plan'], true)) {
+        if (!in_array($activeTab, ['profile', 'reminders'], true) || $activeTab === 'plan') {
             $activeTab = 'profile';
         }
 

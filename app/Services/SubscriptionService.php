@@ -33,28 +33,33 @@ class SubscriptionService {
         }
 
         $plan = self::getActivePlan($userId);
-        $slug = $plan['plan_slug'];
+        $slug = $plan['plan_slug'] ?? '';
+        $isPaid = ((float)($plan['price'] ?? 0) > 0) || ($slug === 'premium-monthly');
 
-        if ($slug === 'premium-monthly') {
+        // Always grant public / basic features to all
+        if (in_array($feature, ['public_discovery', 'basic_search', 'basic_details'])) {
             return true;
         }
 
-        // Free plan permissions mapping
+        // Check specific feature flags if set on the plan
         switch ($feature) {
-            case 'public_discovery':
-            case 'basic_search':
-            case 'basic_details':
-                return true;
+            case 'whatsapp_alerts':
+                return !empty($plan['whatsapp_alerts']);
+            case 'deadline_alerts':
+            case 'deadline_reminders':
+                return !empty($plan['deadline_reminders']);
+            case 'application_tracking':
+                return !empty($plan['application_tracking']);
+            case 'email_alerts':
+                return !empty($plan['email_alerts']);
             case 'premium_matching':
             case 'advanced_search':
-            case 'application_tracking':
             case 'document_readiness':
-            case 'deadline_alerts':
-            case 'whatsapp_alerts':
             case 'premium_alerts':
             case 'advanced_dashboard':
+                return $isPaid;
             default:
-                return false;
+                return $isPaid;
         }
     }
 
@@ -69,12 +74,15 @@ class SubscriptionService {
         }
 
         $plan = self::getActivePlan($userId);
-        $slug = $plan['plan_slug'];
+        $slug = $plan['plan_slug'] ?? '';
+        $isPaid = ((float)($plan['price'] ?? 0) > 0) || ($slug === 'premium-monthly');
 
-        if ($slug === 'premium-monthly') {
+        if ($isPaid) {
             if ($limitName === 'saved_scholarships') return 999999;
             if ($limitName === 'comparisons') return 4; // Max 4 side-by-side
-            if ($limitName === 'max_matches') return 9999;
+            if ($limitName === 'max_matches') {
+                return !empty($plan['max_matches']) ? (int)$plan['max_matches'] : 9999;
+            }
             return 999999;
         }
 
@@ -85,7 +93,7 @@ class SubscriptionService {
             case 'comparisons':
                 return 3;
             case 'max_matches':
-                return 5;
+                return !empty($plan['max_matches']) ? (int)$plan['max_matches'] : 5;
             default:
                 return 0;
         }
@@ -100,7 +108,9 @@ class SubscriptionService {
         
         // Fetch candidate (protected, or active/cancelled within validity window)
         $stmt = $db->prepare("
-            SELECT s.*, p.slug as plan_slug, p.name as plan_name, p.price, p.currency
+            SELECT s.*, p.slug as plan_slug, p.name as plan_name, p.price, p.currency,
+                   p.whatsapp_alerts, p.email_alerts, p.deadline_reminders, p.application_tracking,
+                   p.max_matches, p.duration_days, p.billing_interval
             FROM subscriptions s
             JOIN subscription_plans p ON s.plan_id = p.id
             WHERE s.user_id = :user_id 
@@ -132,7 +142,11 @@ class SubscriptionService {
             'plan_name' => 'Free',
             'price' => 0.00,
             'currency' => 'PKR',
-            'max_matches' => 5
+            'max_matches' => 5,
+            'whatsapp_alerts' => 0,
+            'email_alerts' => 0,
+            'deadline_reminders' => 0,
+            'application_tracking' => 0
         ];
     }
 

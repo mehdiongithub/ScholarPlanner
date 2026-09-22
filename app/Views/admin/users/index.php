@@ -145,11 +145,13 @@ $(document).ready(function() {
                     var detailUrl = '<?= url("/admin/users") ?>' + '/' + row.record_id;
                     var editUrl = '<?= url("/admin/users") ?>' + '/' + row.record_id + '/edit';
                     
+                    var userName = ((row.first_name || '') + ' ' + (row.last_name || '')).trim() || row.email || 'User';
+                    var safeUserName = $('<div>').text(userName).html();
                     var actionBtn = '';
                     if (row.status === 'suspended') {
-                        actionBtn = '<a href="javascript:void(0)" onclick="updateUserStatus(\'' + row.record_id + '\', \'activate\')" class="action-link" style="color: #22c55e;">Activate</a>';
+                        actionBtn = '<a href="javascript:void(0)" class="action-link btn-toggle-user-status" data-id="' + row.record_id + '" data-action="activate" data-name="' + safeUserName + '" style="color: #22c55e;">Activate</a>';
                     } else {
-                        actionBtn = '<a href="javascript:void(0)" onclick="updateUserStatus(\'' + row.record_id + '\', \'suspend\')" class="action-link" style="color: #eab308;">Suspend</a>';
+                        actionBtn = '<a href="javascript:void(0)" class="action-link btn-toggle-user-status" data-id="' + row.record_id + '" data-action="suspend" data-name="' + safeUserName + '" style="color: #eab308;">Suspend</a>';
                     }
 
                     return '<a href="' + detailUrl + '" class="action-link">View Details</a>' +
@@ -165,6 +167,14 @@ $(document).ready(function() {
         }
     });
 
+    $(document).on('click', '.btn-toggle-user-status', function(e) {
+        e.preventDefault();
+        var recordId = $(this).attr('data-id');
+        var action = $(this).attr('data-action');
+        var name = $(this).attr('data-name');
+        updateUserStatus(recordId, action, name);
+    });
+
     // Handle filter form submission
     $('.filter-form').on('submit', function(e) {
         e.preventDefault();
@@ -172,32 +182,60 @@ $(document).ready(function() {
     });
 });
 
-function updateUserStatus(recordId, action) {
-    if (!confirm('Are you sure you want to ' + action + ' this user account?')) {
-        return;
-    }
+function updateUserStatus(recordId, action, userName) {
+    var isSuspend = action === 'suspend';
+    var title = isSuspend ? 'Suspend User Account' : 'Activate User Account';
+    var userLabel = userName ? ' <strong>"' + adminEscapeHtml(userName) + '"</strong>' : ' this user account';
+    var msg = 'Are you sure you want to ' + action + userLabel + '?';
+    var subtext = isSuspend ? 'The user will be immediately blocked from logging in.' : 'The user will regain access to their account.';
+    var btnText = isSuspend ? 'Yes, Suspend' : 'Yes, Activate';
+    var btnClass = isSuspend ? 'btn-danger' : 'btn-primary';
+    var icon = isSuspend ? 'user-minus' : 'user-check';
 
-    const formData = new FormData();
-    formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
+    adminConfirm({
+        title: title,
+        message: msg,
+        subtext: subtext,
+        confirmText: btnText,
+        confirmClass: btnClass,
+        icon: icon
+    }, function() {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
 
-    fetch('<?= url("/admin/users") ?>/' + recordId + '/' + action, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            $('#users-datatable').DataTable().ajax.reload(null, false);
-        } else {
-            alert(data.error || 'Failed to update user status.');
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('An error occurred during communication.');
+        fetch('<?= url("/admin/users") ?>/' + recordId + '/' + action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                $('#users-datatable').DataTable().ajax.reload(null, false);
+            } else {
+                adminConfirm({
+                    title: 'Action Failed',
+                    message: data.error || 'Failed to update user status.',
+                    subtext: '',
+                    confirmText: 'OK',
+                    confirmClass: 'btn-primary',
+                    icon: 'alert-triangle'
+                });
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            adminConfirm({
+                title: 'Error',
+                message: 'An error occurred during communication.',
+                subtext: '',
+                confirmText: 'OK',
+                confirmClass: 'btn-danger',
+                icon: 'alert-triangle'
+            });
+        });
     });
 }
 </script>

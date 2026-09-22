@@ -34,7 +34,9 @@ class NotificationQueueService {
             'PASSWORD_RESET',
             'PAYMENT_CONFIRMATION',
             'PAYMENT_SUCCESS',
-            'SUBSCRIPTION_CONFIRMATION'
+            'SUBSCRIPTION_CONFIRMATION',
+            'MANUAL_SUBSCRIPTION_ACTIVATION',
+            NotificationTypes::MANUAL_SUBSCRIPTION_ACTIVATION
         ], true);
     }
 
@@ -665,6 +667,144 @@ class NotificationQueueService {
     }
 
     private function renderHtmlEmail(string $type, array $payload): string {
+        if (!empty($payload['body_html'])) {
+            return $payload['body_html'];
+        }
+
+        if ($type === NotificationTypes::MANUAL_SUBSCRIPTION_ACTIVATION || $type === 'MANUAL_SUBSCRIPTION_ACTIVATION') {
+            $studentName = htmlspecialchars($payload['student_name'] ?? 'Student');
+            $planName = htmlspecialchars($payload['plan_name'] ?? 'Premium');
+            $durationDays = (int)($payload['duration_days'] ?? 30);
+            $activationUrl = $payload['activation_url'] ?? '#';
+            $siteName = 'ScholarPlanner';
+
+            return "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                <style>
+                    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; }
+                    .container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; }
+                    .header { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 36px 30px; text-align: center; }
+                    .header h1 { margin: 0; font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; }
+                    .header p { margin: 6px 0 0 0; color: #bfdbfe; font-size: 14px; font-weight: 500; }
+                    .content { padding: 36px 30px; }
+                    .greeting { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 16px; }
+                    .lead { font-size: 15px; line-height: 1.6; color: #475569; margin-bottom: 24px; }
+                    .timer-notice { background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 18px 20px; border-radius: 8px; margin-bottom: 28px; }
+                    .timer-notice-title { font-weight: 700; color: #1e40af; font-size: 14px; margin-bottom: 6px; }
+                    .timer-notice-text { font-size: 13.5px; line-height: 1.5; color: #1e3a8a; margin: 0; }
+                    .plan-badge-box { text-align: center; margin: 24px 0 32px 0; }
+                    .plan-badge { display: inline-block; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 24px; font-size: 15px; font-weight: 700; color: #0f172a; }
+                    .btn-container { text-align: center; margin: 32px 0; }
+                    .btn { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff !important; text-decoration: none; font-size: 16px; font-weight: 700; padding: 16px 38px; border-radius: 8px; box-shadow: 0 4px 12px rgba(37,99,235,0.25); }
+                    .perks-list { background-color: #f8fafc; border-radius: 8px; padding: 20px 24px; margin-bottom: 28px; }
+                    .perks-title { font-weight: 700; font-size: 14px; color: #334155; margin-bottom: 12px; }
+                    .perk-item { font-size: 13.5px; color: #475569; margin-bottom: 8px; }
+                    .perk-item:last-child { margin-bottom: 0; }
+                    .fallback { font-size: 12px; color: #64748b; line-height: 1.5; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 28px; word-break: break-all; }
+                    .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 30px; text-align: center; font-size: 12px; color: #94a3b8; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='header'>
+                        <h1>$siteName</h1>
+                        <p>Personalized Scholarship Discovery Platform</p>
+                    </div>
+                    <div class='content'>
+                        <div class='greeting'>Hello $studentName,</div>
+                        <p class='lead'>Great news! An administrator has granted you a complimentary <strong>$planName</strong> subscription.</p>
+                        
+                        <div class='timer-notice'>
+                            <div class='timer-notice-title'>⏱ When does your subscription start?</div>
+                            <p class='timer-notice-text'>
+                                <strong>Your timer has NOT started yet!</strong> Your <strong>{$durationDays}-day</strong> validity period will begin <em>at the exact moment</em> you click the button below to open your activation link.
+                            </p>
+                        </div>
+
+                        <div class='plan-badge-box'>
+                            <div class='plan-badge'>
+                                Tier: $planName &bull; Duration: {$durationDays} Days
+                            </div>
+                        </div>
+
+                        <div class='btn-container'>
+                            <a href='{$activationUrl}' class='btn' target='_blank'>Activate My Subscription Now</a>
+                        </div>
+
+                        <div class='perks-list'>
+                            <div class='perks-title'>Included in your subscription:</div>
+                            <div class='perk-item'>&#10004; Direct WhatsApp & Email real-time scholarship alerts</div>
+                            <div class='perk-item'>&#10004; Unlimited side-by-side scholarship comparisons</div>
+                            <div class='perk-item'>&#10004; Priority document readiness score & deadline reminders</div>
+                            <div class='perk-item'>&#10004; Full access to advanced matching intelligence</div>
+                        </div>
+
+                        <div class='fallback'>
+                            If the button above does not work, copy and paste this activation link directly into your browser:<br>
+                            <a href='{$activationUrl}' style='color: #2563eb;'>{$activationUrl}</a>
+                        </div>
+                    </div>
+                    <div class='footer'>
+                        &copy; " . date('Y') . " $siteName. All rights reserved.<br>
+                        This activation link is valid for 60 days. If you did not expect this, you may disregard this email.
+                    </div>
+                </div>
+            </body>
+            </html>";
+        }
+
+        if ($type === NotificationTypes::PASSWORD_RESET || $type === 'PASSWORD_RESET') {
+            $firstName = htmlspecialchars($payload['first_name'] ?? 'User');
+            $resetUrl = htmlspecialchars(absolute_url($payload['reset_url'] ?? '/reset-password'));
+            $siteName = 'ScholarPlanner';
+
+            return "
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset='utf-8'>
+                <title>Reset your ScholarPlanner password</title>
+                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            </head>
+            <body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; line-height:1.6; color:#334155; margin:0; padding:20px; background:#f1f5f9;\">
+                <div style='max-width:600px; margin:20px auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0,0,0,0.07); border:1px solid #e2e8f0;'>
+                    <div style='background:linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding:32px 24px; text-align:center;'>
+                        <h1 style='margin:0; font-size:24px; font-weight:800; color:#ffffff;'>$siteName</h1>
+                        <p style='margin:6px 0 0 0; color:#bfdbfe; font-size:14px;'>Password Reset Request</p>
+                    </div>
+                    <div style='padding:32px 28px;'>
+                        <h2 style='color:#0f172a; margin-top:0; font-size:20px;'>Hello $firstName,</h2>
+                        <p style='color:#475569; font-size:15px; line-height:1.6;'>
+                            We received a request to reset your password for your <strong>$siteName</strong> account. Click the button below to set a new password:
+                        </p>
+                        <div style='text-align:center; margin:32px 0;'>
+                            <a href='{$resetUrl}' style='display:inline-block; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:#ffffff; text-decoration:none; font-size:16px; font-weight:700; padding:14px 32px; border-radius:8px; box-shadow:0 4px 12px rgba(37,99,235,0.25);' target='_blank'>Reset Password</a>
+                        </div>
+                        <div style='background-color:#eff6ff; border-left:4px solid #3b82f6; padding:14px 18px; border-radius:6px; margin:24px 0;'>
+                            <p style='margin:0; font-size:13.5px; color:#1e40af;'>
+                                ⏱ <strong>Link validity:</strong> This link is valid for <strong>60 minutes</strong> and can only be used once.
+                            </p>
+                        </div>
+                        <p style='color:#64748b; font-size:13.5px; line-height:1.5; margin-top:20px;'>
+                            If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged and your account is secure.
+                        </p>
+                        <div style='border-top:1px solid #e2e8f0; margin-top:28px; padding-top:20px; font-size:12px; color:#64748b; word-break:break-all;'>
+                            If the button above does not work, copy and paste this link into your browser:<br>
+                            <a href='{$resetUrl}' style='color:#2563eb;'>{$resetUrl}</a>
+                        </div>
+                    </div>
+                    <div style='background:#f8fafc; border-top:1px solid #e2e8f0; padding:20px 24px; text-align:center; font-size:12px; color:#94a3b8;'>
+                        &copy; " . date('Y') . " $siteName. All rights reserved.
+                    </div>
+                </div>
+            </body>
+            </html>";
+        }
+
         if ($type === NotificationTypes::EMAIL_VERIFICATION || $type === 'EMAIL_VERIFICATION') {
             $otpCode = e($payload['otp_code'] ?? ($payload['code'] ?? ''));
             $firstName = e($payload['first_name'] ?? 'Student');

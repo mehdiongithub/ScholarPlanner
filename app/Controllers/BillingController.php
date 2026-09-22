@@ -50,11 +50,20 @@ class BillingController {
      */
     public function pricing(): void {
         $userId = Auth::userId();
-        $plan = SubscriptionService::getActivePlan($userId ?: 0);
+        $userPlan = SubscriptionService::getActivePlan($userId ?: 0);
         $error = $_GET['error'] ?? '';
 
+        // Query active subscription plans ordered by price ASC
+        $plans = $this->db->query("
+            SELECT * FROM subscription_plans 
+            WHERE status = 'active' 
+            ORDER BY price ASC, id ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
         view('billing.pricing', [
-            'current_plan' => $plan['plan_slug'],
+            'current_plan' => $userPlan['plan_slug'] ?? 'free',
+            'user_subscription' => $userPlan,
+            'plans' => $plans,
             'error' => $error,
             'csrf_token' => Security::csrfToken()
         ]);
@@ -1210,4 +1219,197 @@ class BillingController {
         }
         exit();
     }
+
+    /**
+     * GET /subscriptions/activate?token=...
+     * User opens the one-click activation link from their email.
+     * The subscription timer strictly begins NOW upon opening this URL.
+     */
+    public function activateManualGrant(): void {
+        $token = trim($_GET['token'] ?? '');
+
+        if ($token === '') {
+            view('subscriptions.activation_error', [
+                'error_title' => 'Missing Activation Link',
+                'error_message' => 'No activation token was provided. Please verify the URL or click the link directly from your email.'
+            ]);
+            return;
+        }
+
+        // Look up the grant with student & plan details
+        $stmt = $this->db->prepare("
+            SELECT g.*, 
+                   u.first_name, u.last_name, u.email,
+                   p.name as plan_name, p.slug as plan_slug, p.duration_days as default_duration
+            FROM manual_subscription_grants g
+            JOIN users u ON g.user_id = u.id
+            JOIN subscription_plans p ON g.plan_id = p.id
+            WHERE g.activation_token = :token
+            LIMIT 1
+        ");
+        $stmt->execute(['token' => $token]);
+        $grant = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$grant) {
+            view('subscriptions.activation_error', [
+                'error_title' => 'Invalid Activation Link',
+                'error_message' => 'We could not find a subscription grant matching this activation link. It may have been removed or entered incorrectly.'
+            ]);
+            return;
+        }
+
+        // Auto-login student seamlessly using secure one-time activation token
+        if (!Auth::isAuthenticated()) {
+            $stmtUser = $this->db->prepare("
+                SELECT u.*, r.name as role_name 
+                FROM users u 
+                JOIN roles r ON u.role_id = r.id 
+                WHERE u.id = :id 
+                LIMIT 1
+            ");
+            $stmtUser->execute(['id' => $grant['user_id']]);
+            $userRow = $stmtUser->fetch(PDO::FETCH_ASSOC);
+            if ($userRow) {
+                \App\Helpers\Security::startSession();
+                if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                    session_regenerate_id(true);
+                }
+                $_SESSION['user_id'] = (int)$userRow['id'];
+                $_SESSION['role_id'] = (int)$userRow['role_id'];
+                $_SESSION['role_name'] = $userRow['role_name'] ?? 'visitor';
+                $_SESSION['user_name'] = trim(($userRow['first_name'] ?? '') . ' ' . ($userRow['last_name'] ?? ''));
+                $_SESSION['user_email'] = $userRow['email'];
+            }
+        }
+
+        // Already activated
+        if ($grant['status'] === 'activated') {
+            $subStmt = $this->db->prepare("SELECT * FROM subscriptions WHERE id = :id LIMIT 1");
+            $subStmt->execute(['id' => $grant['subscription_id']]);
+            $sub = $subStmt->fetch(PDO::FETCH_ASSOC);
+
+            view('subscriptions.activation_success', [
+                'already_active' => true,
+                'grant' => $grant,
+                'starts_at' => $sub['starts_at'] ?? $grant['activated_at'],
+                'ends_at' => $sub['ends_at'] ?? null,
+                'duration_days' => (int)$grant['duration_days'],
+                'plan_name' => $grant['plan_name'],
+                'student_name' => trim(($grant['first_name'] ?? '') . ' ' . ($grant['last_name'] ?? '')),
+                'is_logged_in' => Auth::isAuthenticated(),
+                'current_user_id' => Auth::userId(),
+                'grant_user_id' => (int)$grant['user_id']
+            ]);
+            return;
+        }
+
+        // Revoked
+        if ($grant['status'] === 'revoked') {
+            view('subscriptions.activation_error', [
+                'error_title' => 'Subscription Link Revoked',
+                'error_message' => 'This complimentary subscription grant was revoked by an administrator.'
+            ]);
+            return;
+        }
+
+        // Expired token check
+        if ($grant['status'] === 'expired' || (!empty($grant['token_expires_at']) && strtotime($grant['token_expires_at']) < time())) {
+            if ($grant['status'] !== 'expired') {
+                $updExpired = $this->db->prepare("UPDATE manual_subscription_grants SET status = 'expired' WHERE id = :id");
+                $updExpired->execute(['id' => $grant['id']]);
+            }
+            view('subscriptions.activation_error', [
+                'error_title' => 'Activation Link Expired',
+                'error_message' => 'This activation link has passed its expiration deadline. Please contact support or your administrator to request a new link.'
+            ]);
+            return;
+        }
+
+        // Strictly pending - start timer right NOW
+        $this->db->beginTransaction();
+        try {
+            $now = date('Y-m-d H:i:s');
+            $duration = max(1, (int)$grant['duration_days']);
+            $endsAt = date('Y-m-d H:i:s', strtotime("+{$duration} days"));
+
+            // 1. Expire any existing active subscriptions for this user
+            $expireExisting = $this->db->prepare("
+                UPDATE subscriptions 
+                SET status = 'expired', updated_at = NOW() 
+                WHERE user_id = :uid AND status IN ('active', 'protected')
+            ");
+            $expireExisting->execute(['uid' => $grant['user_id']]);
+
+            // 2. Insert new active subscription record starting from NOW
+            $providerSubId = 'MANUAL-' . $grant['id'] . '-' . time();
+            $insSub = $this->db->prepare("
+                INSERT INTO subscriptions (
+                    user_id, plan_id, status, starts_at, ends_at,
+                    normal_ends_at, trial_ends_at, auto_renew, provider, provider_subscription_id,
+                    created_at, updated_at
+                ) VALUES (
+                    :user_id, :plan_id, 'active', :starts_at, :ends_at,
+                    :normal_ends_at, NULL, 0, 'manual_admin', :provider_sub_id,
+                    NOW(), NOW()
+                )
+            ");
+            $insSub->execute([
+                'user_id' => $grant['user_id'],
+                'plan_id' => $grant['plan_id'],
+                'starts_at' => $now,
+                'ends_at' => $endsAt,
+                'normal_ends_at' => $endsAt,
+                'provider_sub_id' => $providerSubId
+            ]);
+            $newSubId = (int)$this->db->lastInsertId();
+
+            // 3. Mark grant activated
+            $updGrant = $this->db->prepare("
+                UPDATE manual_subscription_grants 
+                SET status = 'activated',
+                    activated_at = :activated_at,
+                    subscription_id = :sub_id,
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $updGrant->execute([
+                'activated_at' => $now,
+                'sub_id' => $newSubId,
+                'id' => $grant['id']
+            ]);
+
+            $this->db->commit();
+
+            Auth::logAudit($grant['user_id'], 'manual_subscription_activated', 'subscriptions', 'subscriptions', $newSubId, null, [
+                'grant_id' => $grant['id'],
+                'plan_id' => $grant['plan_id'],
+                'starts_at' => $now,
+                'ends_at' => $endsAt,
+                'duration_days' => $duration
+            ]);
+
+            view('subscriptions.activation_success', [
+                'already_active' => false,
+                'grant' => $grant,
+                'starts_at' => $now,
+                'ends_at' => $endsAt,
+                'duration_days' => $duration,
+                'plan_name' => $grant['plan_name'],
+                'student_name' => trim(($grant['first_name'] ?? '') . ' ' . ($grant['last_name'] ?? '')),
+                'is_logged_in' => Auth::isAuthenticated(),
+                'current_user_id' => Auth::userId(),
+                'grant_user_id' => (int)$grant['user_id']
+            ]);
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            \App\Services\Logger::error("Manual subscription activation failed: " . $e->getMessage(), ['token' => $token]);
+            view('subscriptions.activation_error', [
+                'error_title' => 'Activation Failed',
+                'error_message' => 'An internal error occurred while activating your subscription. Please contact support.'
+            ]);
+        }
+    }
 }
+

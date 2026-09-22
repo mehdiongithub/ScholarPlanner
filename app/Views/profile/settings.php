@@ -300,7 +300,8 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
             </button>
         <?php endif; ?>
 
-        <!-- Tab 3: Plans & Subscription -->
+        <!-- Tab 3: Plans & Subscription (Hidden for now) -->
+        <?php if (false): ?>
         <button type="button" 
                 class="settings-tab-btn <?= $activeTab === 'plan' ? 'active' : '' ?>" 
                 data-tab="plan" 
@@ -313,6 +314,7 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
                 <span class="tab-badge tab-badge-active">ACTIVE</span>
             <?php endif; ?>
         </button>
+        <?php endif; ?>
     </div>
 </nav>
 
@@ -876,8 +878,9 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
 
 
 <!-- =========================================================
-     TAB 3: PLANS & SUBSCRIPTION SETTINGS
+     TAB 3: PLANS & SUBSCRIPTION SETTINGS (Hidden for now)
      ========================================================= -->
+<?php if (false): ?>
 <section id="panel-plan" class="settings-tab-panel <?= $activeTab === 'plan' ? 'active' : '' ?>" role="tabpanel" aria-labelledby="tab-plan">
     
     <!-- Current Plan Status Card -->
@@ -1073,6 +1076,7 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     <?php endif; ?>
 
 </section>
+<?php endif; ?>
 
 
 <!-- SCRIPTING: TABS, SELECT2, FLATPICKR, CASCADING -->

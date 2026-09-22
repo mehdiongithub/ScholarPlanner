@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Services\Auth;
 use App\Services\Database;
+use App\Helpers\Security;
 use PDO;
 
 class DashboardController {
@@ -32,6 +33,15 @@ class DashboardController {
         $stmtSub->execute(['user_id' => $user['id']]);
         $sub = $stmtSub->fetch();
 
+        // Fetch active alert/premium plan for WhatsApp promotion pricing
+        $stmtAlertPlan = $db->prepare("
+            SELECT * FROM subscription_plans 
+            WHERE status = 'active' AND (whatsapp_alerts = 1 OR price > 0)
+            ORDER BY price ASC LIMIT 1
+        ");
+        $stmtAlertPlan->execute();
+        $alertPlan = $stmtAlertPlan->fetch(PDO::FETCH_ASSOC) ?: null;
+
         // 3. Inputs
         $filter = trim($_GET['filter'] ?? 'all');
         $sort = trim($_GET['sort'] ?? 'match_score');
@@ -59,7 +69,11 @@ class DashboardController {
             FROM scholarship_matches m
             JOIN scholarships s ON m.scholarship_id = s.id
             LEFT JOIN countries c ON s.country_id = c.id
-            WHERE m.user_id = :user_id AND s.status = 'published'
+            WHERE m.user_id = :user_id 
+              AND s.status = 'published'
+              AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE')
+              AND m.match_score > 0
+              AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
         ";
 
         $params = ['user_id' => $user['id']];
@@ -112,7 +126,11 @@ class DashboardController {
         $stmtMatchesCount = $db->prepare("
             SELECT COUNT(*) FROM scholarship_matches m
             JOIN scholarships s ON m.scholarship_id = s.id
-            WHERE m.user_id = :user_id AND s.status = 'published'
+            WHERE m.user_id = :user_id 
+              AND s.status = 'published'
+              AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE')
+              AND m.match_score > 0
+              AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
         ");
         $stmtMatchesCount->execute(['user_id' => $user['id']]);
         $matchesCount = (int)$stmtMatchesCount->fetchColumn();
@@ -136,7 +154,10 @@ class DashboardController {
         $stmtDeadlinesCount = $db->prepare("
             SELECT COUNT(DISTINCT s.id)
             FROM scholarships s
-            LEFT JOIN scholarship_matches m ON m.scholarship_id = s.id AND m.user_id = :user_id_m
+            LEFT JOIN scholarship_matches m ON m.scholarship_id = s.id 
+                AND m.user_id = :user_id_m 
+                AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE') 
+                AND m.match_score > 0
             LEFT JOIN saved_scholarships ss ON ss.scholarship_id = s.id AND ss.user_id = :user_id_s
             WHERE (m.user_id IS NOT NULL OR ss.user_id IS NOT NULL)
               AND s.status = 'published'
@@ -152,7 +173,10 @@ class DashboardController {
         $stmtDeadlines = $db->prepare("
             SELECT DISTINCT s.id, s.title, s.application_deadline, s.slug, s.provider_name
             FROM scholarships s
-            LEFT JOIN scholarship_matches m ON m.scholarship_id = s.id AND m.user_id = :user_id_m
+            LEFT JOIN scholarship_matches m ON m.scholarship_id = s.id 
+                AND m.user_id = :user_id_m 
+                AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE') 
+                AND m.match_score > 0
             LEFT JOIN saved_scholarships ss ON ss.scholarship_id = s.id AND ss.user_id = :user_id_s
             WHERE (m.user_id IS NOT NULL OR ss.user_id IS NOT NULL)
               AND s.status = 'published'
@@ -211,6 +235,7 @@ class DashboardController {
                 'status' => 'inactive',
                 'ends_at' => null
             ],
+            'alertPlan' => $alertPlan,
             'savedCount' => $savedCount,
             'appsCount' => $appsCount,
             'deadlinesCount' => $deadlinesCount,
@@ -271,7 +296,11 @@ class DashboardController {
             FROM scholarship_matches m
             JOIN scholarships s ON m.scholarship_id = s.id
             LEFT JOIN countries c ON s.country_id = c.id
-            WHERE m.user_id = :user_id AND s.status = 'published'
+            WHERE m.user_id = :user_id 
+              AND s.status = 'published'
+              AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE')
+              AND m.match_score > 0
+              AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
         ";
 
         $params = ['user_id' => $user['id']];
@@ -366,7 +395,11 @@ class DashboardController {
             SELECT m.*, s.title, s.provider_name, s.application_deadline, s.slug
             FROM scholarship_matches m
             JOIN scholarships s ON m.scholarship_id = s.id
-            WHERE m.user_id = :user_id AND s.status = 'published'
+            WHERE m.user_id = :user_id 
+              AND s.status = 'published'
+              AND m.eligibility_status IN ('ELIGIBLE', 'POSSIBLY_ELIGIBLE')
+              AND m.match_score > 0
+              AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
             ORDER BY m.match_score DESC
         ");
         $stmt->execute(['user_id' => $user['id']]);
@@ -536,7 +569,7 @@ class DashboardController {
         Auth::requireRole('admin');
         
         $csrf = $_POST['csrf_token'] ?? null;
-        if (!\App\Services\Security::verifyCsrfToken($csrf)) {
+        if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
             $this->redirect(url('/admin/institutions/create'));
         }
@@ -686,7 +719,7 @@ class DashboardController {
         }
 
         $csrf = $_POST['csrf_token'] ?? null;
-        if (!\App\Services\Security::verifyCsrfToken($csrf)) {
+        if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
             $this->redirect(url("/admin/institutions/{$id}/edit"));
         }
@@ -792,7 +825,7 @@ class DashboardController {
         }
 
         $csrf = $_POST['csrf_token'] ?? null;
-        if (!\App\Services\Security::verifyCsrfToken($csrf)) {
+        if (!Security::verifyCsrfToken($csrf)) {
             $_SESSION['admin_errors'] = ['csrf' => 'CSRF verification failed.'];
             $this->redirect(url('/admin/institutions'));
         }

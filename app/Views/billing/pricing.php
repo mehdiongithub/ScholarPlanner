@@ -181,117 +181,95 @@ if ($isStudent) {
             <?php endif; ?>
 
             <div class="pricing-cards">
-                <!-- Free Plan Card -->
-                <div class="pricing-card">
-                    <h2 class="plan-name">Free Guest</h2>
-                    <p class="plan-desc">Discover and match basic scholarships with essential tools.</p>
-                    <div class="plan-price">
-                        <span class="price-curr">PKR</span>
-                        <span class="price-num">0</span>
-                        <span class="price-interval">/ month</span>
+                <?php 
+                $plansList = !empty($plans) ? $plans : \App\Services\Database::connection()->query("SELECT * FROM subscription_plans WHERE status = 'active' ORDER BY price ASC, id ASC")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($plansList as $p): 
+                    $isPaid = ((float)$p['price'] > 0);
+                    $isCurrent = ($current_plan === $p['slug']);
+                    $isPopular = ($p['slug'] === 'premium-monthly' || (count($plansList) > 1 && $isPaid && (float)$p['price'] > 0 && !isset($hasPopularSet)));
+                    if ($isPopular) { $hasPopularSet = true; }
+                    $intervalText = !empty($p['billing_interval']) ? '/ ' . htmlspecialchars($p['billing_interval']) : '/ month';
+                    if (!empty($p['duration_days']) && (int)$p['duration_days'] !== 30) {
+                        $intervalText .= ' (' . (int)$p['duration_days'] . ' days)';
+                    }
+                ?>
+                    <div class="pricing-card <?= $isPopular ? 'premium' : '' ?>">
+                        <?php if ($isPopular): ?>
+                            <span class="badge-popular">Popular</span>
+                        <?php endif; ?>
+                        <h2 class="plan-name"><?= htmlspecialchars($p['name']) ?></h2>
+                        <p class="plan-desc"><?= htmlspecialchars($p['description'] ?: 'Tailored access for student scholarship opportunities.') ?></p>
+                        <div class="plan-price">
+                            <span class="price-curr"><?= htmlspecialchars($p['currency'] ?? 'PKR') ?></span>
+                            <span class="price-num"><?= ((float)$p['price'] == 0) ? '0' : number_format((float)$p['price'], 0) ?></span>
+                            <span class="price-interval"><?= $intervalText ?></span>
+                        </div>
+
+                        <ul class="plan-features">
+                            <li class="feature-item enabled">
+                                <i data-lucide="check" style="width:18px;height:18px"></i>
+                                <span>Public scholarship discovery & basic search</span>
+                            </li>
+                            
+                            <?php if (!empty($p['max_matches'])): ?>
+                                <li class="feature-item enabled">
+                                    <i data-lucide="check" style="width:18px;height:18px"></i>
+                                    <span>Matching recommendations (Up to <?= (int)$p['max_matches'] ?> matches)</span>
+                                </li>
+                            <?php else: ?>
+                                <li class="feature-item enabled">
+                                    <i data-lucide="check" style="width:18px;height:18px"></i>
+                                    <span>Personalized matching (Unlimited recommendations)</span>
+                                </li>
+                            <?php endif; ?>
+
+                            <li class="feature-item <?= $isPaid ? 'enabled' : 'disabled' ?>">
+                                <i data-lucide="<?= $isPaid ? 'check' : 'x' ?>" style="width:18px;height:18px"></i>
+                                <span><?= $isPaid ? 'Unlimited saved scholarships' : 'Limited saved scholarships (Up to 10)' ?></span>
+                            </li>
+
+                            <li class="feature-item <?= $isPaid ? 'enabled' : 'disabled' ?>">
+                                <i data-lucide="<?= $isPaid ? 'check' : 'x' ?>" style="width:18px;height:18px"></i>
+                                <span><?= $isPaid ? 'Full side-by-side comparison (Up to 4)' : 'Limited side-by-side comparison (Up to 3)' ?></span>
+                            </li>
+
+                            <li class="feature-item <?= !empty($p['application_tracking']) ? 'enabled' : 'disabled' ?>">
+                                <i data-lucide="<?= !empty($p['application_tracking']) ? 'check' : 'x' ?>" style="width:18px;height:18px"></i>
+                                <span>Application workflow tracker</span>
+                            </li>
+
+                            <li class="feature-item <?= $isPaid ? 'enabled' : 'disabled' ?>">
+                                <i data-lucide="<?= $isPaid ? 'check' : 'x' ?>" style="width:18px;height:18px"></i>
+                                <span>Document readiness diagnostics</span>
+                            </li>
+
+                            <li class="feature-item <?= (!empty($p['deadline_reminders']) || !empty($p['email_alerts'])) ? 'enabled' : 'disabled' ?>">
+                                <i data-lucide="<?= (!empty($p['deadline_reminders']) || !empty($p['email_alerts'])) ? 'check' : 'x' ?>" style="width:18px;height:18px"></i>
+                                <span>Email deadline reminders & alerts</span>
+                            </li>
+
+                            <li class="feature-item <?= !empty($p['whatsapp_alerts']) ? 'enabled' : 'disabled' ?>">
+                                <i data-lucide="<?= !empty($p['whatsapp_alerts']) ? 'check' : 'x' ?>" style="width:18px;height:18px"></i>
+                                <span>Direct WhatsApp scholarship alerts</span>
+                            </li>
+                        </ul>
+
+                        <?php if ($isCurrent): ?>
+                            <button class="btn btn-secondary" style="width:100%; justify-content:center; border-color:#10b981; color:#10b981; cursor:default;" disabled>
+                                <i data-lucide="check-circle" style="width:16px;height:16px;color:#10b981;"></i>
+                                <span><?= $isPaid ? 'Active Subscription' : 'Your Current Plan' ?></span>
+                            </button>
+                        <?php elseif (!$isPaid): ?>
+                            <a href="<?= url('/scholarships') ?>" class="btn btn-secondary" style="width:100%; justify-content:center;">
+                                <span>Get Started Free</span>
+                            </a>
+                        <?php else: ?>
+                            <a href="<?= url('/checkout?plan=' . urlencode($p['slug'])) ?>" class="btn <?= $isPopular ? 'btn-primary' : 'btn-secondary' ?>" style="width:100%; justify-content:center;">
+                                <span>Upgrade to <?= htmlspecialchars($p['name']) ?></span>
+                            </a>
+                        <?php endif; ?>
                     </div>
-                    <ul class="plan-features">
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Public scholarship discovery & basic search</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Basic matching (Up to 5 recommendations)</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Limited Saved Scholarships (Up to 10)</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Limited side-by-side comparison (Up to 3)</span>
-                        </li>
-                        <li class="feature-item disabled">
-                            <i data-lucide="x" style="width:18px;height:18px"></i>
-                            <span>Personalized matching (Unlimited recommendations)</span>
-                        </li>
-                        <li class="feature-item disabled">
-                            <i data-lucide="x" style="width:18px;height:18px"></i>
-                            <span>Application workflow tracker</span>
-                        </li>
-                        <li class="feature-item disabled">
-                            <i data-lucide="x" style="width:18px;height:18px"></i>
-                            <span>Document readiness insights panel</span>
-                        </li>
-                        <li class="feature-item disabled">
-                            <i data-lucide="x" style="width:18px;height:18px"></i>
-                            <span>Email & WhatsApp deadline alerts</span>
-                        </li>
-                    </ul>
-
-                    <?php if ($current_plan === 'free'): ?>
-                        <button class="btn btn-secondary" style="width:100%; justify-content:center;" disabled>
-                            <span>Your Current Plan</span>
-                        </button>
-                    <?php else: ?>
-                        <a href="<?= url('/billing') ?>" class="btn btn-secondary" style="width:100%; justify-content:center;">
-                            <span>Manage Plan</span>
-                        </a>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Premium Plan Card -->
-                <div class="pricing-card premium">
-                    <span class="badge-popular">Popular</span>
-                    <h2 class="plan-name">Premium Monthly</h2>
-                    <p class="plan-desc">Unlock advanced filters, full recommendation alerts, and tracking.</p>
-                    <div class="plan-price">
-                        <span class="price-curr">PKR</span>
-                        <span class="price-num">999</span>
-                        <span class="price-interval">/ month</span>
-                    </div>
-                    <ul class="plan-features">
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Public scholarship discovery & search</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Personalized matching (All eligible recommendations)</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Advanced search filtering & sorting controls</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Unlimited saved scholarships</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Full side-by-side comparison (Up to 4)</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Application workflow tracking</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Document readiness diagnostics</span>
-                        </li>
-                        <li class="feature-item enabled">
-                            <i data-lucide="check" style="width:18px;height:18px"></i>
-                            <span>Email & WhatsApp deadline reminders</span>
-                        </li>
-                    </ul>
-
-                    <?php if ($current_plan === 'premium-monthly'): ?>
-                        <button class="btn btn-secondary" style="width:100%; justify-content:center; border-color:#10b981; color:#10b981; cursor:default;" disabled>
-                            <i data-lucide="check-circle" style="width:16px;height:16px;color:#10b981;"></i>
-                            <span>Active Subscription</span>
-                        </button>
-                    <?php else: ?>
-                        <a href="<?= url('/checkout?plan=premium-monthly') ?>" class="btn btn-primary" style="width:100%; justify-content:center;">
-                            <span>Upgrade to Premium</span>
-                        </a>
-                    <?php endif; ?>
-                </div>
+                <?php endforeach; ?>
             </div>
         </main>
     </div>

@@ -602,7 +602,7 @@
                                 <option value="archive">Bulk Archive Selected (If Expired)</option>
                                 <option value="delete_drafts">Bulk Delete Selected (Drafts Only)</option>
                             </select>
-                            <button type="submit" class="btn btn-primary btn-sm" onclick="return confirmBulkAction();">Apply Bulk Action</button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="executeBulkAction()">Apply Bulk Action</button>
                         </div>
                     </div>
 
@@ -1276,10 +1276,10 @@
                                                 </td>
                                                 <td style="padding:14px 16px; border-bottom:1px solid var(--border);">
                                                     <?php if ($tx['status'] === 'paid'): ?>
-                                                        <form method="POST" action="<?= url('/admin/billing/refund') ?>" onsubmit="return confirm('Are you sure you want to refund this payment? It will revoke their premium status immediately.');" style="display:inline;">
+                                                        <form method="POST" action="<?= url('/admin/billing/refund') ?>" style="display:inline;">
                                                             <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
                                                             <input type="hidden" name="transaction_id" value="<?= e($tx['id']) ?>">
-                                                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:#ef4444; color:#ef4444; padding:2px 8px; font-size:0.6875rem;">
+                                                            <button type="button" class="btn btn-secondary btn-sm" style="border-color:#ef4444; color:#ef4444; padding:2px 8px; font-size:0.6875rem;" onclick="adminConfirmIntelligenceRefund(this, '<?= e(number_format($tx['amount'], 2)) ?>', '<?= e(ucfirst($tx['provider'])) ?>')">
                                                                 Refund
                                                             </button>
                                                         </form>
@@ -1346,20 +1346,61 @@
                 checkboxes.forEach(cb => cb.checked = masterCheckbox.checked);
             }
 
-            function confirmBulkAction() {
-                const action = document.getElementById('bulkActionSelect').value;
+            function executeBulkAction() {
+                const actionSelect = document.getElementById('bulkActionSelect');
+                const action = actionSelect.value;
                 if (!action) {
-                    alert('Please select a bulk action from the dropdown menu first.');
-                    return false;
+                    adminConfirm({
+                        title: 'Select an Action',
+                        message: 'Please select a bulk action from the dropdown menu first.',
+                        subtext: '',
+                        confirmText: 'Got It',
+                        confirmClass: 'btn-primary',
+                        icon: 'info'
+                    });
+                    return;
                 }
 
                 const checkedCount = document.querySelectorAll('.scholarship-checkbox:checked').length;
                 if (checkedCount === 0) {
-                    alert('Please check at least one scholarship checkbox from the table.');
-                    return false;
+                    adminConfirm({
+                        title: 'No Items Selected',
+                        message: 'Please check at least one scholarship checkbox from the table.',
+                        subtext: '',
+                        confirmText: 'Got It',
+                        confirmClass: 'btn-primary',
+                        icon: 'info'
+                    });
+                    return;
                 }
 
-                return confirm(`Are you absolutely sure you want to run the selected bulk operation on the ${checkedCount} checked scholarship opportunities?`);
+                const actionText = actionSelect.options[actionSelect.selectedIndex].text;
+                const isDelete = action === 'delete_drafts';
+
+                adminConfirm({
+                    title: isDelete ? 'Confirm Bulk Deletion' : 'Confirm Bulk Action',
+                    message: 'Are you sure you want to run <strong>"' + adminEscapeHtml(actionText) + '"</strong> on <strong>' + checkedCount + '</strong> selected scholarship opportunities?',
+                    subtext: isDelete ? 'Only draft scholarships will be permanently removed. This action cannot be undone.' : 'The selected listings will be updated accordingly.',
+                    confirmText: isDelete ? 'Yes, Delete Selected' : 'Yes, Run Action',
+                    confirmClass: isDelete ? 'btn-danger' : 'btn-primary',
+                    icon: isDelete ? 'trash-2' : 'check-circle'
+                }, function() {
+                    document.getElementById('bulkActionForm').submit();
+                });
+            }
+
+            function adminConfirmIntelligenceRefund(btn, amount, provider) {
+                const form = btn.closest('form');
+                adminConfirm({
+                    title: 'Confirm Refund',
+                    message: 'Are you sure you want to refund PKR <strong>' + adminEscapeHtml(amount) + '</strong> (' + adminEscapeHtml(provider) + ')?',
+                    subtext: 'This will refund this payment and revoke their premium status immediately.',
+                    confirmText: 'Yes, Issue Refund',
+                    confirmClass: 'btn-danger',
+                    icon: 'refresh-ccw'
+                }, function() {
+                    form.submit();
+                });
             }
         </script>
         <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

@@ -184,9 +184,10 @@ $(document).ready(function() {
                 data: null,
                 orderable: false,
                 render: function(data, type, row) {
-                    var deleteForm = '<form action="<?= url("/admin/referrals") ?>/' + row.record_id + '/delete" method="POST" onsubmit="return confirm(\'Are you sure you want to revoke this referral partner? This clears their partner code and suspends their access, but preserves historical data.\');" style="display:inline;">' +
+                    var safePartnerName = $('<div>').text(row.name || row.email || '').html();
+                    var deleteForm = '<form action="<?= url("/admin/referrals") ?>/' + row.record_id + '/delete" method="POST" style="display:inline;">' +
                                      '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
-                                     '<button type="submit" class="action-link danger" style="background:none; border:none; padding:0; cursor:pointer; font-weight:600; color: #ef4444;">Revoke</button>' +
+                                     '<button type="button" class="action-link danger btn-revoke-partner" style="background:none; border:none; padding:0; cursor:pointer; font-weight:600; color: #ef4444;" data-name="' + safePartnerName + '">Revoke</button>' +
                                      '</form>';
                     
                     var copyLinkBtn = '<a href="javascript:void(0)" onclick="copyPartnerLink(\'' + row.referral_code + '\')" class="action-link" style="margin-right:8px; color: #2563eb; text-decoration: none;">Copy Link</a>';
@@ -196,7 +197,27 @@ $(document).ready(function() {
             }
         ]
     });
+
+    $(document).on('click', '.btn-revoke-partner', function(e) {
+        e.preventDefault();
+        revokePartner(this, $(this).attr('data-name'));
+    });
 });
+
+function revokePartner(btn, name) {
+    var $form = $(btn).closest('form');
+    adminConfirm({
+        title: 'Revoke Referral Partner',
+        message: 'Are you sure you want to revoke referral partner ' + (name ? '<strong>"' + adminEscapeHtml(name) + '"</strong>' : '') + '? This clears their partner code and suspends their access, but preserves historical data.',
+        subtext: 'Their referral link will no longer reward new registrations.',
+        confirmText: 'Yes, Revoke',
+        confirmClass: 'btn-danger',
+        icon: 'user-x'
+    }, function() {
+        $form.data('admin-confirmed', true);
+        $form[0].submit();
+    });
+}
 
 function copyPartnerLink(code) {
     if (!code) return;

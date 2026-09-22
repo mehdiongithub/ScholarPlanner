@@ -18,6 +18,9 @@ class AdminController {
 
     private function resolveId(string $id, bool $isAjax = false): int {
         $raw = decode_id($id);
+        if ($raw === null && is_numeric($id) && (int)$id > 0) {
+            $raw = (int)$id;
+        }
         if ($raw === null) {
             if ($isAjax || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
                 http_response_code(404);
@@ -1902,6 +1905,1545 @@ class AdminController {
     }
 
     /**
+     * GET /admin/plans
+     * Subscription plans management view
+     */
+    public function plansIndex(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.view')) {
+            Auth::abort403();
+        }
+
+        $totalPlans = (int)$this->db->query("SELECT COUNT(*) FROM subscription_plans")->fetchColumn();
+        $activePlans = (int)$this->db->query("SELECT COUNT(*) FROM subscription_plans WHERE status = 'active'")->fetchColumn();
+        $inactivePlans = (int)$this->db->query("SELECT COUNT(*) FROM subscription_plans WHERE status = 'inactive'")->fetchColumn();
+        $paidPlans = (int)$this->db->query("SELECT COUNT(*) FROM subscription_plans WHERE price > 0")->fetchColumn();
+
+        View::render('admin.plans.index', [
+            'user' => Auth::currentUser(),
+            'totalPlans' => $totalPlans,
+            'activePlans' => $activePlans,
+            'inactivePlans' => $inactivePlans,
+            'paidPlans' => $paidPlans,
+            'csrf_token' => Security::csrfToken()
+        ]);
+    }
+
+    /**
+     * GET /admin/plans/data
+     * Server-side DataTables JSON provider for subscription plans
+     */
+    public function plansData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+
+        $db = $this->db;
+
+        $columns = [
+            'id' => 'subscription_plans.id',
+            'name' => 'subscription_plans.name',
+            'slug' => 'subscription_plans.slug',
+            'description' => 'subscription_plans.description',
+            'price' => 'subscription_plans.price',
+            'currency' => 'subscription_plans.currency',
+            'billing_interval' => 'subscription_plans.billing_interval',
+            'duration_days' => 'subscription_plans.duration_days',
+            'max_matches' => 'subscription_plans.max_matches',
+            'whatsapp_alerts' => 'subscription_plans.whatsapp_alerts',
+            'email_alerts' => 'subscription_plans.email_alerts',
+            'deadline_reminders' => 'subscription_plans.deadline_reminders',
+            'application_tracking' => 'subscription_plans.application_tracking',
+            'status' => 'subscription_plans.status',
+            'created_at' => 'subscription_plans.created_at',
+            'subscriber_count' => '(SELECT COUNT(*) FROM subscriptions WHERE subscriptions.plan_id = subscription_plans.id AND subscriptions.status IN (\'active\', \'protected\'))'
+        ];
+
+        $searchableColumns = [
+            'subscription_plans.name',
+            'subscription_plans.slug',
+            'subscription_plans.description',
+            'subscription_plans.currency'
+        ];
+
+        $columnMapping = [
+            'name' => 'subscription_plans.name',
+            'price' => 'subscription_plans.price',
+            'billing_interval' => 'subscription_plans.billing_interval',
+            'duration_days' => 'subscription_plans.duration_days',
+            'status' => 'subscription_plans.status',
+            'created_at' => 'subscription_plans.created_at'
+        ];
+
+        $joins = [];
+        $customWhere = '1=1';
+        $customParams = [];
+
+        if (!empty($_GET['status']) && in_array($_GET['status'], ['active', 'inactive'])) {
+            $customWhere .= " AND subscription_plans.status = :status_filter";
+            $customParams['status_filter'] = $_GET['status'];
+        }
+
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'subscription_plans',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $row['encoded_id'] = encode_id((int)$row['id']);
+                $row['formatted_price'] = ((float)$row['price'] == 0) ? 'Free' : (number_format((float)$row['price'], 2) . ' ' . $row['currency']);
+                return $row;
+            }
+        );
+
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    /**
+     * POST /admin/plans
+     * Create a new subscription plan
+     */
+    public function plansStore(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            if ($this->isAjaxRequest()) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'Invalid CSRF security token.';
+            header("Location: " . url("/admin/plans"));
+            exit();
+        }
+
+        $name = trim($_POST['name'] ?? '');
+        $slug = trim($_POST['slug'] ?? '');
+        if (empty($slug)) {
+            $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $name), '-'));
+        } else {
+            $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $slug), '-'));
+        }
+
+        $description = trim($_POST['description'] ?? '');
+        $billingInterval = trim($_POST['billing_interval'] ?? 'month');
+        $durationDays = (int)($_POST['duration_days'] ?? 30);
+        $price = (float)($_POST['price'] ?? 0);
+        $currency = strtoupper(trim($_POST['currency'] ?? 'PKR'));
+        if (strlen($currency) !== 3) {
+            $currency = 'PKR';
+        }
+        $countryCode = !empty($_POST['country_code']) ? strtoupper(trim($_POST['country_code'])) : null;
+        $maxMatches = isset($_POST['max_matches']) && $_POST['max_matches'] !== '' ? (int)$_POST['max_matches'] : null;
+
+        $whatsappAlerts = !empty($_POST['whatsapp_alerts']) ? 1 : 0;
+        $emailAlerts = !empty($_POST['email_alerts']) ? 1 : 0;
+        $deadlineReminders = !empty($_POST['deadline_reminders']) ? 1 : 0;
+        $applicationTracking = !empty($_POST['application_tracking']) ? 1 : 0;
+        $status = in_array($_POST['status'] ?? '', ['active', 'inactive']) ? $_POST['status'] : 'active';
+
+        $errors = [];
+        if (empty($name)) {
+            $errors[] = 'Plan Name is required.';
+        }
+        if (empty($slug)) {
+            $errors[] = 'Plan Slug is required.';
+        }
+        if ($price < 0) {
+            $errors[] = 'Price must be 0 or greater.';
+        }
+        if ($durationDays <= 0) {
+            $errors[] = 'Duration in days must be greater than 0.';
+        }
+
+        // Check unique slug
+        $stmtCheck = $this->db->prepare("SELECT COUNT(*) FROM subscription_plans WHERE slug = :slug");
+        $stmtCheck->execute(['slug' => $slug]);
+        if ((int)$stmtCheck->fetchColumn() > 0) {
+            $errors[] = "The slug '{$slug}' is already taken. Please choose another slug.";
+        }
+
+        if (!empty($errors)) {
+            if ($this->isAjaxRequest()) {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => implode(' ', $errors)]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = implode(' ', $errors);
+            header("Location: " . url("/admin/plans"));
+            exit();
+        }
+
+        $stmt = $this->db->prepare("
+            INSERT INTO subscription_plans 
+                (name, slug, description, billing_interval, duration_days, price, currency, country_code, max_matches, whatsapp_alerts, email_alerts, deadline_reminders, application_tracking, status, created_at, updated_at)
+            VALUES 
+                (:name, :slug, :description, :billing_interval, :duration_days, :price, :currency, :country_code, :max_matches, :whatsapp_alerts, :email_alerts, :deadline_reminders, :application_tracking, :status, NOW(), NOW())
+        ");
+        $stmt->execute([
+            'name' => $name,
+            'slug' => $slug,
+            'description' => $description,
+            'billing_interval' => $billingInterval,
+            'duration_days' => $durationDays,
+            'price' => $price,
+            'currency' => $currency,
+            'country_code' => $countryCode,
+            'max_matches' => $maxMatches,
+            'whatsapp_alerts' => $whatsappAlerts,
+            'email_alerts' => $emailAlerts,
+            'deadline_reminders' => $deadlineReminders,
+            'application_tracking' => $applicationTracking,
+            'status' => $status
+        ]);
+
+        $newId = (int)$this->db->lastInsertId();
+        $this->logAction('create', 'subscription_plans', 'subscription_plan', $newId, [
+            'name' => $name,
+            'slug' => $slug,
+            'price' => $price,
+            'currency' => $currency
+        ]);
+
+        if ($this->isAjaxRequest()) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => "Plan '{$name}' created successfully."]);
+            exit();
+        }
+
+        $_SESSION['admin_success'] = "Plan '{$name}' created successfully.";
+        header("Location: " . url("/admin/plans"));
+        exit();
+    }
+
+    /**
+     * GET /admin/plans/{id}/edit
+     * Return plan details for editing
+     */
+    public function plansEdit(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+
+        $planId = $this->resolveId($id, true);
+        $stmt = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $planId]);
+        $plan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$plan) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Plan not found']);
+            exit();
+        }
+
+        $plan['encoded_id'] = encode_id((int)$plan['id']);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'plan' => $plan]);
+        exit();
+    }
+
+    /**
+     * POST /admin/plans/{id}/update
+     * Update an existing subscription plan
+     */
+    public function plansUpdate(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            if ($this->isAjaxRequest()) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'Invalid CSRF security token.';
+            header("Location: " . url("/admin/plans"));
+            exit();
+        }
+
+        $planId = $this->resolveId($id, true);
+        $stmtOld = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id LIMIT 1");
+        $stmtOld->execute(['id' => $planId]);
+        $oldPlan = $stmtOld->fetch(PDO::FETCH_ASSOC);
+
+        if (!$oldPlan) {
+            $err = 'Subscription plan not found.';
+            if ($this->isAjaxRequest()) {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $err]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = $err;
+            header("Location: " . url("/admin/plans"));
+            exit();
+        }
+
+        $name = trim($_POST['name'] ?? '');
+        $slug = trim($_POST['slug'] ?? '');
+        if (empty($slug)) {
+            $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $name), '-'));
+        } else {
+            $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $slug), '-'));
+        }
+
+        $description = trim($_POST['description'] ?? '');
+        $billingInterval = trim($_POST['billing_interval'] ?? 'month');
+        $durationDays = (int)($_POST['duration_days'] ?? 30);
+        $price = (float)($_POST['price'] ?? 0);
+        $currency = strtoupper(trim($_POST['currency'] ?? 'PKR'));
+        if (strlen($currency) !== 3) {
+            $currency = 'PKR';
+        }
+        $countryCode = !empty($_POST['country_code']) ? strtoupper(trim($_POST['country_code'])) : null;
+        $maxMatches = isset($_POST['max_matches']) && $_POST['max_matches'] !== '' ? (int)$_POST['max_matches'] : null;
+
+        $whatsappAlerts = !empty($_POST['whatsapp_alerts']) ? 1 : 0;
+        $emailAlerts = !empty($_POST['email_alerts']) ? 1 : 0;
+        $deadlineReminders = !empty($_POST['deadline_reminders']) ? 1 : 0;
+        $applicationTracking = !empty($_POST['application_tracking']) ? 1 : 0;
+        $status = in_array($_POST['status'] ?? '', ['active', 'inactive']) ? $_POST['status'] : 'active';
+
+        $errors = [];
+        if (empty($name)) {
+            $errors[] = 'Plan Name is required.';
+        }
+        if (empty($slug)) {
+            $errors[] = 'Plan Slug is required.';
+        }
+        if ($price < 0) {
+            $errors[] = 'Price must be 0 or greater.';
+        }
+        if ($durationDays <= 0) {
+            $errors[] = 'Duration in days must be greater than 0.';
+        }
+
+        // Check unique slug on other plans
+        $stmtCheck = $this->db->prepare("SELECT COUNT(*) FROM subscription_plans WHERE slug = :slug AND id != :id");
+        $stmtCheck->execute(['slug' => $slug, 'id' => $planId]);
+        if ((int)$stmtCheck->fetchColumn() > 0) {
+            $errors[] = "The slug '{$slug}' is already taken by another plan.";
+        }
+
+        if (!empty($errors)) {
+            if ($this->isAjaxRequest()) {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => implode(' ', $errors)]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = implode(' ', $errors);
+            header("Location: " . url("/admin/plans"));
+            exit();
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE subscription_plans 
+            SET name = :name,
+                slug = :slug,
+                description = :description,
+                billing_interval = :billing_interval,
+                duration_days = :duration_days,
+                price = :price,
+                currency = :currency,
+                country_code = :country_code,
+                max_matches = :max_matches,
+                whatsapp_alerts = :whatsapp_alerts,
+                email_alerts = :email_alerts,
+                deadline_reminders = :deadline_reminders,
+                application_tracking = :application_tracking,
+                status = :status,
+                updated_at = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            'name' => $name,
+            'slug' => $slug,
+            'description' => $description,
+            'billing_interval' => $billingInterval,
+            'duration_days' => $durationDays,
+            'price' => $price,
+            'currency' => $currency,
+            'country_code' => $countryCode,
+            'max_matches' => $maxMatches,
+            'whatsapp_alerts' => $whatsappAlerts,
+            'email_alerts' => $emailAlerts,
+            'deadline_reminders' => $deadlineReminders,
+            'application_tracking' => $applicationTracking,
+            'status' => $status,
+            'id' => $planId
+        ]);
+
+        $this->logAction('update', 'subscription_plans', 'subscription_plan', $planId, [
+            'name' => $name,
+            'slug' => $slug,
+            'price' => $price,
+            'currency' => $currency,
+            'status' => $status
+        ]);
+
+        if ($this->isAjaxRequest()) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => "Plan '{$name}' updated successfully."]);
+            exit();
+        }
+
+        $_SESSION['admin_success'] = "Plan '{$name}' updated successfully.";
+        header("Location: " . url("/admin/plans"));
+        exit();
+    }
+
+    /**
+     * POST /admin/plans/{id}/toggle-status
+     * Toggle active/inactive status of a plan
+     */
+    public function plansToggleStatus(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+            exit();
+        }
+
+        $planId = $this->resolveId($id, true);
+        $stmt = $this->db->prepare("SELECT id, name, status FROM subscription_plans WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $planId]);
+        $plan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$plan) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Plan not found']);
+            exit();
+        }
+
+        $newStatus = ($plan['status'] === 'active') ? 'inactive' : 'active';
+        $updateStmt = $this->db->prepare("UPDATE subscription_plans SET status = :status, updated_at = NOW() WHERE id = :id");
+        $updateStmt->execute(['status' => $newStatus, 'id' => $planId]);
+
+        $this->logAction('status_change', 'subscription_plans', 'subscription_plan', $planId, [
+            'old_status' => $plan['status'],
+            'new_status' => $newStatus
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'message' => "Plan '{$plan['name']}' status updated to {$newStatus}.",
+            'status' => $newStatus
+        ]);
+        exit();
+    }
+
+    /**
+     * POST /admin/plans/{id}/delete
+     * Delete a plan if no subscriptions exist
+     */
+    public function plansDelete(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('subscriptions.delete')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+            exit();
+        }
+
+        $planId = $this->resolveId($id, true);
+        $stmt = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $planId]);
+        $plan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$plan) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Plan not found']);
+            exit();
+        }
+
+        // Cannot delete default free plan
+        if ($plan['slug'] === 'free') {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'The default free plan cannot be deleted.']);
+            exit();
+        }
+
+        // Check if any subscriptions exist
+        $stmtCount = $this->db->prepare("SELECT COUNT(*) FROM subscriptions WHERE plan_id = :id");
+        $stmtCount->execute(['id' => $planId]);
+        $subCount = (int)$stmtCount->fetchColumn();
+
+        if ($subCount > 0) {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false, 
+                'error' => "Cannot delete plan because {$subCount} subscription(s) are linked to it. You can deactivate it instead."
+            ]);
+            exit();
+        }
+
+        $delStmt = $this->db->prepare("DELETE FROM subscription_plans WHERE id = :id");
+        $delStmt->execute(['id' => $planId]);
+
+        $this->logAction('delete', 'subscription_plans', 'subscription_plan', $planId, [
+            'name' => $plan['name'],
+            'slug' => $plan['slug']
+        ]);
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => "Plan '{$plan['name']}' deleted successfully."]);
+        exit();
+    }
+
+    /**
+     * GET /admin/alert-timers
+     * Alert Timers & WhatsApp Automation Schedule Management view
+     */
+    public function alertTimersIndex(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.view')) {
+            Auth::abort403();
+        }
+
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+        $schedulerSettings = $schedulerService->getSettings();
+        
+        $matchingNextRun = $schedulerService->calculateNextRun(
+            $schedulerSettings['matching_send_time'],
+            $schedulerSettings['matching_timezone'],
+            $schedulerSettings['matching_allowed_days']
+        );
+        
+        $deadlineNextRun = $schedulerService->calculateNextRun(
+            $schedulerSettings['deadline_send_time'],
+            $schedulerSettings['deadline_timezone'],
+            $schedulerSettings['deadline_allowed_days']
+        );
+
+        // Daily operational stats
+        $sentToday = (int)$this->db->query("
+            SELECT COUNT(*) FROM notification_logs 
+            WHERE channel = 'whatsapp' AND status = 'sent' AND DATE(sent_at) = CURDATE()
+        ")->fetchColumn();
+
+        $pendingQueue = (int)$this->db->query("
+            SELECT COUNT(*) FROM notification_logs 
+            WHERE channel = 'whatsapp' AND status = 'pending'
+        ")->fetchColumn();
+
+        $failedCount = (int)$this->db->query("
+            SELECT COUNT(*) FROM notification_logs 
+            WHERE channel = 'whatsapp' AND status = 'failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        ")->fetchColumn();
+
+        $masterEnabled = !empty($schedulerSettings['whatsapp_notifications_enabled']);
+        $activeTimersCount = ($masterEnabled ? 1 : 0) * (
+            (!empty($schedulerSettings['matching_scheduler_enabled']) ? 1 : 0) +
+            (!empty($schedulerSettings['deadline_scheduler_enabled']) ? 1 : 0)
+        );
+
+        View::render('admin.alert_timers.index', [
+            'user' => Auth::currentUser(),
+            'settings' => $schedulerSettings,
+            'matchingNextRun' => $matchingNextRun,
+            'deadlineNextRun' => $deadlineNextRun,
+            'sentToday' => $sentToday,
+            'pendingQueue' => $pendingQueue,
+            'failedCount' => $failedCount,
+            'activeTimersCount' => $activeTimersCount,
+            'csrf_token' => Security::csrfToken()
+        ]);
+    }
+
+    /**
+     * GET /admin/alert-timers/data
+     * Return structured JSON list of alert timers
+     */
+    public function alertTimersData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+        $s = $schedulerService->getSettings();
+
+        $matchingNextRun = $schedulerService->calculateNextRun(
+            $s['matching_send_time'],
+            $s['matching_timezone'],
+            $s['matching_allowed_days']
+        );
+        $deadlineNextRun = $schedulerService->calculateNextRun(
+            $s['deadline_send_time'],
+            $s['deadline_timezone'],
+            $s['deadline_allowed_days']
+        );
+
+        $timers = [
+            [
+                'id' => 'matching',
+                'name' => 'Daily Scholarship Matching Alerts',
+                'slug' => 'matching_alerts',
+                'channel' => 'whatsapp',
+                'alert_type' => 'matching',
+                'description' => 'Evaluates newly matched scholarships for subscribed students and dispatches automated WhatsApp digest alerts.',
+                'send_time' => $s['matching_send_time'],
+                'send_time_display' => date('g:i A', strtotime('2000-01-01 ' . $s['matching_send_time'])),
+                'timezone' => $s['matching_timezone'],
+                'allowed_days' => $s['matching_allowed_days'],
+                'is_active' => !empty($s['matching_scheduler_enabled']) && !empty($s['whatsapp_notifications_enabled']),
+                'scheduler_enabled' => !empty($s['matching_scheduler_enabled']),
+                'master_enabled' => !empty($s['whatsapp_notifications_enabled']),
+                'next_run' => $matchingNextRun,
+                'last_run_at' => $s['matching_last_run_at'],
+                'last_run_status' => $s['matching_last_run_status'] ?: 'NEVER',
+                'last_run_slot' => $s['matching_last_run_slot']
+            ],
+            [
+                'id' => 'deadline',
+                'name' => 'Scholarship Application Deadline Reminders',
+                'slug' => 'deadline_reminders',
+                'channel' => 'whatsapp',
+                'alert_type' => 'deadline',
+                'description' => 'Dispatches urgent countdown alerts (7 days, 3 days, 1 day) to students for their saved and tracked scholarships.',
+                'send_time' => $s['deadline_send_time'],
+                'send_time_display' => date('g:i A', strtotime('2000-01-01 ' . $s['deadline_send_time'])),
+                'timezone' => $s['deadline_timezone'],
+                'allowed_days' => $s['deadline_allowed_days'],
+                'is_active' => !empty($s['deadline_scheduler_enabled']) && !empty($s['whatsapp_notifications_enabled']),
+                'scheduler_enabled' => !empty($s['deadline_scheduler_enabled']),
+                'master_enabled' => !empty($s['whatsapp_notifications_enabled']),
+                'next_run' => $deadlineNextRun,
+                'last_run_at' => $s['deadline_last_run_at'],
+                'last_run_status' => $s['deadline_last_run_status'] ?: 'NEVER',
+                'last_run_slot' => $s['deadline_last_run_slot']
+            ]
+        ];
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'master_enabled' => !empty($s['whatsapp_notifications_enabled']),
+            'timers' => $timers
+        ]);
+        exit();
+    }
+
+    /**
+     * POST /admin/alert-timers/update
+     * Update dispatch time, days, and status of an alert timer
+     */
+    public function alertTimersUpdate(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+            exit();
+        }
+
+        $timerType = trim($_POST['timer_type'] ?? '');
+        if (!in_array($timerType, ['matching', 'deadline', 'master'], true)) {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid timer type specified.']);
+            exit();
+        }
+
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+        $payload = [];
+
+        if ($timerType === 'matching') {
+            $sendTime = trim($_POST['send_time'] ?? '08:00');
+            $timezone = trim($_POST['timezone'] ?? 'Asia/Karachi');
+            $allowedDays = $_POST['allowed_days'] ?? [];
+            $isActive = !empty($_POST['is_active']) ? '1' : '0';
+
+            $payload = [
+                'matching_send_time' => $sendTime,
+                'matching_timezone' => $timezone,
+                'matching_allowed_days' => is_array($allowedDays) ? $allowedDays : explode(',', $allowedDays),
+                'matching_scheduler_enabled' => $isActive,
+                'whatsapp_new_match_enabled' => $isActive
+            ];
+        } elseif ($timerType === 'deadline') {
+            $sendTime = trim($_POST['send_time'] ?? '09:00');
+            $timezone = trim($_POST['timezone'] ?? 'Asia/Karachi');
+            $allowedDays = $_POST['allowed_days'] ?? [];
+            $isActive = !empty($_POST['is_active']) ? '1' : '0';
+
+            $payload = [
+                'deadline_send_time' => $sendTime,
+                'deadline_timezone' => $timezone,
+                'deadline_allowed_days' => is_array($allowedDays) ? $allowedDays : explode(',', $allowedDays),
+                'deadline_scheduler_enabled' => $isActive,
+                'whatsapp_deadline_reminder_enabled' => $isActive
+            ];
+        } elseif ($timerType === 'master') {
+            $payload = [
+                'whatsapp_notifications_enabled' => !empty($_POST['is_active']) ? '1' : '0'
+            ];
+        }
+
+        $validation = $schedulerService->validateSettings($payload);
+        if (!$validation['valid']) {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => implode(' ', $validation['errors'])]);
+            exit();
+        }
+
+        try {
+            $schedulerService->updateSettings($validation['sanitized']);
+            $this->logAction('update', 'alert_timers', 'scheduler_setting', null, [
+                'timer_type' => $timerType,
+                'settings' => $validation['sanitized']
+            ]);
+
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Alert timer schedule updated successfully!'
+            ]);
+            exit();
+        } catch (Exception $e) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Failed to update schedule: ' . $e->getMessage()]);
+            exit();
+        }
+    }
+
+    /**
+     * POST /admin/alert-timers/toggle-status
+     * Quick toggle active / paused for a timer
+     */
+    public function alertTimersToggleStatus(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+            exit();
+        }
+
+        $timerType = trim($_POST['timer_type'] ?? '');
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+        $s = $schedulerService->getSettings();
+
+        $newVal = '1';
+
+        if ($timerType === 'matching') {
+            $currentVal = !empty($s['matching_scheduler_enabled']);
+            $newVal = $currentVal ? '0' : '1';
+            $schedulerService->updateSettings([
+                'matching_scheduler_enabled' => $newVal,
+                'whatsapp_new_match_enabled' => $newVal
+            ]);
+            $label = 'Daily Matching Alerts';
+        } elseif ($timerType === 'deadline') {
+            $currentVal = !empty($s['deadline_scheduler_enabled']);
+            $newVal = $currentVal ? '0' : '1';
+            $schedulerService->updateSettings([
+                'deadline_scheduler_enabled' => $newVal,
+                'whatsapp_deadline_reminder_enabled' => $newVal
+            ]);
+            $label = 'Deadline Reminders';
+        } elseif ($timerType === 'master') {
+            $currentVal = !empty($s['whatsapp_notifications_enabled']);
+            $newVal = $currentVal ? '0' : '1';
+            $schedulerService->updateSettings([
+                'whatsapp_notifications_enabled' => $newVal
+            ]);
+            $label = 'Master WhatsApp Automation';
+        } else {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid timer type.']);
+            exit();
+        }
+
+        $this->logAction('status_change', 'alert_timers', 'scheduler_setting', null, [
+            'timer_type' => $timerType,
+            'is_active' => $newVal
+        ]);
+
+        $statusText = ($newVal === '1') ? 'Activated' : 'Paused';
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'is_active' => ($newVal === '1'),
+            'message' => "{$label} successfully {$statusText}."
+        ]);
+        exit();
+    }
+
+    /**
+     * POST /admin/alert-timers/run-now
+     * Immediately triggers evaluation and queueing of an alert timer
+     */
+    public function alertTimersRunNow(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+            exit();
+        }
+
+        $timerType = trim($_POST['timer_type'] ?? '');
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+
+        try {
+            if ($timerType === 'matching') {
+                $slotKey = 'manual_matching_' . date('Y-m-d_H:i:s');
+                $result = $schedulerService->runMatchingJob();
+                $schedulerService->recordJobExecution('matching', 'SUCCESS', $slotKey);
+
+                $this->logAction('manual_trigger', 'alert_timers', 'matching_job', null, $result);
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'timer_type' => 'matching',
+                    'message' => "Daily Matching Alerts evaluated! {$result['users_processed']} students checked, {$result['matches_found']} matches identified, {$result['whatsapp_batches']} WhatsApp message digests enqueued.",
+                    'details' => $result
+                ]);
+                exit();
+            } elseif ($timerType === 'deadline') {
+                $slotKey = 'manual_deadline_' . date('Y-m-d_H:i:s');
+                $result = $schedulerService->runDeadlineRemindersJob();
+                $schedulerService->recordJobExecution('deadline', 'SUCCESS', $slotKey);
+
+                $this->logAction('manual_trigger', 'alert_timers', 'deadline_job', null, $result);
+
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'timer_type' => 'deadline',
+                    'message' => "Deadline Reminders evaluated! {$result['users_processed']} students checked, {$result['reminders_enqueued']} WhatsApp reminders enqueued.",
+                    'details' => $result
+                ]);
+                exit();
+            } else {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Invalid timer type for immediate run.']);
+                exit();
+            }
+        } catch (Exception $e) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Execution error: ' . $e->getMessage()]);
+            exit();
+        }
+    }
+
+    /**
+     * GET /admin/alert-timers/dry-run
+     * Preview execution status without modifying data
+     */
+    public function alertTimersDryRun(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.view')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+
+        $schedulerService = new \App\Services\NotificationSchedulerService($this->db);
+        $report = $schedulerService->runDryRun();
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'report' => $report]);
+        exit();
+    }
+
+    /**
+     * Check if request was made via AJAX / XMLHttpRequest
+     */
+    private function isAjaxRequest(): bool {
+        return (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+            || (isset($_SERVER['HTTP_ACCEPT']) && strpos(strtolower($_SERVER['HTTP_ACCEPT']), 'application/json') !== false);
+    }
+
+    /**
+     * GET /admin/manual-subscriptions
+     * Lists active user plans, unsubscribed users, and allows granting manual plans
+     */
+    public function manualSubscriptionsIndex(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('users.view') && !Auth::hasRole('admin')) {
+            Auth::abort403();
+        }
+
+        // Active paid plans
+        $plansStmt = $this->db->query("
+            SELECT id, name, slug, duration_days, price, currency 
+            FROM subscription_plans 
+            WHERE slug != 'free' AND status = 'active' 
+            ORDER BY price ASC
+        ");
+        $plans = $plansStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Active student users for the grant modal dropdown
+        $studentsStmt = $this->db->query("
+            SELECT u.id, u.first_name, u.last_name, u.email 
+            FROM users u 
+            JOIN roles r ON u.role_id = r.id 
+            WHERE r.name = 'visitor' AND u.status = 'active' 
+            ORDER BY u.first_name ASC, u.last_name ASC
+        ");
+        $students = $studentsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Count unsubscribed users (students who haven't bought/have no active paid subscription)
+        $unsubscribedCount = (int)$this->db->query("
+            SELECT COUNT(*) 
+            FROM users u 
+            JOIN roles r ON u.role_id = r.id 
+            WHERE r.name = 'visitor' AND u.status = 'active' 
+              AND NOT EXISTS (
+                  SELECT 1 FROM subscriptions s 
+                  WHERE s.user_id = u.id 
+                    AND s.status IN ('active', 'protected') 
+                    AND (s.ends_at IS NULL OR s.ends_at > NOW())
+              )
+        ")->fetchColumn();
+
+        // Stats summary
+        $stats = [
+            'unsubscribed' => $unsubscribedCount,
+            'total' => (int)$this->db->query("SELECT COUNT(*) FROM manual_subscription_grants")->fetchColumn(),
+            'pending' => (int)$this->db->query("SELECT COUNT(*) FROM manual_subscription_grants WHERE status = 'pending'")->fetchColumn(),
+            'activated' => (int)$this->db->query("SELECT COUNT(*) FROM manual_subscription_grants WHERE status = 'activated'")->fetchColumn(),
+            'revoked' => (int)$this->db->query("SELECT COUNT(*) FROM manual_subscription_grants WHERE status = 'revoked'")->fetchColumn()
+        ];
+
+        View::render('admin.manual_subscriptions.index', [
+            'user' => Auth::currentUser(),
+            'plans' => $plans,
+            'students' => $students,
+            'stats' => $stats,
+            'csrf_token' => Security::csrfToken()
+        ]);
+    }
+
+    /**
+     * GET /admin/manual-subscriptions/data
+     * Server-side DataTables JSON provider (supports view=unsubscribed and view=grants)
+     */
+    public function manualSubscriptionsData(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('users.view') && !Auth::hasRole('admin')) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+
+        $db = \App\Services\Database::connection();
+        $view = trim($_GET['view'] ?? 'unsubscribed');
+
+        if ($view === 'unsubscribed') {
+            $customWhere = "r.name = 'visitor' AND users.status = 'active' AND NOT EXISTS (
+                SELECT 1 FROM subscriptions s 
+                WHERE s.user_id = users.id 
+                  AND s.status IN ('active', 'protected') 
+                  AND (s.ends_at IS NULL OR s.ends_at > NOW())
+            )";
+            $customParams = [];
+
+            $columns = [
+                'id' => 'users.id',
+                'first_name' => 'users.first_name',
+                'last_name' => 'users.last_name',
+                'email' => 'users.email',
+                'phone' => 'users.phone',
+                'created_at' => 'users.created_at',
+                'email_verified_at' => 'users.email_verified_at',
+                'pending_grant_id' => 'g.id',
+                'pending_token' => 'g.activation_token',
+                'pending_plan_name' => 'p.name',
+                'pending_duration' => 'g.duration_days',
+                'pending_created_at' => 'g.created_at'
+            ];
+
+            $joins = [
+                'JOIN roles r ON users.role_id = r.id',
+                'LEFT JOIN (SELECT user_id, MAX(id) AS max_id FROM manual_subscription_grants WHERE status = \'pending\' GROUP BY user_id) pg ON pg.user_id = users.id',
+                'LEFT JOIN manual_subscription_grants g ON g.id = pg.max_id',
+                'LEFT JOIN subscription_plans p ON g.plan_id = p.id'
+            ];
+
+            $searchableColumns = ['users.first_name', 'users.last_name', 'users.email', 'users.phone'];
+
+            $columnMapping = [
+                'student_name' => 'users.first_name',
+                'email' => 'users.email',
+                'created_at' => 'users.created_at'
+            ];
+
+            $result = \App\Helpers\DataTableHelper::process(
+                $db,
+                'users',
+                $columns,
+                $searchableColumns,
+                $columnMapping,
+                $joins,
+                $customWhere,
+                $customParams,
+                function($row) {
+                    $userId = (int)$row['id'];
+                    $row['user_id_encoded'] = encode_id($userId);
+                    $row['raw_user_id'] = $userId;
+                    $row['student_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')) ?: 'Student';
+                    $row['has_pending_grant'] = !empty($row['pending_grant_id']);
+                    $row['pending_grant_encoded'] = !empty($row['pending_grant_id']) ? encode_id((int)$row['pending_grant_id']) : null;
+                    $row['activation_url'] = !empty($row['pending_token']) ? absolute_url('/subscriptions/activate?token=' . $row['pending_token']) : null;
+                    $row['joined_date_display'] = !empty($row['created_at']) ? date('M d, Y', strtotime($row['created_at'])) : '-';
+
+                    unset($row['id']);
+                    return $row;
+                }
+            );
+
+            header('Content-Type: application/json');
+            echo json_encode($result);
+            exit();
+        }
+
+        // Otherwise, view === 'grants'
+        $customWhere = "";
+        $customParams = [];
+
+        if (!empty($_GET['status'])) {
+            $customWhere = "manual_subscription_grants.status = :status";
+            $customParams['status'] = $_GET['status'];
+        }
+
+        $columns = [
+            'id' => 'manual_subscription_grants.id',
+            'user_id' => 'manual_subscription_grants.user_id',
+            'first_name' => 'users.first_name',
+            'last_name' => 'users.last_name',
+            'email' => 'users.email',
+            'plan_name' => 'subscription_plans.name',
+            'duration_days' => 'manual_subscription_grants.duration_days',
+            'activation_token' => 'manual_subscription_grants.activation_token',
+            'status' => 'manual_subscription_grants.status',
+            'admin_notes' => 'manual_subscription_grants.admin_notes',
+            'activated_at' => 'manual_subscription_grants.activated_at',
+            'created_at' => 'manual_subscription_grants.created_at',
+            'sub_starts_at' => 'subscriptions.starts_at',
+            'sub_ends_at' => 'subscriptions.ends_at'
+        ];
+
+        $joins = [
+            'JOIN users ON manual_subscription_grants.user_id = users.id',
+            'JOIN subscription_plans ON manual_subscription_grants.plan_id = subscription_plans.id',
+            'LEFT JOIN subscriptions ON manual_subscription_grants.subscription_id = subscriptions.id'
+        ];
+
+        $searchableColumns = ['users.first_name', 'users.last_name', 'users.email', 'subscription_plans.name', 'manual_subscription_grants.status'];
+
+        $columnMapping = [
+            'student_name' => 'users.first_name',
+            'email' => 'users.email',
+            'plan_name' => 'subscription_plans.name',
+            'duration_days' => 'manual_subscription_grants.duration_days',
+            'status' => 'manual_subscription_grants.status',
+            'activated_at' => 'manual_subscription_grants.activated_at',
+            'created_at' => 'manual_subscription_grants.created_at'
+        ];
+
+        $result = \App\Helpers\DataTableHelper::process(
+            $db,
+            'manual_subscription_grants',
+            $columns,
+            $searchableColumns,
+            $columnMapping,
+            $joins,
+            $customWhere,
+            $customParams,
+            function($row) {
+                $rawId = (int)$row['id'];
+                $encodedId = encode_id($rawId);
+                $row['record_id'] = $encodedId;
+                $row['student_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+                $row['plan_display'] = $row['plan_name'] . ' (' . $row['duration_days'] . ' Days)';
+                $row['activation_url'] = absolute_url('/subscriptions/activate?token=' . $row['activation_token']);
+
+                if ($row['status'] === 'activated' && !empty($row['sub_starts_at']) && !empty($row['sub_ends_at'])) {
+                    $row['validity_display'] = date('M d, Y', strtotime($row['sub_starts_at'])) . ' — ' . date('M d, Y', strtotime($row['sub_ends_at']));
+                } elseif ($row['status'] === 'pending') {
+                    $row['validity_display'] = 'Starts on user click (' . $row['duration_days'] . ' days)';
+                } else {
+                    $row['validity_display'] = 'N/A';
+                }
+
+                unset($row['id'], $row['first_name'], $row['last_name']);
+                return $row;
+            }
+        );
+
+        header('Content-Type: application/json');
+        echo json_encode($result);
+        exit();
+    }
+
+    /**
+     * POST /admin/manual-subscriptions
+     * Store new manual subscription grant and dispatch activation email
+     */
+    public function manualSubscriptionsStore(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasPermission('users.edit') && !Auth::hasRole('admin')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            if ($this->isAjaxRequest()) {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'Invalid CSRF security token.';
+            header("Location: " . url("/admin/manual-subscriptions"));
+            exit();
+        }
+
+        $rawUserParam = trim((string)($_POST['user_id'] ?? ''));
+        $userId = $this->resolveId($rawUserParam, true);
+        $planId = (int)($_POST['plan_id'] ?? 0);
+        $durationDays = max(1, min(3650, (int)($_POST['duration_days'] ?? 30)));
+        $adminNotes = trim($_POST['admin_notes'] ?? '');
+        $sendEmail = !empty($_POST['send_email']);
+
+        // Verify user exists and is a visitor
+        $stmtUser = $this->db->prepare("
+            SELECT u.*, r.name as role_name 
+            FROM users u 
+            JOIN roles r ON u.role_id = r.id 
+            WHERE u.id = :id AND r.name = 'visitor'
+            LIMIT 1
+        ");
+        $stmtUser->execute(['id' => $userId]);
+        $student = $stmtUser->fetch(PDO::FETCH_ASSOC);
+
+        if (!$student) {
+            $err = 'Invalid or non-existent student user selected.';
+            if ($this->isAjaxRequest()) {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $err]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = $err;
+            header("Location: " . url("/admin/active-user-plans"));
+            exit();
+        }
+
+        // Verify student does not already have an active subscription
+        $stmtActive = $this->db->prepare("
+            SELECT id FROM subscriptions 
+            WHERE user_id = :uid 
+              AND status IN ('active', 'protected') 
+              AND (ends_at IS NULL OR ends_at > NOW()) 
+            LIMIT 1
+        ");
+        $stmtActive->execute(['uid' => $userId]);
+        if ($stmtActive->fetch()) {
+            $err = 'This student already has an active subscription plan.';
+            if ($this->isAjaxRequest()) {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $err]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = $err;
+            header("Location: " . url("/admin/active-user-plans"));
+            exit();
+        }
+
+        // Verify plan exists
+        $stmtPlan = $this->db->prepare("SELECT * FROM subscription_plans WHERE id = :id AND status = 'active' LIMIT 1");
+        $stmtPlan->execute(['id' => $planId]);
+        $plan = $stmtPlan->fetch(PDO::FETCH_ASSOC);
+
+        if (!$plan) {
+            $err = 'Invalid subscription plan selected.';
+            if ($this->isAjaxRequest()) {
+                http_response_code(422);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $err]);
+                exit();
+            }
+            $_SESSION['admin_errors'] = $err;
+            header("Location: " . url("/admin/active-user-plans"));
+            exit();
+        }
+
+        // Revoke any prior pending grants for this student so only the latest link is valid
+        $stmtCancelOld = $this->db->prepare("
+            UPDATE manual_subscription_grants 
+            SET status = 'revoked', updated_at = NOW() 
+            WHERE user_id = :uid AND status = 'pending'
+        ");
+        $stmtCancelOld->execute(['uid' => $userId]);
+
+        // Generate 64-character crypto token
+        $token = bin2hex(random_bytes(32));
+        $tokenExpiresAt = date('Y-m-d H:i:s', strtotime('+60 days'));
+        $adminId = Auth::userId();
+
+        $stmtIns = $this->db->prepare("
+            INSERT INTO manual_subscription_grants (
+                user_id, plan_id, duration_days, activation_token,
+                status, created_by, admin_notes, token_expires_at, created_at
+            ) VALUES (
+                :user_id, :plan_id, :duration_days, :activation_token,
+                'pending', :created_by, :admin_notes, :token_expires_at, NOW()
+            )
+        ");
+        $stmtIns->execute([
+            'user_id' => $userId,
+            'plan_id' => $planId,
+            'duration_days' => $durationDays,
+            'activation_token' => $token,
+            'created_by' => $adminId,
+            'admin_notes' => $adminNotes ?: null,
+            'token_expires_at' => $tokenExpiresAt
+        ]);
+        $grantId = (int)$this->db->lastInsertId();
+
+        $activationUrl = absolute_url('/subscriptions/activate?token=' . $token);
+
+        // Enqueue activation email if requested
+        $emailQueued = false;
+        $emailError = null;
+        if ($sendEmail) {
+            $studentName = trim(($student['first_name'] ?? '') . ' ' . ($student['last_name'] ?? '')) ?: 'Student';
+            $planName = $plan['name'] ?? 'Premium';
+            $subject = "Activate Your Complimentary {$planName} Subscription on ScholarPlanner";
+            $emailBody = $this->buildManualSubscriptionEmailHtml($studentName, $planName, $durationDays, $activationUrl);
+
+            try {
+                $queueService = new \App\Services\NotificationQueueService();
+                $idempotencyKey = 'manual_sub_grant_' . $grantId;
+                $emailQueued = $queueService->enqueue(
+                    $userId,
+                    null,
+                    \App\Services\NotificationTypes::MANUAL_SUBSCRIPTION_ACTIVATION,
+                    'email',
+                    $student['email'],
+                    $subject,
+                    [
+                        'student_name' => $studentName,
+                        'plan_name' => $planName,
+                        'duration_days' => $durationDays,
+                        'activation_url' => $activationUrl,
+                        'body_html' => $emailBody
+                    ],
+                    $idempotencyKey
+                );
+            } catch (\Exception $e) {
+                $emailError = $e->getMessage();
+                \App\Services\Logger::error("Failed to enqueue manual subscription email for grant $grantId: " . $e->getMessage());
+            }
+        }
+
+        $this->logAction('manual_subscription_granted', 'subscriptions', 'manual_subscription_grants', $grantId, [
+            'user_id' => $userId,
+            'plan_id' => $planId,
+            'duration_days' => $durationDays,
+            'email_queued' => $emailQueued
+        ]);
+
+        if ($this->isAjaxRequest()) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'grant_id' => encode_id($grantId),
+                'activation_url' => $activationUrl,
+                'email_queued' => $emailQueued,
+                'email_sent' => $emailQueued,
+                'email_error' => $emailError,
+                'message' => 'Subscription grant created successfully. ' . ($emailQueued ? 'Activation email queued for background delivery.' : 'Activation link ready to copy.')
+            ]);
+            exit();
+        }
+
+        $_SESSION['admin_success'] = "Subscription grant created successfully. " . ($emailQueued ? "Activation email queued for background delivery." : "Activation link is ready.");
+        header("Location: " . url("/admin/manual-subscriptions"));
+        exit();
+    }
+
+    /**
+     * POST /admin/manual-subscriptions/{id}/resend
+     * Resend activation email for a pending grant via queue
+     */
+    public function manualSubscriptionsResend(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        $rawId = $this->resolveId($id, true);
+
+        $stmt = $this->db->prepare("
+            SELECT g.*, u.first_name, u.last_name, u.email, p.name as plan_name, p.slug as plan_slug 
+            FROM manual_subscription_grants g 
+            JOIN users u ON g.user_id = u.id 
+            JOIN subscription_plans p ON g.plan_id = p.id 
+            WHERE g.id = :id 
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $rawId]);
+        $grant = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$grant) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Subscription grant not found.']);
+            exit();
+        }
+
+        if ($grant['status'] !== 'pending') {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Cannot resend: grant is already ' . $grant['status'] . '.']);
+            exit();
+        }
+
+        $studentName = trim(($grant['first_name'] ?? '') . ' ' . ($grant['last_name'] ?? '')) ?: 'Student';
+        $planName = $grant['plan_name'] ?? 'Premium';
+        $activationUrl = absolute_url('/subscriptions/activate?token=' . urlencode($grant['activation_token']));
+        $subject = "Activate Your Complimentary {$planName} Subscription on ScholarPlanner";
+        $emailBody = $this->buildManualSubscriptionEmailHtml($studentName, $planName, (int)$grant['duration_days'], $activationUrl);
+
+        $queued = false;
+        $queueError = null;
+        try {
+            $queueService = new \App\Services\NotificationQueueService();
+            $idempotencyKey = 'manual_sub_resend_' . $rawId . '_' . time();
+            $queued = $queueService->enqueue(
+                (int)$grant['user_id'],
+                null,
+                \App\Services\NotificationTypes::MANUAL_SUBSCRIPTION_ACTIVATION,
+                'email',
+                $grant['email'],
+                $subject,
+                [
+                    'student_name' => $studentName,
+                    'plan_name' => $planName,
+                    'duration_days' => (int)$grant['duration_days'],
+                    'activation_url' => $activationUrl,
+                    'body_html' => $emailBody
+                ],
+                $idempotencyKey
+            );
+        } catch (\Exception $e) {
+            $queueError = $e->getMessage();
+            \App\Services\Logger::error("Failed to enqueue manual subscription resend for grant $rawId: " . $e->getMessage());
+        }
+
+        $this->logAction('manual_subscription_email_resent', 'subscriptions', 'manual_subscription_grants', $rawId);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => $queued,
+            'message' => $queued ? 'Activation email queued for background delivery.' : ('Failed to enqueue email: ' . ($queueError ?? 'unknown error'))
+        ]);
+        exit();
+    }
+
+    /**
+     * POST /admin/manual-subscriptions/{id}/revoke
+     * Revoke an unclicked pending grant
+     */
+    public function manualSubscriptionsRevoke(string $id): void {
+        Auth::requireRole(['admin', 'employee']);
+        $rawId = $this->resolveId($id, true);
+
+        $stmt = $this->db->prepare("SELECT * FROM manual_subscription_grants WHERE id = :id LIMIT 1");
+        $stmt->execute(['id' => $rawId]);
+        $grant = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$grant) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Grant not found.']);
+            exit();
+        }
+
+        if ($grant['status'] !== 'pending') {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Only pending grants can be revoked. Current status: ' . $grant['status']]);
+            exit();
+        }
+
+        $stmtUpd = $this->db->prepare("UPDATE manual_subscription_grants SET status = 'revoked', updated_at = NOW() WHERE id = :id");
+        $stmtUpd->execute(['id' => $rawId]);
+
+        $this->logAction('manual_subscription_revoked', 'subscriptions', 'manual_subscription_grants', $rawId);
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Subscription grant has been revoked successfully.']);
+        exit();
+    }
+
+    /**
+     * Build styled HTML activation email template
+     */
+    public function buildManualSubscriptionEmailHtml(string $studentName, string $planName, int $durationDays, string $activationUrl): string {
+        $studentName = htmlspecialchars($studentName);
+        $planName = htmlspecialchars($planName);
+        $siteName = 'ScholarPlanner';
+
+        return '<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; }
+                .container { max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; }
+                .header { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 36px 30px; text-align: center; }
+                .header h1 { margin: 0; font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; }
+                .header p { margin: 6px 0 0 0; color: #bfdbfe; font-size: 14px; font-weight: 500; }
+                .content { padding: 36px 30px; }
+                .greeting { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 16px; }
+                .lead { font-size: 15px; line-height: 1.6; color: #475569; margin-bottom: 24px; }
+                .timer-notice { background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 18px 20px; border-radius: 8px; margin-bottom: 28px; }
+                .timer-notice-title { font-weight: 700; color: #1e40af; font-size: 14px; margin-bottom: 6px; }
+                .timer-notice-text { font-size: 13.5px; line-height: 1.5; color: #1e3a8a; margin: 0; }
+                .plan-badge-box { text-align: center; margin: 24px 0 32px 0; }
+                .plan-badge { display: inline-block; background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 24px; font-size: 15px; font-weight: 700; color: #0f172a; }
+                .btn-container { text-align: center; margin: 32px 0; }
+                .btn { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff !important; text-decoration: none; font-size: 16px; font-weight: 700; padding: 16px 38px; border-radius: 8px; box-shadow: 0 4px 12px rgba(37,99,235,0.25); }
+                .perks-list { background-color: #f8fafc; border-radius: 8px; padding: 20px 24px; margin-bottom: 28px; }
+                .perks-title { font-weight: 700; font-size: 14px; color: #334155; margin-bottom: 12px; }
+                .perk-item { font-size: 13.5px; color: #475569; margin-bottom: 8px; }
+                .perk-item:last-child { margin-bottom: 0; }
+                .fallback { font-size: 12px; color: #64748b; line-height: 1.5; border-top: 1px solid #e2e8f0; padding-top: 20px; margin-top: 28px; word-break: break-all; }
+                .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 30px; text-align: center; font-size: 12px; color: #94a3b8; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>' . $siteName . '</h1>
+                    <p>Personalized Scholarship Discovery Platform</p>
+                </div>
+                <div class="content">
+                    <div class="greeting">Hello ' . $studentName . ',</div>
+                    <p class="lead">Great news! An administrator has granted you a complimentary <strong>' . $planName . '</strong> subscription.</p>
+                    
+                    <div class="timer-notice">
+                        <div class="timer-notice-title">⏱ When does your subscription start?</div>
+                        <p class="timer-notice-text">
+                            <strong>Your timer has NOT started yet!</strong> Your <strong>' . $durationDays . '-day</strong> validity period will begin <em>at the exact moment</em> you click the button below to open your activation link.
+                        </p>
+                    </div>
+
+                    <div class="plan-badge-box">
+                        <div class="plan-badge">
+                            Tier: ' . $planName . ' &bull; Duration: ' . $durationDays . ' Days
+                        </div>
+                    </div>
+
+                    <div class="btn-container">
+                        <a href="' . $activationUrl . '" class="btn" target="_blank">Activate My Subscription Now</a>
+                    </div>
+
+                    <div class="perks-list">
+                        <div class="perks-title">Included in your subscription:</div>
+                        <div class="perk-item">&#10004; Direct WhatsApp & Email real-time scholarship alerts</div>
+                        <div class="perk-item">&#10004; Unlimited side-by-side scholarship comparisons</div>
+                        <div class="perk-item">&#10004; Priority document readiness score & deadline reminders</div>
+                        <div class="perk-item">&#10004; Full access to advanced matching intelligence</div>
+                    </div>
+
+                    <div class="fallback">
+                        If the button above does not work, copy and paste this activation link directly into your browser:<br>
+                        <a href="' . $activationUrl . '" style="color: #2563eb;">' . $activationUrl . '</a>
+                    </div>
+                </div>
+                <div class="footer">
+                    &copy; ' . date('Y') . ' ' . $siteName . '. All rights reserved.<br>
+                    This activation link is valid for 60 days. If you did not expect this, you may disregard this email.
+                </div>
+            </div>
+        </body>
+        </html>';
+    }
+
+    /**
+     * Dispatch styled activation email to student (synchronous fallback)
+     */
+    private function sendManualSubscriptionEmail(array $student, array $plan, int $durationDays, string $token, string $notes = ''): array {
+        $studentName = trim(($student['first_name'] ?? '') . ' ' . ($student['last_name'] ?? '')) ?: 'Student';
+        $planName = $plan['name'] ?? 'Premium';
+        $activationUrl = absolute_url('/subscriptions/activate?token=' . urlencode($token));
+        $subject = "Activate Your Complimentary {$planName} Subscription on ScholarPlanner";
+        $body = $this->buildManualSubscriptionEmailHtml($studentName, $planName, $durationDays, $activationUrl);
+
+        try {
+            $emailService = new \App\Services\EmailNotificationService();
+            return $emailService->sendEmail($student['email'], $subject, $body);
+        } catch (\Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * GET /admin/payments
      */
     public function paymentsIndex(): void {
@@ -2014,17 +3556,36 @@ class AdminController {
         $db = \App\Services\Database::connection();
         $customWhere = "roles.name = 'visitor'";
         $customParams = [];
+
+        // Search query from custom filter
+        $searchQuery = trim($_GET['search_query'] ?? '');
+        if ($searchQuery !== '') {
+            $customWhere .= " AND (users.first_name LIKE :custom_search OR users.last_name LIKE :custom_search OR users.email LIKE :custom_search)";
+            $customParams['custom_search'] = '%' . $searchQuery . '%';
+        }
+
         if (!empty($_GET['status'])) {
             $customWhere .= " AND users.status = :status";
             $customParams['status'] = $_GET['status'];
         }
-        if (isset($_GET['email_verified']) && $_GET['email_verified'] !== '') {
-            if ($_GET['email_verified'] == '1') {
+        $verified = $_GET['verified'] ?? $_GET['email_verified'] ?? '';
+        if ($verified !== '') {
+            if ($verified === '1') {
                 $customWhere .= " AND users.email_verified_at IS NOT NULL";
             } else {
                 $customWhere .= " AND users.email_verified_at IS NULL";
             }
         }
+        $plan = trim($_GET['plan'] ?? '');
+        if ($plan !== '') {
+            if ($plan === 'free') {
+                $customWhere .= " AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = users.id AND s.status = 'active')";
+            } else {
+                $customWhere .= " AND EXISTS (SELECT 1 FROM subscriptions s JOIN subscription_plans p ON s.plan_id = p.id WHERE s.user_id = users.id AND s.status = 'active' AND p.name = :plan_name)";
+                $customParams['plan_name'] = $plan;
+            }
+        }
+
         $columns = [
             'id' => 'users.id',
             'first_name' => 'users.first_name',
@@ -2039,13 +3600,17 @@ class AdminController {
         $joins = [
             'LEFT JOIN roles ON users.role_id = roles.id',
             'LEFT JOIN student_profiles ON users.id = student_profiles.user_id',
-            'LEFT JOIN subscriptions ON users.id = subscriptions.user_id AND subscriptions.status = \'active\' AND (subscriptions.expires_at IS NULL OR subscriptions.expires_at > NOW())',
+            'LEFT JOIN subscriptions ON users.id = subscriptions.user_id AND subscriptions.status = \'active\' AND (subscriptions.ends_at IS NULL OR subscriptions.ends_at > NOW())',
             'LEFT JOIN subscription_plans ON subscriptions.plan_id = subscription_plans.id'
         ];
         $searchableColumns = ['users.first_name', 'users.last_name', 'users.email', 'users.status'];
         $columnMapping = [
+            'student_name' => 'users.first_name',
             'email' => 'users.email',
+            'email_verified_at' => 'users.email_verified_at',
             'status' => 'users.status',
+            'completion' => 'student_profiles.profile_completion_percentage',
+            'plan_name' => 'subscription_plans.name',
             'created_at' => 'users.created_at'
         ];
         $result = \App\Helpers\DataTableHelper::process(

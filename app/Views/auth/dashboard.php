@@ -38,6 +38,23 @@ function getDaysLeftText(string $deadlineDate): array {
         return ['text' => $days . ' days left', 'class' => 'normal'];
     }
 }
+
+// Dynamic alert plan pricing
+$alertPlan = $alertPlan ?? null;
+if (!$alertPlan) {
+    try {
+        $dbConn = \App\Services\Database::connection();
+        $stmtAP = $dbConn->query("SELECT * FROM subscription_plans WHERE status = 'active' AND (whatsapp_alerts = 1 OR price > 0) ORDER BY price ASC LIMIT 1");
+        $alertPlan = $stmtAP->fetch(\PDO::FETCH_ASSOC) ?: null;
+    } catch (\Exception $e) {
+        $alertPlan = null;
+    }
+}
+$planPrice = isset($alertPlan['price']) ? (float)$alertPlan['price'] : 1499.0;
+$planPriceFormatted = ($planPrice == (int)$planPrice) ? number_format($planPrice) : number_format($planPrice, 2);
+$planCurrency = !empty($alertPlan['currency']) ? $alertPlan['currency'] : 'PKR';
+$planName = !empty($alertPlan['name']) ? $alertPlan['name'] : 'Premium Monthly';
+$planInterval = !empty($alertPlan['billing_interval']) ? $alertPlan['billing_interval'] : 'month';
 ?>
 <style>
         :root {
@@ -1650,13 +1667,19 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                         </div>
 
                         <div class="wa-promo-actions">
+                            <!-- Original modal button commented out for now
                             <button class="btn btn-whatsapp" id="openWaModal" type="button">
                                 <i data-lucide="message-square"></i>
                                 Activate WhatsApp Alerts
                             </button>
+                            -->
+                            <a href="https://wa.me/923251371826" target="_blank" rel="noopener noreferrer" class="btn btn-whatsapp">
+                                <i data-lucide="message-square"></i>
+                                Activate WhatsApp Alerts
+                            </a>
                             <div class="wa-price-tag">
-                                <span class="wa-price-amount">PKR 1,499</span>
-                                <span class="wa-price-period">/month</span>
+                                <span class="wa-price-amount">PKR <?= e($planPriceFormatted) ?></span>
+                                <span class="wa-price-period">/<?= e($planInterval) ?></span>
                                 <span class="wa-price-original">PKR 2,499</span>
                             </div>
                         </div>
@@ -2017,7 +2040,7 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                                     </div>
                                     <div style="display:flex;align-items:flex-start;gap:12px;font-size:0.875rem;color:var(--text-600)">
                                         <span style="width:24px;height:24px;border-radius:50%;background:var(--primary-50);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0">3</span>
-                                        <span>Send exactly <strong>PKR 1,499</strong> to the following number:</span>
+                                        <span>Send exactly <strong>PKR <?= e($planPriceFormatted) ?></strong> to the following number:</span>
                                     </div>
                                     <div style="background:var(--bg-50);border:1px dashed var(--border);border-radius:var(--radius-md);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
                                         <span style="font-size:1.125rem;font-weight:700;color:var(--text-900);letter-spacing:0.02em">03XX-XXXXXXX</span>
@@ -2045,20 +2068,20 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                         </div>
 
                         <div class="checkout-summary-item">
-                            <span>WhatsApp Alerts — Premium</span>
-                            <span>PKR 1,499</span>
+                            <span>WhatsApp Alerts — <?= e($planName) ?></span>
+                            <span>PKR <?= e($planPriceFormatted) ?></span>
                         </div>
                         <div class="checkout-summary-item">
-                            <span>Email Alerts — Premium</span>
+                            <span>Email Alerts — <?= e($planName) ?></span>
                             <span>Included</span>
                         </div>
                         <div class="checkout-summary-item">
                             <span>Billing Cycle</span>
-                            <span>Monthly</span>
+                            <span><?= ucfirst(e($planInterval)) ?></span>
                         </div>
                         <div class="checkout-summary-item total">
                             <span>Total</span>
-                            <span>PKR 1,499</span>
+                            <span>PKR <?= e($planPriceFormatted) ?></span>
                         </div>
 
                         <div class="checkout-summary-features">
@@ -2183,7 +2206,7 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                 </div>
                 <div class="modal-price-row total">
                     <span>Total</span>
-                    <span>PKR 1,499 /mo</span>
+                    <span>PKR <?= e($planPriceFormatted) ?> /mo</span>
                 </div>
             </div>
 
@@ -2329,6 +2352,7 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
         phoneError.classList.remove('visible');
     }
 
+    /* Button modal functionality commented out for now - will update later
     if (openWaModal) openWaModal.addEventListener('click', openWaModalFn);
     if (sidebarWaLink) {
         sidebarWaLink.addEventListener('click', function(e) {
@@ -2336,6 +2360,7 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
             openWaModalFn();
         });
     }
+    */
     if (waModalClose) waModalClose.addEventListener('click', closeWaModal);
 
     waModal.addEventListener('click', function(e) {

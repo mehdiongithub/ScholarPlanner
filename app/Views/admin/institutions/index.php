@@ -98,11 +98,12 @@ $(document).ready(function() {
                     var editUrl = '<?= url("/admin/institutions") ?>' + '/' + row.record_id + '/edit';
                     var deleteUrl = '<?= url("/admin/institutions") ?>' + '/' + row.record_id + '/delete';
                     
+                    var safeName = (row.name || '').replace(/'/g, "\\'");
                     return '<div style="display:flex; gap:8px;">' +
                            '<a href="' + editUrl + '" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;">Edit</a>' +
-                           '<form action="' + deleteUrl + '" method="POST" onsubmit="return confirm(\'Are you sure you want to delete this institution?\');" style="display:inline;">' +
+                           '<form action="' + deleteUrl + '" method="POST" style="display:inline;">' +
                            '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
-                           '<button type="submit" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.75rem;">Delete</button>' +
+                           '<button type="button" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.75rem;" onclick="adminConfirmDelete(this, \'institution\', \'' + safeName + '\')">Delete</button>' +
                            '</form>' +
                            '</div>';
                 }

@@ -9,7 +9,7 @@ if (!defined('BYPASS_BATCH_CUTOFF')) {
 
 use App\Services\Database;
 use App\Services\Auth;
-use App\Services\Security;
+use App\Helpers\Security;
 use App\Services\NotificationSchedulerService;
 use App\Services\NotificationService;
 use App\Services\NotificationQueueService;

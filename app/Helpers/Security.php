@@ -66,4 +66,8 @@ class Security {
         }
         return hash_equals($_SESSION['csrf_token'], $token);
     }
+
+    public static function validateCsrfToken(?string $token): bool {
+        return self::verifyCsrfToken($token);
+    }
 }

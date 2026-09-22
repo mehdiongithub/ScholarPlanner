@@ -58,6 +58,20 @@
                 ],
                 [
                     'type' => 'link',
+                    'label' => 'Active User Plans',
+                    'icon' => 'sparkles',
+                    'url' => '/admin/manual-subscriptions',
+                    'active_prefix' => '/admin/manual-subscriptions'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Alert Timers',
+                    'icon' => 'timer',
+                    'url' => '/admin/alert-timers',
+                    'active_prefix' => '/admin/alert-timers'
+                ],
+                [
+                    'type' => 'link',
                     'label' => 'Staff & Employees',
                     'icon' => 'shield-check',
                     'url' => '/admin/employees',
@@ -195,6 +209,13 @@
                     'icon' => 'refresh-cw',
                     'url' => '/admin/subscriptions',
                     'active_prefix' => '/admin/subscriptions'
+                ],
+                [
+                    'type' => 'link',
+                    'label' => 'Subscription Plans',
+                    'icon' => 'package',
+                    'url' => '/admin/plans',
+                    'active_prefix' => '/admin/plans'
                 ],
                 [
                     'type' => 'link',

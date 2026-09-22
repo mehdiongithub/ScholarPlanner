@@ -78,11 +78,13 @@ $(document).ready(function() {
                 orderable: false,
                 render: function(data, type, row) {
                     if (row.status === 'paid') {
+                        var safeAmount = $('<div>').text(row.amount || '0').html();
+                        var safeRef = $('<div>').text(row.reference_id || '').html();
                         var refundUrl = '<?= url("/admin/billing/refund") ?>';
-                        return '<form action="' + refundUrl + '" method="POST" onsubmit="return confirm(\'Issue a refund of $' + row.amount + ' for reference ' + row.reference_id + '?\');" style="display: inline;">' +
+                        return '<form action="' + refundUrl + '" method="POST" style="display: inline;">' +
                             '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
                             '<input type="hidden" name="transaction_id" value="' + row.record_id + '">' +
-                            '<button type="submit" class="action-link danger" style="background: none; border: none; cursor: pointer; font-family: inherit;">Refund</button>' +
+                            '<button type="button" class="action-link danger btn-refund-payment" style="background: none; border: none; cursor: pointer; font-family: inherit;" data-amount="' + safeAmount + '" data-ref="' + safeRef + '">Refund</button>' +
                             '</form>';
                     } else {
                         return '-';
@@ -91,7 +93,27 @@ $(document).ready(function() {
             }
         ]
     });
+
+    $(document).on('click', '.btn-refund-payment', function(e) {
+        e.preventDefault();
+        confirmRefund(this, $(this).attr('data-amount'), $(this).attr('data-ref'));
+    });
 });
+
+function confirmRefund(btn, amount, refId) {
+    var $form = $(btn).closest('form');
+    adminConfirm({
+        title: 'Confirm Refund',
+        message: 'Are you sure you want to issue a refund of <strong>$' + adminEscapeHtml(amount) + '</strong> for reference <strong>' + adminEscapeHtml(refId) + '</strong>?',
+        subtext: 'This will refund the payment and immediately revoke their premium access.',
+        confirmText: 'Yes, Issue Refund',
+        confirmClass: 'btn-danger',
+        icon: 'refresh-ccw'
+    }, function() {
+        $form.data('admin-confirmed', true);
+        $form[0].submit();
+    });
+}
 </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

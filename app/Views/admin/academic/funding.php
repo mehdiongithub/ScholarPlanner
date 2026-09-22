@@ -76,39 +76,67 @@ $(document).ready(function() {
                 orderable: false,
                 render: function(data, type, row) {
                     var editUrl = '<?= url("/admin/academic/funding") ?>' + '/' + row.record_id + '/edit';
+                    var safeName = $('<div>').text(row.name || '').html();
                     return '<a href="' + editUrl + '" class="action-link">Edit</a>' +
-                           '<a href="javascript:void(0)" onclick="deleteFunding(\'' + row.record_id + '\')" class="action-link danger">Delete</a>';
+                           '<a href="javascript:void(0)" class="action-link danger btn-delete-funding" data-id="' + row.record_id + '" data-name="' + safeName + '">Delete</a>';
                 }
             }
         ]
     });
+
+    $(document).on('click', '.btn-delete-funding', function(e) {
+        e.preventDefault();
+        var recordId = $(this).attr('data-id');
+        var name = $(this).attr('data-name');
+        deleteFunding(recordId, name);
+    });
 });
 
-function deleteFunding(recordId) {
-    if (!confirm('Are you sure you want to delete this funding type?')) {
-        return;
-    }
-    const formData = new FormData();
-    formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
+function deleteFunding(recordId, name) {
+    adminConfirm({
+        title: 'Delete Funding Type',
+        message: 'Are you sure you want to delete funding type ' + (name ? '<strong>"' + adminEscapeHtml(name) + '"</strong>' : 'this record') + '?',
+        subtext: 'This action cannot be undone.',
+        confirmText: 'Yes, Delete',
+        confirmClass: 'btn-danger',
+        icon: 'trash-2'
+    }, function() {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
 
-    fetch('<?= url("/admin/academic/funding") ?>/' + recordId + '/delete', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            $('#funding-datatable').DataTable().ajax.reload(null, false);
-        } else {
-            alert(data.error || 'Failed to delete funding type.');
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('An error occurred during communication.');
+        fetch('<?= url("/admin/academic/funding") ?>/' + recordId + '/delete', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                $('#funding-datatable').DataTable().ajax.reload(null, false);
+            } else {
+                adminConfirm({
+                    title: 'Delete Failed',
+                    message: data.error || 'Failed to delete funding type.',
+                    subtext: '',
+                    confirmText: 'OK',
+                    confirmClass: 'btn-primary',
+                    icon: 'alert-triangle'
+                });
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            adminConfirm({
+                title: 'Error',
+                message: 'An error occurred during communication.',
+                subtext: '',
+                confirmText: 'OK',
+                confirmClass: 'btn-danger',
+                icon: 'alert-triangle'
+            });
+        });
     });
 }
 </script>

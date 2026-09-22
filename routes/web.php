@@ -174,6 +174,7 @@ $router->get('/checkout/mock-screen', ['App\Controllers\BillingController', 'moc
 $router->get('/checkout/redirect', ['App\Controllers\BillingController', 'redirectRedirect']);
 $router->post('/api/payments/webhook', ['App\Controllers\BillingController', 'webhook']);
 $router->post('/api/payments/cashmaal/ipn', ['App\Controllers\BillingController', 'cashmaalIpn']);
+$router->get('/subscriptions/activate', ['App\Controllers\BillingController', 'activateManualGrant']);
 
 // Complete Professional Admin Control Center Routes
 $router->get('/admin/users', ['App\Controllers\AdminController', 'usersIndex']);
@@ -184,6 +185,16 @@ $router->post('/admin/users/{id}/suspend', ['App\Controllers\AdminController', '
 $router->post('/admin/users/{id}/activate', ['App\Controllers\AdminController', 'usersActivate']);
 $router->post('/admin/users/{id}/password', ['App\Controllers\AdminController', 'usersResetPassword']);
 $router->post('/admin/users/{id}/delete', ['App\Controllers\AdminController', 'usersDelete']);
+
+// Manual Subscription Grants Management (Active User Plans)
+$router->get('/admin/manual-subscriptions', ['App\Controllers\AdminController', 'manualSubscriptionsIndex']);
+$router->get('/admin/active-user-plans', ['App\Controllers\AdminController', 'manualSubscriptionsIndex']);
+$router->post('/admin/manual-subscriptions', ['App\Controllers\AdminController', 'manualSubscriptionsStore']);
+$router->post('/admin/active-user-plans', ['App\Controllers\AdminController', 'manualSubscriptionsStore']);
+$router->post('/admin/manual-subscriptions/{id}/resend', ['App\Controllers\AdminController', 'manualSubscriptionsResend']);
+$router->post('/admin/active-user-plans/{id}/resend', ['App\Controllers\AdminController', 'manualSubscriptionsResend']);
+$router->post('/admin/manual-subscriptions/{id}/revoke', ['App\Controllers\AdminController', 'manualSubscriptionsRevoke']);
+$router->post('/admin/active-user-plans/{id}/revoke', ['App\Controllers\AdminController', 'manualSubscriptionsRevoke']);
 
 $router->get('/admin/employees', ['App\Controllers\AdminController', 'employeesIndex']);
 $router->get('/admin/employees/create', ['App\Controllers\AdminController', 'employeesCreate']);
@@ -259,7 +270,24 @@ $router->post('/admin/profile', ['App\Controllers\AdminController', 'profileUpda
 $router->get('/admin/subscriptions', ['App\Controllers\AdminController', 'subscriptionsIndex']);
 $router->get('/admin/payments', ['App\Controllers\AdminController', 'paymentsIndex']);
 
+// Admin Subscription Plans Management
+$router->get('/admin/plans', ['App\Controllers\AdminController', 'plansIndex']);
+$router->post('/admin/plans', ['App\Controllers\AdminController', 'plansStore']);
+$router->get('/admin/plans/{id}/edit', ['App\Controllers\AdminController', 'plansEdit']);
+$router->post('/admin/plans/{id}/update', ['App\Controllers\AdminController', 'plansUpdate']);
+$router->post('/admin/plans/{id}/toggle-status', ['App\Controllers\AdminController', 'plansToggleStatus']);
+$router->post('/admin/plans/{id}/delete', ['App\Controllers\AdminController', 'plansDelete']);
+
+// Admin Alert Timers & WhatsApp Schedule Management
+$router->get('/admin/alert-timers', ['App\Controllers\AdminController', 'alertTimersIndex']);
+$router->get('/admin/alert-timers/data', ['App\Controllers\AdminController', 'alertTimersData']);
+$router->post('/admin/alert-timers/update', ['App\Controllers\AdminController', 'alertTimersUpdate']);
+$router->post('/admin/alert-timers/toggle-status', ['App\Controllers\AdminController', 'alertTimersToggleStatus']);
+$router->post('/admin/alert-timers/run-now', ['App\Controllers\AdminController', 'alertTimersRunNow']);
+$router->get('/admin/alert-timers/dry-run', ['App\Controllers\AdminController', 'alertTimersDryRun']);
+
 // Server-Side DataTables JSON endpoints
+$router->get('/admin/plans/data', ['App\Controllers\AdminController', 'plansData']);
 $router->get('/admin/users/data', ['App\Controllers\AdminController', 'usersData']);
 $router->get('/admin/employees/data', ['App\Controllers\AdminController', 'employeesData']);
 $router->get('/admin/scholarships/data', ['App\Controllers\ScholarshipController', 'scholarshipsData']);
@@ -274,5 +302,7 @@ $router->get('/admin/academic/degrees/data', ['App\Controllers\AdminController',
 $router->get('/admin/academic/funding/data', ['App\Controllers\AdminController', 'fundingData']);
 $router->get('/admin/payments/data', ['App\Controllers\AdminController', 'paymentsData']);
 $router->get('/admin/subscriptions/data', ['App\Controllers\AdminController', 'subscriptionsData']);
+$router->get('/admin/manual-subscriptions/data', ['App\Controllers\AdminController', 'manualSubscriptionsData']);
+$router->get('/admin/active-user-plans/data', ['App\Controllers\AdminController', 'manualSubscriptionsData']);
 $router->get('/admin/audit-logs/data', ['App\Controllers\AdminController', 'auditLogsData']);
 

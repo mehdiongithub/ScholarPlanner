@@ -53,6 +53,11 @@ class AuthController {
      */
      public function register(): void {
         if (Auth::isAuthenticated()) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'redirect' => url('/dashboard')]);
+                exit;
+            }
             $this->redirectBasedOnRole();
         }
 
@@ -125,6 +130,16 @@ class AuthController {
         }
 
         if (!empty($errors)) {
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                header('Content-Type: application/json');
+                http_response_code(422);
+                echo json_encode([
+                    'success' => false,
+                    'errors' => $errors
+                ]);
+                exit;
+            }
+
             view('auth.register', [
                 'csrf_token' => Security::csrfToken(),
                 'errors' => $errors,
@@ -245,6 +260,16 @@ class AuthController {
             $_SESSION['user_name'] = $firstName . ' ' . $lastName;
             $_SESSION['user_email'] = $email;
 
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Registration successful.',
+                    'redirect' => url('/verify-email')
+                ]);
+                exit;
+            }
+
             $this->redirect(url('/verify-email'), "Redirect to verify-email");
 
         } catch (Exception $e) {
@@ -256,6 +281,17 @@ class AuthController {
             }
             $errors['system'] = "We couldn't complete your registration. Please try again.";
             Logger::error("Registration Exception: " . $e->getMessage());
+
+            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'errors' => $errors
+                ]);
+                exit;
+            }
+
             view('auth.register', [
                 'csrf_token' => Security::csrfToken(),
                 'errors' => $errors,
@@ -371,9 +407,10 @@ class AuthController {
     }
 
     /**
-     * Process forgot password request (generates hashed token)
+     * Process forgot password request (generates hashed token and enqueues reset email)
      */
     public function forgot(): void {
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
         $errors = [];
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
@@ -388,24 +425,51 @@ class AuthController {
         }
 
         if (!empty($errors)) {
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                http_response_code(422);
+                echo json_encode(['success' => false, 'errors' => $errors]);
+                exit;
+            }
+
             view('auth.forgot', [
                 'csrf_token' => Security::csrfToken(),
                 'success_message' => null,
                 'dev_reset_link' => null,
-                'errors' => $errors
+                'errors' => $errors,
+                'old' => $_POST
             ]);
             return;
         }
 
         $db = Database::connection();
-        $stmt = $db->prepare("SELECT id FROM users WHERE email = :email LIMIT 1");
+        $stmt = $db->prepare("SELECT id, first_name, email FROM users WHERE email = :email LIMIT 1");
         $stmt->execute(['email' => $email]);
-        $userId = $stmt->fetchColumn();
+        $user = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         $devResetLink = null;
 
-        if ($userId) {
-            // Generate token (expired in 1 hour)
+        if ($user) {
+            $userId = (int)$user['id'];
+
+            // Invalidate any previous unused password reset tokens for this user
+            $stmtInv = $db->prepare("UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = :user_id AND used_at IS NULL");
+            $stmtInv->execute(['user_id' => $userId]);
+
+            // Cancel / supersede previous pending password reset notifications
+            $stmtCancel = $db->prepare("
+                UPDATE notification_logs 
+                SET status = 'skipped', error_message = 'Superseded by new reset request', updated_at = NOW() 
+                WHERE user_id = :user_id 
+                  AND notification_type = :type 
+                  AND status IN ('pending', 'retrying')
+            ");
+            $stmtCancel->execute([
+                'user_id' => $userId,
+                'type' => \App\Services\NotificationTypes::PASSWORD_RESET
+            ]);
+
+            // Generate token (valid for 1 hour)
             $token = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $token);
             $expiresAt = date('Y-m-d H:i:s', time() + 3600);
@@ -419,19 +483,104 @@ class AuthController {
 
             Auth::logAudit($userId, 'password_reset_requested', 'auth', 'users', $userId);
 
+            $resetUrl = absolute_url('/reset-password?token=' . $token);
+
             // In local development, show the reset link directly on the screen
             if (config('app.env') === 'local') {
-                $devResetLink = url('/reset-password?token=' . $token);
+                $devResetLink = $resetUrl;
             }
+
+            // Enqueue password reset email into notification queue
+            $queueService = new \App\Services\NotificationQueueService();
+            $idempotencyKey = "pwd_reset_{$userId}_{$tokenHash}";
+            $payloadData = [
+                'first_name' => $user['first_name'] ?? 'User',
+                'email' => $user['email'],
+                'reset_url' => $resetUrl,
+                'token_hash' => $tokenHash
+            ];
+
+            $enqueued = $queueService->enqueue(
+                $userId,
+                null,
+                \App\Services\NotificationTypes::PASSWORD_RESET,
+                'email',
+                $user['email'],
+                "Reset your ScholarPlanner password",
+                $payloadData,
+                $idempotencyKey
+            );
+
+        }
+
+        $successMessage = "If the email is registered in our system, you will receive a reset link shortly.";
+
+        if ($isAjax) {
+            $responseData = json_encode([
+                'success' => true,
+                'message' => $successMessage,
+                'dev_reset_link' => $devResetLink
+            ]);
+
+            // Flush HTTP response immediately so the user does NOT wait for email sending
+            ignore_user_abort(true);
+            if (!headers_sent()) {
+                header('Content-Type: application/json');
+                header('Connection: close');
+                header('Content-Length: ' . strlen($responseData));
+            }
+            echo $responseData;
+            while (ob_get_level() > 0) {
+                ob_end_flush();
+            }
+            flush();
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+
+            // Trigger background queue execution after user has received response
+            if (!empty($enqueued)) {
+                $this->triggerBackgroundQueue();
+                try {
+                    $queueService->processQueue(5);
+                } catch (\Exception $qe) {
+                    Logger::error("Background queue dispatch error on password reset: " . $qe->getMessage());
+                }
+            }
+            exit;
+        }
+
+        // For non-AJAX fallback POST, trigger background queue
+        if (!empty($enqueued)) {
+            $this->triggerBackgroundQueue();
         }
 
         // Output generic success message (Never disclose if email exists for privacy)
         view('auth.forgot', [
             'csrf_token' => Security::csrfToken(),
-            'success_message' => "If the email is registered in our system, you will receive a reset link shortly.",
+            'success_message' => $successMessage,
             'dev_reset_link' => $devResetLink,
-            'errors' => []
+            'errors' => [],
+            'old' => $_POST
         ]);
+    }
+
+    /**
+     * Dispatch queue worker in background asynchronously without blocking the user.
+     */
+    private function triggerBackgroundQueue(): void {
+        $workerScript = ROOT_PATH . '/cron/queue_worker.php';
+        if (!file_exists($workerScript)) {
+            return;
+        }
+
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            $cmd = 'cmd /c "start /B "" php ' . escapeshellarg($workerScript) . ' --batch-size=5 > NUL 2>&1"';
+            @pclose(@popen($cmd, "r"));
+        } else {
+            $cmd = 'php ' . escapeshellarg($workerScript) . ' --batch-size=5 > /dev/null 2>&1 &';
+            @exec($cmd);
+        }
     }
 
     /**
@@ -456,6 +605,7 @@ class AuthController {
      * Process password update
      */
     public function reset(): void {
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
         $errors = [];
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
@@ -483,6 +633,13 @@ class AuthController {
         }
 
         if (!empty($errors)) {
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                http_response_code(422);
+                echo json_encode(['success' => false, 'errors' => $errors]);
+                exit;
+            }
+
             view('auth.reset', [
                 'csrf_token' => Security::csrfToken(),
                 'token' => $token,
@@ -501,6 +658,13 @@ class AuthController {
 
         if (!$resetToken || strtotime($resetToken['expires_at']) < time()) {
             $errors['token'] = "The reset token is invalid or has expired.";
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                http_response_code(422);
+                echo json_encode(['success' => false, 'errors' => $errors]);
+                exit;
+            }
+
             view('auth.reset', [
                 'csrf_token' => Security::csrfToken(),
                 'token' => $token,
@@ -528,12 +692,31 @@ class AuthController {
             Auth::logAudit($userId, 'password_reset_completed', 'auth', 'users', $userId);
 
             $_SESSION['reset_success'] = "Password reset successfully! Please log in with your new credentials.";
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => "Password reset successfully! Redirecting to login...",
+                    'redirect' => url('/login')
+                ]);
+                exit;
+            }
+
             $loginUrl = url('/login');
             header("Location: $loginUrl");
             exit();
         } catch (Exception $e) {
             $errors['system'] = "An error occurred. Please try again.";
             Logger::error("Password Reset Exception: " . $e->getMessage());
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                http_response_code(500);
+                echo json_encode(['success' => false, 'errors' => $errors]);
+                exit;
+            }
+
             view('auth.reset', [
                 'csrf_token' => Security::csrfToken(),
                 'token' => $token,

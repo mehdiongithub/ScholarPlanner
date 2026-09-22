@@ -80,39 +80,67 @@ $(document).ready(function() {
                 orderable: false,
                 render: function(data, type, row) {
                     var editUrl = '<?= url("/admin/academic/fields") ?>' + '/' + row.record_id + '/edit';
+                    var safeName = $('<div>').text(row.name || '').html();
                     return '<a href="' + editUrl + '" class="action-link">Edit</a>' +
-                           '<a href="javascript:void(0)" onclick="deleteField(\'' + row.record_id + '\')" class="action-link danger">Delete</a>';
+                           '<a href="javascript:void(0)" class="action-link danger btn-delete-field" data-id="' + row.record_id + '" data-name="' + safeName + '">Delete</a>';
                 }
             }
         ]
     });
+
+    $(document).on('click', '.btn-delete-field', function(e) {
+        e.preventDefault();
+        var recordId = $(this).attr('data-id');
+        var name = $(this).attr('data-name');
+        deleteField(recordId, name);
+    });
 });
 
-function deleteField(recordId) {
-    if (!confirm('Are you sure you want to delete this field of study? This will cascade delete matching records.')) {
-        return;
-    }
-    const formData = new FormData();
-    formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
+function deleteField(recordId, name) {
+    adminConfirm({
+        title: 'Delete Field of Study',
+        message: 'Are you sure you want to delete field of study ' + (name ? '<strong>"' + adminEscapeHtml(name) + '"</strong>' : 'this record') + '?',
+        subtext: 'This will cascade delete matching records and cannot be undone.',
+        confirmText: 'Yes, Delete',
+        confirmClass: 'btn-danger',
+        icon: 'trash-2'
+    }, function() {
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= \App\Helpers\Security::csrfToken() ?>');
 
-    fetch('<?= url("/admin/academic/fields") ?>/' + recordId + '/delete', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            $('#fields-datatable').DataTable().ajax.reload(null, false);
-        } else {
-            alert(data.error || 'Failed to delete field.');
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('An error occurred during communication.');
+        fetch('<?= url("/admin/academic/fields") ?>/' + recordId + '/delete', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                $('#fields-datatable').DataTable().ajax.reload(null, false);
+            } else {
+                adminConfirm({
+                    title: 'Delete Failed',
+                    message: data.error || 'Failed to delete field.',
+                    subtext: '',
+                    confirmText: 'OK',
+                    confirmClass: 'btn-primary',
+                    icon: 'alert-triangle'
+                });
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            adminConfirm({
+                title: 'Error',
+                message: 'An error occurred during communication.',
+                subtext: '',
+                confirmText: 'OK',
+                confirmClass: 'btn-danger',
+                icon: 'alert-triangle'
+            });
+        });
     });
 }
 </script>

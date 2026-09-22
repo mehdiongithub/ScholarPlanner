@@ -1391,40 +1391,37 @@ class ScholarshipController {
             // Insert duplicated scholarship row (Draft status)
             $stmtInsert = $db->prepare("
                 INSERT INTO scholarships (
-                    title, slug, description, short_description, provider_name, provider_type, country_id, state_id, city_id,
-                    funding_type, tuition_coverage, living_stipend, travel_allowance, accommodation,
-                    other_benefits, application_deadline, deadline_type, official_application_url,
-                    application_url, cover_image, is_featured, status, verification_status,
-                    created_at, updated_at
+                    title, slug, provider_name, provider_type, description, short_description, 
+                    official_website, official_application_url, country_id, study_level, funding_type, 
+                    application_type, status, verification_status, application_open_date, application_deadline, 
+                    cover_image, is_featured, quality_status, recurring_interval, created_by, updated_by, created_at, updated_at
                 ) VALUES (
-                    :title, :slug, :description, :short_description, :provider_name, :provider_type, :country_id, :state_id, :city_id,
-                    :funding_type, :tuition_coverage, :living_stipend, :travel_allowance, :accommodation,
-                    :other_benefits, :application_deadline, :deadline_type, :official_application_url,
-                    :application_url, :cover_image, 0, 'draft', 'pending',
-                    NOW(), NOW()
+                    :title, :slug, :provider_name, :provider_type, :description, :short_description, 
+                    :official_website, :official_application_url, :country_id, :study_level, :funding_type, 
+                    :application_type, 'draft', 'unverified', :application_open_date, :application_deadline, 
+                    :cover_image, 0, :quality_status, :recurring_interval, :created_by, :updated_by, NOW(), NOW()
                 )
             ");
             $stmtInsert->execute([
                 'title' => $newTitle,
                 'slug' => $newSlug,
-                'description' => $sch['description'],
-                'short_description' => $sch['short_description'],
                 'provider_name' => $sch['provider_name'],
                 'provider_type' => $sch['provider_type'],
-                'country_id' => $sch['country_id'],
-                'state_id' => $sch['state_id'],
-                'city_id' => $sch['city_id'],
-                'funding_type' => $sch['funding_type'],
-                'tuition_coverage' => $sch['tuition_coverage'],
-                'living_stipend' => $sch['living_stipend'],
-                'travel_allowance' => $sch['travel_allowance'],
-                'accommodation' => $sch['accommodation'],
-                'other_benefits' => $sch['other_benefits'],
-                'application_deadline' => $sch['application_deadline'],
-                'deadline_type' => $sch['deadline_type'],
+                'description' => $sch['description'],
+                'short_description' => $sch['short_description'],
+                'official_website' => $sch['official_website'],
                 'official_application_url' => $sch['official_application_url'],
-                'application_url' => $sch['application_url'],
-                'cover_image' => $sch['cover_image']
+                'country_id' => $sch['country_id'],
+                'study_level' => $sch['study_level'],
+                'funding_type' => $sch['funding_type'],
+                'application_type' => $sch['application_type'],
+                'application_open_date' => $sch['application_open_date'],
+                'application_deadline' => $sch['application_deadline'],
+                'cover_image' => $sch['cover_image'],
+                'quality_status' => $sch['quality_status'] ?? 'good',
+                'recurring_interval' => $sch['recurring_interval'] ?? 'non-recurring',
+                'created_by' => Auth::userId(),
+                'updated_by' => Auth::userId()
             ]);
 
             $newId = (int)$db->lastInsertId();
@@ -2616,6 +2613,7 @@ class ScholarshipController {
         ];
         $searchableColumns = ['scholarships.title', 'scholarships.provider_name', 'countries.name', 'scholarships.status'];
         $columnMapping = [
+            'cover_image' => 'scholarships.id',
             'title' => 'scholarships.title',
             'provider_name' => 'scholarships.provider_name',
             'country_name' => 'countries.name',

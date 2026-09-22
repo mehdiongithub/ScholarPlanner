@@ -70,6 +70,20 @@ class Navigation {
             ],
             [
                 'type' => 'link',
+                'label' => 'Active User Plans',
+                'icon' => 'sparkles',
+                'url' => '/admin/manual-subscriptions',
+                'active_prefix' => '/admin/manual-subscriptions'
+            ],
+            [
+                'type' => 'link',
+                'label' => 'Alert Timers',
+                'icon' => 'timer',
+                'url' => '/admin/alert-timers',
+                'active_prefix' => '/admin/alert-timers'
+            ],
+            [
+                'type' => 'link',
                 'label' => 'Staff & Employees',
                 'icon' => 'shield-check',
                 'url' => '/admin/employees',
@@ -210,6 +224,13 @@ class Navigation {
             ],
             [
                 'type' => 'link',
+                'label' => 'Subscription Plans',
+                'icon' => 'package',
+                'url' => '/admin/plans',
+                'active_prefix' => '/admin/plans'
+            ],
+            [
+                'type' => 'link',
                 'label' => 'Payments',
                 'icon' => 'dollar-sign',
                 'url' => '/admin/payments',
@@ -326,6 +347,7 @@ class Navigation {
                 'url' => '/notifications',
                 'active_prefix' => '/notifications'
             ],
+            /* Subscription tab commented out / hidden for now
             [
                 'type' => 'link',
                 'label' => 'Subscription',
@@ -333,6 +355,7 @@ class Navigation {
                 'url' => '/billing',
                 'active_prefix' => '/billing'
             ],
+            */
             [
                 'type' => 'link',
                 'label' => 'Settings',

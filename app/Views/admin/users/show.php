@@ -172,20 +172,20 @@
                 <a href="/admin/users/<?= $targetUser['id'] ?>/edit" class="btn btn-secondary" style="justify-content: center; width: 100%;">Edit Profile Info</a>
                 
                 <?php if ($targetUser['status'] !== 'suspended'): ?>
-                    <form action="/admin/users/<?= $targetUser['id'] ?>/suspend" method="POST" onsubmit="return confirm('Suspend this student account?');" style="width: 100%;">
+                    <form action="/admin/users/<?= $targetUser['id'] ?>/suspend" method="POST" style="width: 100%;">
                         <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                        <button type="submit" class="btn btn-danger" style="justify-content: center; width: 100%;">Suspend User</button>
+                        <button type="button" class="btn btn-danger" style="justify-content: center; width: 100%;" onclick="confirmUserAction(this, 'suspend', <?= json_encode($targetUser['name'] ?? $targetUser['email'] ?? 'User') ?>)">Suspend User</button>
                     </form>
                 <?php else: ?>
-                    <form action="/admin/users/<?= $targetUser['id'] ?>/activate" method="POST" onsubmit="return confirm('Activate this student account?');" style="width: 100%;">
+                    <form action="/admin/users/<?= $targetUser['id'] ?>/activate" method="POST" style="width: 100%;">
                         <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                        <button type="submit" class="btn btn-primary" style="justify-content: center; width: 100%;">Activate User</button>
+                        <button type="button" class="btn btn-primary" style="justify-content: center; width: 100%;" onclick="confirmUserAction(this, 'activate', <?= json_encode($targetUser['name'] ?? $targetUser['email'] ?? 'User') ?>)">Activate User</button>
                     </form>
                 <?php endif; ?>
 
-                <form action="/admin/users/<?= $targetUser['id'] ?>/delete" method="POST" onsubmit="return confirm('Are you sure you want to permanently deactivate this account? Actions cannot be undone.');" style="width: 100%;">
+                <form action="/admin/users/<?= $targetUser['id'] ?>/delete" method="POST" style="width: 100%;">
                     <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                    <button type="submit" class="btn btn-secondary" style="justify-content: center; width: 100%; border-color: #fca5a5; color: #ef4444; background: #fff;">Deactivate / Delete</button>
+                    <button type="button" class="btn btn-secondary" style="justify-content: center; width: 100%; border-color: #fca5a5; color: #ef4444; background: #fff;" onclick="confirmUserAction(this, 'delete', <?= json_encode($targetUser['name'] ?? $targetUser['email'] ?? 'User') ?>)">Deactivate / Delete</button>
                 </form>
             </div>
         </div>
@@ -275,6 +275,29 @@
             </div>
         </div>
     </div>
-</div>
+<script>
+function confirmUserAction(btn, action, userName) {
+    var form = btn.closest('form');
+    var isDelete = action === 'delete';
+    var isSuspend = action === 'suspend';
+    var title = isDelete ? 'Deactivate User Account' : (isSuspend ? 'Suspend User Account' : 'Activate User Account');
+    var msg = 'Are you sure you want to ' + action + ' account for <strong>"' + adminEscapeHtml(userName) + '"</strong>?';
+    var subtext = isDelete ? 'This will permanently deactivate this account. This cannot be undone.' : (isSuspend ? 'The user will be immediately blocked from signing in.' : 'The user will regain access to their account.');
+    var btnText = isDelete ? 'Yes, Deactivate' : (isSuspend ? 'Yes, Suspend' : 'Yes, Activate');
+    var btnClass = (isDelete || isSuspend) ? 'btn-danger' : 'btn-primary';
+    var icon = isDelete ? 'user-x' : (isSuspend ? 'user-minus' : 'user-check');
+
+    adminConfirm({
+        title: title,
+        message: msg,
+        subtext: subtext,
+        confirmText: btnText,
+        confirmClass: btnClass,
+        icon: icon
+    }, function() {
+        form.submit();
+    });
+}
+</script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

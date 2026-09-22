@@ -17,6 +17,7 @@ class NotificationTypes {
     public const PAYMENT_SUCCESS = 'PAYMENT_SUCCESS';
     public const SUBSCRIPTION_CONFIRMATION = 'SUBSCRIPTION_CONFIRMATION';
     public const PASSWORD_RESET = 'PASSWORD_RESET';
+    public const MANUAL_SUBSCRIPTION_ACTIVATION = 'MANUAL_SUBSCRIPTION_ACTIVATION';
 
     /**
      * Explicit whitelist of automatic scholarship notification types subject to the 25-message lifetime limit.
