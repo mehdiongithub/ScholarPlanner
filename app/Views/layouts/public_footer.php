@@ -53,12 +53,12 @@
         </div>
     </footer>
 
-    <!-- Deferred Scripts -->
+    <!-- Core & Vendor Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <?php if (!empty($needsCarousel)): ?>
-    <!-- Owl Carousel JS (loaded only when carousel present) -->
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
+    <!-- Owl Carousel JS (loaded only when carousel present, strictly after jQuery) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
     <?php endif; ?>
-    <script defer src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script defer src="https://unpkg.com/lucide@0.460.0"></script>
     <script defer src="<?= asset('assets/js/main.js') ?>"></script>
     <?php if (!empty($needsSelect2)): ?>
@@ -66,8 +66,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         function initPublicSelect2() {
-            if (typeof $ !== 'undefined' && $.fn.select2) {
-                $('.select2').select2({
+            if (typeof jQuery !== 'undefined' && typeof jQuery.fn !== 'undefined' && jQuery.fn.select2) {
+                jQuery('.select2').select2({
                     width: '100%',
                     minimumResultsForSearch: 10
                 });

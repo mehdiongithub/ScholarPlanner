@@ -132,6 +132,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             alertContainer.innerHTML += '<div class="dev-box"><strong>[LOCAL DEV ONLY] Reset Link:</strong><br><a href="' + data.dev_reset_link + '" style="color: #b45309; text-decoration: underline; font-weight: 500;">' + data.dev_reset_link + '</a></div>';
                         }
                     }
+                    const emailInput = document.getElementById('email');
+                    if (emailInput) {
+                        emailInput.value = '';
+                    }
                     return;
                 }
 

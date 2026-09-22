@@ -33,6 +33,7 @@ class AuthenticationTest {
             $this->testCsrfValidation();
             $this->testSqlInjectionHardening();
             $this->testXssEscaping();
+            $this->testForgotPasswordQueuedAndCronWorkerFlow();
 
             echo "AuthenticationTest PASSED.\n\n";
         } finally {
@@ -46,6 +47,7 @@ class AuthenticationTest {
     private function cleanTestData(): void {
         $this->db->exec("DELETE FROM users WHERE email LIKE 'test_%@scholarmatch.test'");
         $this->db->exec("DELETE FROM login_attempts WHERE email LIKE 'test_%@scholarmatch.test'");
+        $this->db->exec("DELETE FROM notification_logs WHERE recipient LIKE 'test_%@scholarmatch.test'");
     }
 
     /**
@@ -543,6 +545,110 @@ class AuthenticationTest {
         $prop->setValue(null, null);
 
         echo "✔ Email verification code generation, verification and gating passed.\n";
+    }
+
+    /**
+     * 13. Assert forgot password immediately queues email without blocking and cron processes it
+     */
+    private function testForgotPasswordQueuedAndCronWorkerFlow(): void {
+        $visitorRoleId = $this->db->query("SELECT id FROM roles WHERE name = 'visitor'")->fetchColumn();
+        $email = 'test_forgot_queue@scholarmatch.test';
+        $passHash = password_hash('Pass1234!', PASSWORD_BCRYPT);
+
+        // Insert active test user
+        $stmt = $this->db->prepare("
+            INSERT INTO users (role_id, first_name, last_name, email, password_hash, status) 
+            VALUES (:role_id, 'QueueUser', 'Tester', :email, :hash, 'active')
+        ");
+        $stmt->execute(['role_id' => $visitorRoleId, 'email' => $email, 'hash' => $passHash]);
+        $userId = (int)$this->db->lastInsertId();
+
+        // 1. Simulate AJAX forgot password POST request
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_SERVER['HTTP_X_REQUESTED_WITH'] = 'xmlhttprequest';
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'email' => $email
+        ];
+
+        ob_start();
+        $controller = new \App\Controllers\AuthController();
+        try {
+            $controller->forgot();
+            $output = ob_get_clean();
+        } catch (\RuntimeException $e) {
+            $output = ob_get_clean();
+            if ($e->getMessage() !== 'Forgot password complete') {
+                throw $e;
+            }
+        }
+
+        // Verify JSON response
+        $response = json_decode($output, true);
+        if (!$response || empty($response['success'])) {
+            throw new \Exception("Forgot Password Queue Error: Response was not successful JSON. Got: " . $output);
+        }
+
+        // 2. Assert password reset token exists in database
+        $tokenStmt = $this->db->prepare("SELECT * FROM password_reset_tokens WHERE user_id = :uid AND used_at IS NULL ORDER BY id DESC LIMIT 1");
+        $tokenStmt->execute(['uid' => $userId]);
+        $resetTokenRow = $tokenStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$resetTokenRow) {
+            throw new \Exception("Forgot Password Queue Error: Password reset token was not generated.");
+        }
+
+        // 3. Assert notification is immediately enqueued with 'pending' status
+        $logStmt = $this->db->prepare("
+            SELECT * FROM notification_logs 
+            WHERE user_id = :uid 
+              AND notification_type = :type 
+              AND recipient = :email
+            ORDER BY id DESC LIMIT 1
+        ");
+        $logStmt->execute([
+            'uid' => $userId,
+            'type' => \App\Services\NotificationTypes::PASSWORD_RESET,
+            'email' => $email
+        ]);
+        $queuedLog = $logStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$queuedLog) {
+            throw new \Exception("Forgot Password Queue Error: Notification log record was not created.");
+        }
+
+        if ($queuedLog['status'] !== 'pending') {
+            throw new \Exception("Forgot Password Queue Error: Notification was not enqueued in 'pending' status. Found: " . $queuedLog['status']);
+        }
+
+        if ($queuedLog['channel'] !== 'email') {
+            throw new \Exception("Forgot Password Queue Error: Incorrect channel '{$queuedLog['channel']}', expected 'email'.");
+        }
+
+        // 4. Assert that background cron worker processes the queued notification
+        $queueService = new \App\Services\NotificationQueueService();
+        $processed = $queueService->processQueue(10);
+
+        if ($processed < 1) {
+            throw new \Exception("Forgot Password Queue Error: Queue worker did not process the queued password reset notification.");
+        }
+
+        // Assert status changed from pending to sent
+        $logStmt->execute([
+            'uid' => $userId,
+            'type' => \App\Services\NotificationTypes::PASSWORD_RESET,
+            'email' => $email
+        ]);
+        $processedLog = $logStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($processedLog['status'] !== 'sent') {
+            throw new \Exception("Forgot Password Queue Error: Status after queue worker execution should be 'sent', found: " . $processedLog['status']);
+        }
+
+        // Clean globals
+        $_SERVER['HTTP_X_REQUESTED_WITH'] = null;
+        $_POST = [];
+
+        echo "✔ Forgot password immediate queueing and background cron worker dispatch passed.\n";
     }
 }
 

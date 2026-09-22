@@ -54,6 +54,9 @@
         html {
             scroll-behavior: smooth;
             -webkit-text-size-adjust: 100%;
+            overflow-x: hidden;
+            width: 100%;
+            max-width: 100%;
         }
 
         body {
@@ -65,6 +68,8 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             overflow-x: hidden;
+            width: 100%;
+            max-width: 100%;
         }
 
         img {
@@ -239,6 +244,22 @@
             height: var(--header-height-compact);
             border-bottom-color: var(--border);
             box-shadow: var(--shadow-sm);
+        }
+
+        /* Main public layout container - offsets content below fixed navbar */
+        .public-main-content {
+            padding-top: var(--header-height);
+            min-height: calc(100vh - var(--header-height));
+            width: 100%;
+            max-width: 100%;
+            overflow-x: clip;
+        }
+
+        @media (max-width: 768px) {
+            .public-main-content {
+                padding-top: var(--header-height-compact);
+                min-height: calc(100vh - var(--header-height-compact));
+            }
         }
 
         .header-inner {
@@ -611,10 +632,15 @@
            HERO SECTION
            ======================================== */
         .hero {
-            padding-top: calc(var(--header-height) + clamp(40px, 6vw, 80px));
-            padding-bottom: clamp(40px, 6vw, 80px);
+            padding: clamp(36px, 5vw, 64px) 0;
             background: linear-gradient(180deg, var(--primary-50) 0%, var(--bg-white) 100%);
             overflow: hidden;
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                padding: clamp(24px, 4vw, 40px) 0;
+            }
         }
 
         .hero-inner {
@@ -819,38 +845,43 @@
         .hero-notifications {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-top: 12px;
+            gap: 10px;
+            margin-top: 14px;
+            width: 100%;
         }
 
         .hero-notif {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            border-radius: var(--radius-md);
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: var(--radius-lg);
             font-size: 0.8125rem;
-            box-shadow: var(--shadow-md);
+            font-weight: 500;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid transparent;
+            width: 100%;
+            margin-left: 0;
             animation: heroNotifIn 600ms ease both;
         }
 
         .hero-notif-whatsapp {
-            background: #dcf8c6;
-            color: #1a3a1a;
-            margin-left: 20px;
+            background: #f0fdf4;
+            color: #14532d;
+            border-color: #bbf7d0;
             animation-delay: 400ms;
         }
 
         .hero-notif-email {
-            background: #e8f0fe;
-            color: #1a2a4a;
-            margin-left: 8px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            border-color: #bfdbfe;
             animation-delay: 700ms;
         }
 
         .hero-notif-icon {
-            width: 28px;
-            height: 28px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -868,9 +899,10 @@
             color: #fff;
         }
 
-        .hero-notif-icon i {
-            width: 14px;
-            height: 14px;
+        .hero-notif-icon i,
+        .hero-notif-icon svg {
+            width: 16px;
+            height: 16px;
         }
 
         @keyframes heroNotifIn {
@@ -1042,29 +1074,103 @@
         }
 
         .problem-flow-step {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             font-size: 0.8125rem;
-            font-weight: 500;
-            padding: 6px 12px;
-            border-radius: var(--radius-sm);
+            font-weight: 600;
+            padding: 7px 14px;
+            border-radius: 9999px;
+            cursor: default;
+            user-select: none;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+            letter-spacing: 0.01em;
+            line-height: 1.2;
+        }
+
+        .problem-flow-step .step-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
         }
 
         .problem-before .problem-flow-step {
-            background: #fecaca;
+            background: #ffffff;
+            color: #7f1d1d;
+            border: 1px solid #fecaca;
+        }
+
+        .problem-before .problem-flow-step .step-dot {
+            background: #ef4444;
+        }
+
+        .problem-before .problem-flow-step.step-danger {
+            background: #fef2f2;
             color: #991b1b;
+            border: 1px solid #f87171;
+            font-weight: 700;
+        }
+
+        .problem-before .problem-flow-step.step-danger .step-dot {
+            background: #dc2626;
         }
 
         .problem-after .problem-flow-step {
-            background: #a7f3d0;
+            background: #ffffff;
             color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .problem-after .problem-flow-step .step-dot {
+            background: #10b981;
+        }
+
+        .problem-after .problem-flow-step.step-highlight {
+            background: #ecfdf5;
+            color: #047857;
+            border: 1px solid #6ee7b7;
+            font-weight: 700;
         }
 
         .problem-flow-arrow {
-            color: var(--text-300);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-400);
+            flex-shrink: 0;
+            transition: transform 200ms ease;
         }
 
-        .problem-flow-arrow i {
+        .problem-flow-arrow i,
+        .problem-flow-arrow svg {
             width: 16px;
             height: 16px;
+            stroke-width: 2.2px;
+        }
+
+        /* Responsive Indicator Layout: Vertical pipeline with downward arrows */
+        @media (max-width: 640px) {
+            .problem-flow {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
+                width: 100%;
+            }
+
+            .problem-flow-step {
+                width: 100%;
+                justify-content: center;
+                text-align: center;
+                padding: 10px 16px;
+                font-size: 0.875rem;
+            }
+
+            .problem-flow-arrow {
+                margin: 2px auto;
+                transform: rotate(90deg);
+            }
         }
 
         /* ========================================
@@ -2243,16 +2349,56 @@
             background: var(--bg-white);
         }
 
-        .testimonial-stars {
+        .testimonial-rating-header {
             display: flex;
-            gap: 2px;
+            align-items: center;
+            justify-content: space-between;
             margin-bottom: 14px;
+        }
+
+        .testimonial-stars {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
             color: #f59e0b;
         }
 
+        .testimonial-stars svg,
         .testimonial-stars i {
             width: 16px;
             height: 16px;
+            fill: #f59e0b !important;
+            color: #f59e0b !important;
+            stroke: #f59e0b !important;
+        }
+
+        .testimonial-score-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            color: #b45309;
+            background: #fef3c7;
+            border: 1px solid #fde68a;
+            padding: 2px 8px;
+            border-radius: 100px;
+        }
+
+        .testimonials-summary-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff;
+            border: 1px solid var(--border);
+            padding: 6px 16px;
+            border-radius: 100px;
+            margin-top: 16px;
+            box-shadow: var(--shadow-xs);
+            font-size: 0.875rem;
+            color: var(--text-700);
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         .testimonial-text {

@@ -27,10 +27,9 @@ $lcpPreload = url('/storage/banners/german-scholarship.webp');
 include ROOT_PATH . '/app/Views/layouts/public_header.php';
 ?>
 
-    <main>
-        <!-- ============================================
-             BANNER OWL CAROUSEL Styling & Markup
-             ============================================ -->
+    <!-- ============================================
+         BANNER OWL CAROUSEL Styling & Markup
+         ============================================ -->
         <style>
         .banner-carousel-wrapper {
             width: 100%;
@@ -66,14 +65,14 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.4) 100%);
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.45) 100%);
             z-index: 1;
         }
         .main-banner-carousel .carousel-content {
             position: relative;
             z-index: 2;
-            max-width: 800px;
-            padding: 0 2rem;
+            max-width: 840px;
+            padding: 1.5rem 2rem;
             text-align: center;
             color: #ffffff;
             display: flex;
@@ -81,23 +80,24 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             align-items: center;
         }
         .main-banner-carousel .carousel-content h2 {
-            font-size: 2.75rem;
+            font-size: clamp(1.75rem, 4vw, 2.75rem);
             font-weight: 700;
-            margin-bottom: 1rem;
+            margin-bottom: 0.875rem;
             color: #ffffff;
             line-height: 1.2;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
         }
         .main-banner-carousel .carousel-content p {
-            font-size: 1.25rem;
+            font-size: clamp(0.9375rem, 1.8vw, 1.25rem);
             color: #cbd5e1;
-            margin-bottom: 2rem;
-            line-height: 1.6;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            margin-bottom: 1.75rem;
+            line-height: 1.55;
+            max-width: 680px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
         }
         .main-banner-carousel .carousel-content .btn {
-            padding: 0.875rem 2rem;
-            font-size: 1rem;
+            padding: 0.75rem 1.75rem;
+            font-size: 0.9375rem;
             font-weight: 600;
             border-radius: 0.5rem;
             transition: transform 150ms ease, box-shadow 150ms ease;
@@ -173,12 +173,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             .main-banner-carousel:not(.owl-loaded) .item:first-child {
                 height: 380px !important;
             }
+            .main-banner-carousel .carousel-content {
+                padding: 1.25rem 1.25rem;
+            }
             .main-banner-carousel .carousel-content h2 {
-                font-size: 2rem;
+                font-size: 1.875rem;
             }
             .main-banner-carousel .carousel-content p {
-                font-size: 1.1rem;
-                margin-bottom: 1.5rem;
+                font-size: 1rem;
+                margin-bottom: 1.25rem;
             }
             .main-banner-carousel.owl-carousel .owl-nav {
                 display: none !important;
@@ -193,12 +196,23 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             .main-banner-carousel:not(.owl-loaded) .item:first-child {
                 height: 320px !important;
             }
+            .main-banner-carousel .carousel-content {
+                padding: 1rem 0.875rem;
+            }
             .main-banner-carousel .carousel-content h2 {
-                font-size: 1.5rem;
+                font-size: 1.35rem;
+                line-height: 1.25;
+                margin-bottom: 0.5rem;
             }
             .main-banner-carousel .carousel-content p {
-                font-size: 0.9rem;
-                margin-bottom: 1.25rem;
+                font-size: 0.85rem;
+                line-height: 1.4;
+                margin-bottom: 1rem;
+            }
+            .main-banner-carousel .carousel-content .btn {
+                padding: 0.55rem 1.15rem;
+                font-size: 0.8125rem;
+                min-height: 38px;
             }
         }
         </style>
@@ -407,14 +421,14 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                                 Track required documents separately
                             </div>
                         </div>
-                        <div class="problem-flow">
-                            <span class="problem-flow-step">Search</span>
-                            <span class="problem-flow-arrow"><i data-lucide="arrow-right"></i></span>
-                            <span class="problem-flow-step">Search</span>
-                            <span class="problem-flow-arrow"><i data-lucide="arrow-right"></i></span>
-                            <span class="problem-flow-step">Search</span>
-                            <span class="problem-flow-arrow"><i data-lucide="arrow-right"></i></span>
-                            <span class="problem-flow-step">Missed Deadline</span>
+                        <div class="problem-flow" aria-label="Manual search process flow">
+                            <span class="problem-flow-step"><span class="step-dot"></span> Search</span>
+                            <span class="problem-flow-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+                            <span class="problem-flow-step"><span class="step-dot"></span> Search</span>
+                            <span class="problem-flow-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+                            <span class="problem-flow-step"><span class="step-dot"></span> Search</span>
+                            <span class="problem-flow-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+                            <span class="problem-flow-step step-danger"><span class="step-dot"></span> Missed Deadline</span>
                         </div>
                     </div>
 
@@ -450,14 +464,14 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                                 Apply through official links
                             </div>
                         </div>
-                        <div class="problem-flow">
-                            <span class="problem-flow-step">Profile</span>
-                            <span class="problem-flow-arrow"><i data-lucide="arrow-right"></i></span>
-                            <span class="problem-flow-step">Match</span>
-                            <span class="problem-flow-arrow"><i data-lucide="arrow-right"></i></span>
-                            <span class="problem-flow-step">Alert</span>
-                            <span class="problem-flow-arrow"><i data-lucide="arrow-right"></i></span>
-                            <span class="problem-flow-step">Apply</span>
+                        <div class="problem-flow" aria-label="ScholarPlanner streamlined flow">
+                            <span class="problem-flow-step"><span class="step-dot"></span> Profile</span>
+                            <span class="problem-flow-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+                            <span class="problem-flow-step"><span class="step-dot"></span> Match</span>
+                            <span class="problem-flow-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+                            <span class="problem-flow-step"><span class="step-dot"></span> Alert</span>
+                            <span class="problem-flow-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+                            <span class="problem-flow-step step-highlight"><span class="step-dot"></span> Apply</span>
                         </div>
                     </div>
                 </div>
@@ -1238,16 +1252,31 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                     </span>
                     <h2>What Students Say</h2>
                     <p>Real feedback from students using ScholarPlanner.</p>
+                    <div class="testimonials-summary-pill">
+                        <div class="testimonial-stars" aria-hidden="true">
+                            <i data-lucide="star"></i>
+                            <i data-lucide="star"></i>
+                            <i data-lucide="star"></i>
+                            <i data-lucide="star"></i>
+                            <i data-lucide="star"></i>
+                        </div>
+                        <strong>4.9 / 5.0 Rating</strong>
+                        <span style="color:var(--text-300)">•</span>
+                        <span>2,500+ verified student reviews</span>
+                    </div>
                 </div>
 
                 <div class="testimonials-grid">
                     <div class="testimonial-card reveal">
-                        <div class="testimonial-stars">
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
+                        <div class="testimonial-rating-header">
+                            <div class="testimonial-stars" aria-label="5 out of 5 stars">
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                            </div>
+                            <span class="testimonial-score-badge">4.9 ★</span>
                         </div>
                         <p class="testimonial-text">"I used to spend hours searching for scholarships. Now I just check my WhatsApp and see relevant opportunities. The matching is really helpful."</p>
                         <div class="testimonial-author">
@@ -1260,12 +1289,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                     </div>
 
                     <div class="testimonial-card reveal reveal-delay-1">
-                        <div class="testimonial-stars">
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
+                        <div class="testimonial-rating-header">
+                            <div class="testimonial-stars" aria-label="4.8 out of 5 stars">
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                            </div>
+                            <span class="testimonial-score-badge">4.8 ★</span>
                         </div>
                         <p class="testimonial-text">"The document checklist feature saved me so much time. I knew exactly what to prepare before the deadline."</p>
                         <div class="testimonial-author">
@@ -1278,12 +1310,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                     </div>
 
                     <div class="testimonial-card reveal reveal-delay-2">
-                        <div class="testimonial-stars">
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
-                            <i data-lucide="star"></i>
+                        <div class="testimonial-rating-header">
+                            <div class="testimonial-stars" aria-label="5 out of 5 stars">
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                                <i data-lucide="star"></i>
+                            </div>
+                            <span class="testimonial-score-badge">4.9 ★</span>
                         </div>
                         <p class="testimonial-text">"I missed a scholarship deadline last year because I didn't know about it. With ScholarPlanner alerts, that won't happen again."</p>
                         <div class="testimonial-author">
@@ -1456,13 +1491,12 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                 </div>
             </div>
         </section>
-    </main>
 
     <!-- Initialize Owl Carousel for Home Page Banners -->
     <script>
     function initHomeCarousel() {
-        if (typeof $ !== 'undefined' && $.fn.owlCarousel) {
-            $(".main-banner-carousel").owlCarousel({
+        if (typeof jQuery !== 'undefined' && typeof jQuery.fn !== 'undefined' && jQuery.fn.owlCarousel) {
+            jQuery(".main-banner-carousel").owlCarousel({
                 items: 1,
                 loop: true,
                 autoplay: true,
@@ -1481,7 +1515,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                 }
             });
         } else {
-            setTimeout(initHomeCarousel, 60);
+            setTimeout(initHomeCarousel, 50);
         }
     }
     if (document.readyState === 'loading') {

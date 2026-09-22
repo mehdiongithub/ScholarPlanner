@@ -426,10 +426,12 @@ class AuthController {
 
         if (!empty($errors)) {
             if ($isAjax) {
-                header('Content-Type: application/json');
-                http_response_code(422);
+                if (!headers_sent()) {
+                    header('Content-Type: application/json');
+                    http_response_code(422);
+                }
                 echo json_encode(['success' => false, 'errors' => $errors]);
-                exit;
+                $this->halt("Forgot validation failed");
             }
 
             view('auth.forgot', [
@@ -516,43 +518,15 @@ class AuthController {
         $successMessage = "If the email is registered in our system, you will receive a reset link shortly.";
 
         if ($isAjax) {
-            $responseData = json_encode([
+            if (!headers_sent()) {
+                header('Content-Type: application/json');
+            }
+            echo json_encode([
                 'success' => true,
                 'message' => $successMessage,
                 'dev_reset_link' => $devResetLink
             ]);
-
-            // Flush HTTP response immediately so the user does NOT wait for email sending
-            ignore_user_abort(true);
-            if (!headers_sent()) {
-                header('Content-Type: application/json');
-                header('Connection: close');
-                header('Content-Length: ' . strlen($responseData));
-            }
-            echo $responseData;
-            while (ob_get_level() > 0) {
-                ob_end_flush();
-            }
-            flush();
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
-            }
-
-            // Trigger background queue execution after user has received response
-            if (!empty($enqueued)) {
-                $this->triggerBackgroundQueue();
-                try {
-                    $queueService->processQueue(5);
-                } catch (\Exception $qe) {
-                    Logger::error("Background queue dispatch error on password reset: " . $qe->getMessage());
-                }
-            }
-            exit;
-        }
-
-        // For non-AJAX fallback POST, trigger background queue
-        if (!empty($enqueued)) {
-            $this->triggerBackgroundQueue();
+            $this->halt("Forgot password complete");
         }
 
         // Output generic success message (Never disclose if email exists for privacy)
@@ -563,24 +537,6 @@ class AuthController {
             'errors' => [],
             'old' => $_POST
         ]);
-    }
-
-    /**
-     * Dispatch queue worker in background asynchronously without blocking the user.
-     */
-    private function triggerBackgroundQueue(): void {
-        $workerScript = ROOT_PATH . '/cron/queue_worker.php';
-        if (!file_exists($workerScript)) {
-            return;
-        }
-
-        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            $cmd = 'cmd /c "start /B "" php ' . escapeshellarg($workerScript) . ' --batch-size=5 > NUL 2>&1"';
-            @pclose(@popen($cmd, "r"));
-        } else {
-            $cmd = 'php ' . escapeshellarg($workerScript) . ' --batch-size=5 > /dev/null 2>&1 &';
-            @exec($cmd);
-        }
     }
 
     /**
