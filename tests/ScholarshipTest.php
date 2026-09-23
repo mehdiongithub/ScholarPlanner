@@ -33,6 +33,7 @@ class ScholarshipTest {
             $this->testHtmlSanitizerEdgeCases();
             $this->testUrlValidationEdgeCases();
             $this->testPaginationAndSortEdgeCases();
+            $this->testCreateScholarshipSaveAsDraftAndPublishPermissionWorkflow();
 
             echo "ScholarshipTest PASSED.\n\n";
         } finally {
@@ -440,5 +441,146 @@ class ScholarshipTest {
         }
 
         echo "✔ Pagination and sorting coercion parameters verified.\n";
+    }
+
+    /**
+     * 14. Assert Save button text, draft fallback for employees, and publish permissions workflow
+     */
+    private function testCreateScholarshipSaveAsDraftAndPublishPermissionWorkflow(): void {
+        // A. View check: Verify create.php contains 'Save' button and not 'Save as Draft'
+        $viewContent = file_get_contents(ROOT_PATH . '/app/Views/admin/scholarships/create.php');
+        if (strpos($viewContent, 'id="save-scholarship-btn">Save</button>') === false) {
+            throw new \Exception("View Error: create.php does not contain button with text 'Save' and id 'save-scholarship-btn'.");
+        }
+        if (strpos($viewContent, '>Save as Draft</button>') !== false) {
+            throw new \Exception("View Error: create.php still contains legacy 'Save as Draft' button text.");
+        }
+        if (strpos($viewContent, 'Publishing requires employee permission') === false) {
+            throw new \Exception("View Error: create.php missing employee permission draft notice.");
+        }
+
+        // B. Controller check: Empty Quill HTML content (<p><br></p>) fails description validation
+        $controller = new \App\Controllers\ScholarshipController();
+        $employeeRoleId = (int)$this->db->query("SELECT id FROM roles WHERE name = 'employee'")->fetchColumn();
+        $adminRoleId = (int)$this->db->query("SELECT id FROM roles WHERE name = 'admin'")->fetchColumn();
+
+        // Create temporary test employee
+        $empEmail = 'test_employee_creator@scholarmatch.test';
+        $this->db->prepare("DELETE FROM users WHERE email = :e")->execute(['e' => $empEmail]);
+        $stmtEmp = $this->db->prepare("
+            INSERT INTO users (role_id, first_name, last_name, email, phone, password_hash, status)
+            VALUES (:r, 'Emp', 'Creator', :e, '+923000000099', 'hash', 'active')
+        ");
+        $stmtEmp->execute(['r' => $employeeRoleId, 'e' => $empEmail]);
+        $empId = (int)$this->db->lastInsertId();
+
+        // Authenticate as employee
+        \App\Services\Auth::logout();
+        $_SESSION['user_id'] = $empId;
+        $_SESSION['role_name'] = 'employee';
+
+        // Test B: Empty Quill (<p><br></p>) rejection
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'title' => 'Test Scholarship Empty Quill',
+            'provider_name' => 'Test Provider',
+            'description' => '<p><br></p>',
+            'status' => 'draft'
+        ];
+
+        try {
+            $controller->store();
+        } catch (\Throwable $t) {
+            // redirectBackWithErrors exits
+        }
+
+        $sessionErrors = $_SESSION['scholarship_errors'] ?? [];
+        if (empty($sessionErrors['description'])) {
+            throw new \Exception("Validation Error: Expected empty Quill description '<p><br></p>' to trigger description validation error.");
+        }
+        unset($_SESSION['scholarship_errors'], $_SESSION['scholarship_old']);
+
+        // Test C: Employee attempting to save as 'published' gets forced to 'draft'
+        $empScholarshipTitle = 'Test Scholarship Employee Draft Gate';
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'title' => $empScholarshipTitle,
+            'provider_name' => 'Emp Provider',
+            'description' => '<p>Valid scholarship description with rich text formatting.</p>',
+            'status' => 'published' // Employee attempts to publish directly without permission
+        ];
+
+        try {
+            $controller->store();
+        } catch (\Throwable $t) {
+            // expected exit on redirect
+        }
+
+        $stmtSaved = $this->db->prepare("SELECT * FROM scholarships WHERE title = :title ORDER BY id DESC LIMIT 1");
+        $stmtSaved->execute(['title' => $empScholarshipTitle]);
+        $savedRow = $stmtSaved->fetch(PDO::FETCH_ASSOC);
+
+        if (!$savedRow) {
+            throw new \Exception("Creation Error: Scholarship was not created in database.");
+        }
+        if ($savedRow['status'] !== 'draft') {
+            throw new \Exception("Permissions Gate Error: Employee scholarship status should be 'draft', found: '{$savedRow['status']}'.");
+        }
+        if ($savedRow['verification_status'] !== 'unverified') {
+            throw new \Exception("Permissions Gate Error: Employee scholarship verification_status should be 'unverified', found: '{$savedRow['verification_status']}'.");
+        }
+
+        // Test D: Admin saving as 'published' directly
+        $adminEmail = 'test_admin_creator@scholarmatch.test';
+        $this->db->prepare("DELETE FROM users WHERE email = :e")->execute(['e' => $adminEmail]);
+        $stmtAdmin = $this->db->prepare("
+            INSERT INTO users (role_id, first_name, last_name, email, phone, password_hash, status)
+            VALUES (:r, 'Admin', 'Creator', :e, '+923000000098', 'hash', 'active')
+        ");
+        $stmtAdmin->execute(['r' => $adminRoleId, 'e' => $adminEmail]);
+        $adminId = (int)$this->db->lastInsertId();
+
+        // Authenticate as Admin
+        \App\Services\Auth::logout();
+        $_SESSION['user_id'] = $adminId;
+        $_SESSION['role_name'] = 'admin';
+
+        $adminScholarshipTitle = 'Test Scholarship Admin Published';
+        $_POST = [
+            'csrf_token' => Security::csrfToken(),
+            'title' => $adminScholarshipTitle,
+            'provider_name' => 'Admin Provider',
+            'description' => '<p>Valid scholarship description published by admin directly.</p>',
+            'status' => 'published'
+        ];
+
+        try {
+            $controller->store();
+        } catch (\Throwable $t) {
+            // expected exit on redirect
+        }
+
+        $stmtAdminSaved = $this->db->prepare("SELECT * FROM scholarships WHERE title = :title ORDER BY id DESC LIMIT 1");
+        $stmtAdminSaved->execute(['title' => $adminScholarshipTitle]);
+        $adminRow = $stmtAdminSaved->fetch(PDO::FETCH_ASSOC);
+
+        if (!$adminRow) {
+            throw new \Exception("Admin Creation Error: Admin scholarship was not created in database.");
+        }
+        if ($adminRow['status'] !== 'published') {
+            throw new \Exception("Admin Creation Error: Admin scholarship status should be 'published', found: '{$adminRow['status']}'.");
+        }
+        if ($adminRow['verification_status'] !== 'verified') {
+            throw new \Exception("Admin Creation Error: Admin scholarship verification_status should be 'verified', found: '{$adminRow['verification_status']}'.");
+        }
+        if (empty($adminRow['published_at'])) {
+            throw new \Exception("Admin Creation Error: Admin scholarship published_at timestamp was not set.");
+        }
+
+        // Cleanup
+        $this->db->prepare("DELETE FROM users WHERE id IN (:eId, :aId)")->execute(['eId' => $empId, 'aId' => $adminId]);
+        \App\Services\Auth::logout();
+
+        echo "✔ Scholarship 'Save' button, Quill fallback, and permission-based draft/publish workflow verified.\n";
     }
 }

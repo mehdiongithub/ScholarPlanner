@@ -142,24 +142,22 @@
 </div>
 
             <?php
-            $errors = $_SESSION['scholarship_errors'] ?? [];
-            $old = $_SESSION['scholarship_old'] ?? [];
+            $errors = !empty($errors) ? $errors : ($_SESSION['scholarship_errors'] ?? []);
+            $old = !empty($old) ? $old : ($_SESSION['scholarship_old'] ?? []);
             unset($_SESSION['scholarship_errors'], $_SESSION['scholarship_old']);
             ?>
 
-            <?php if (!empty($errors['system'])): ?>
-                <div class="alert alert-danger" role="alert">
-                    <?= e($errors['system']) ?>
-                </div>
-            <?php endif; ?>
-            <?php if (!empty($errors['duplicate'])): ?>
-                <div class="alert alert-danger" role="alert">
-                    <?= e($errors['duplicate']) ?>
-                </div>
-            <?php endif; ?>
-            <?php if (!empty($errors['csrf'])): ?>
-                <div class="alert alert-danger" role="alert">
-                    <?= e($errors['csrf']) ?>
+            <?php if (!empty($errors)): ?>
+                <div class="alert alert-danger" role="alert" style="margin-bottom: 24px;">
+                    <div style="font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="alert-circle" style="width: 18px; height: 18px;"></i>
+                        <span>There were problems with your submission:</span>
+                    </div>
+                    <ul style="margin: 0; padding-left: 24px; display: flex; flex-direction: column; gap: 4px;">
+                        <?php foreach ($errors as $field => $errMsg): ?>
+                            <li><?= e($errMsg) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
                 </div>
             <?php endif; ?>
 
@@ -225,7 +223,7 @@
 
                         <div class="form-group full-width">
                             <label class="form-label" for="description">Full Description * (Supports safe HTML formatting)</label>
-                            <textarea id="description" name="description" style="display:none;"><?= e($old['description'] ?? '') ?></textarea>
+                            <textarea id="description" name="description" class="form-control" style="display:none; min-height: 200px;"><?= e($old['description'] ?? '') ?></textarea>
                             <div id="description-editor" style="height: 300px;"><?= $old['description'] ?? '' ?></div>
                             <?php if (!empty($errors['description'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['description']) ?></span><?php endif; ?>
                         </div>
@@ -505,10 +503,36 @@
                     </div>
                 </div>
 
+                <!-- Section 6: Publication & Status Settings -->
+                <div class="card">
+                    <h2 class="card-title">6. Publication Status</h2>
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label class="form-label" for="status">Scholarship Status</label>
+                            <?php if (\App\Services\Auth::hasPermission('scholarships.publish')): ?>
+                                <select id="status" name="status" class="form-control" style="max-width: 420px;">
+                                    <option value="draft" <?= ($old['status'] ?? 'draft') === 'draft' ? 'selected' : '' ?>>Draft (Save as draft for review)</option>
+                                    <option value="published" <?= ($old['status'] ?? '') === 'published' ? 'selected' : '' ?>>Published (Publish live to students)</option>
+                                </select>
+                                <small style="color: var(--text-500); font-size: 0.8125rem; margin-top: 4px;">
+                                    You have publishing permissions. You can save as draft or publish directly.
+                                </small>
+                            <?php else: ?>
+                                <input type="hidden" name="status" value="draft">
+                                <div style="display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; background: #fef3c7; border: 1px solid #fde68a; border-radius: var(--radius-md); max-width: 480px;">
+                                    <span style="width: 10px; height: 10px; border-radius: 50%; background: #d97706; display: inline-block;"></span>
+                                    <span style="font-weight: 600; color: #92400e; font-size: 0.875rem;">Status: Draft</span>
+                                    <span style="font-size: 0.8125rem; color: #b45309;">(Publishing requires employee permission)</span>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Submission Actions -->
                 <div style="display:flex; justify-content:flex-end; gap:16px; margin-bottom: 40px;">
                     <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary">Cancel</a>
-                    <button type="submit" class="btn btn-primary">Save as Draft</button>
+                    <button type="submit" class="btn btn-primary" id="save-scholarship-btn">Save</button>
                 </div>
             </form>
         </main>
@@ -578,26 +602,58 @@
             langIndex++;
         }
 
-        // Initialize Quill editor
-        var quill = new Quill('#description-editor', {
-            theme: 'snow',
-            modules: {
-                toolbar: [
-                    [{ 'header': [2, 3, false] }],
-                    ['bold', 'italic', 'underline'],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    ['link', 'clean']
-                ]
+        // Initialize Quill editor safely
+        var quill = null;
+        var descriptionTextarea = document.getElementById('description');
+        var editorDiv = document.getElementById('description-editor');
+
+        if (typeof Quill !== 'undefined' && editorDiv) {
+            try {
+                quill = new Quill('#description-editor', {
+                    theme: 'snow',
+                    modules: {
+                        toolbar: [
+                            [{ 'header': [2, 3, false] }],
+                            ['bold', 'italic', 'underline'],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            ['link', 'clean']
+                        ]
+                    }
+                });
+
+                // Sync Quill HTML on text change
+                quill.on('text-change', function() {
+                    if (descriptionTextarea) {
+                        var html = quill.root.innerHTML;
+                        descriptionTextarea.value = (html === '<p><br></p>') ? '' : html;
+                    }
+                });
+            } catch (err) {
+                console.error("Quill initialization failed:", err);
+                if (descriptionTextarea) {
+                    descriptionTextarea.style.display = 'block';
+                }
+                if (editorDiv) {
+                    editorDiv.style.display = 'none';
+                }
             }
-        });
+        } else {
+            // Fallback if Quill script did not load (offline or CDN blocked)
+            if (descriptionTextarea) {
+                descriptionTextarea.style.display = 'block';
+            }
+            if (editorDiv) {
+                editorDiv.style.display = 'none';
+            }
+        }
 
         // Sync Quill HTML to hidden textarea on form submit
         var form = document.querySelector('form');
         if (form) {
             form.addEventListener('submit', function() {
-                var descriptionTextarea = document.getElementById('description');
-                if (descriptionTextarea) {
-                    descriptionTextarea.value = quill.root.innerHTML;
+                if (quill && quill.root && descriptionTextarea) {
+                    var html = quill.root.innerHTML;
+                    descriptionTextarea.value = (html === '<p><br></p>') ? '' : html;
                 }
             });
         }

@@ -291,6 +291,10 @@ class ScholarshipController {
         $states = $db->query("SELECT id, name FROM states ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
         $institutions = $db->query("SELECT id, name, institution_type FROM institutions WHERE status = 'approved' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
+        $errors = $_SESSION['scholarship_errors'] ?? [];
+        $old = $_SESSION['scholarship_old'] ?? [];
+        unset($_SESSION['scholarship_errors'], $_SESSION['scholarship_old']);
+
         view('admin.scholarships.create', [
             'countries' => $countries,
             'fields' => $fields,
@@ -301,8 +305,8 @@ class ScholarshipController {
             'states' => $states,
             'institutions' => $institutions,
             'csrf_token' => Security::csrfToken(),
-            'errors' => [],
-            'old' => []
+            'errors' => $errors,
+            'old' => $old
         ]);
     }
 
@@ -378,8 +382,27 @@ class ScholarshipController {
         if (strlen($title) > 200) $errors['title'] = 'Title must not exceed 200 characters.';
         if (empty($providerName)) $errors['provider_name'] = 'Provider organization name is required.';
         if (strlen($providerName) > 150) $errors['provider_name'] = 'Provider name must not exceed 150 characters.';
-        if (empty($description)) $errors['description'] = 'Full description is required.';
+        $plainDesc = trim(strip_tags($description));
+        if (empty($plainDesc)) $errors['description'] = 'Full description is required.';
         if (strlen($shortDescription) > 500) $errors['short_description'] = 'Short description must not exceed 500 characters.';
+
+        // Role and permission-based status resolution
+        $requestedStatus = trim($_POST['status'] ?? 'draft');
+        $canPublish = Auth::hasPermission('scholarships.publish');
+
+        if ($requestedStatus === 'published' && $canPublish) {
+            $status = 'published';
+            $publishedAt = date('Y-m-d H:i:s');
+            $verificationStatus = 'verified';
+            $verifiedAt = date('Y-m-d H:i:s');
+            $verifiedBy = Auth::userId();
+        } else {
+            $status = 'draft';
+            $publishedAt = null;
+            $verificationStatus = 'unverified';
+            $verifiedAt = null;
+            $verifiedBy = null;
+        }
 
         // Url schemes
         if (!empty($officialApplicationUrl)) {
@@ -433,17 +456,28 @@ class ScholarshipController {
         }
 
         // Deterministic duplicate check
-        $stmtCheck = $db->prepare("
-            SELECT COUNT(*) FROM scholarships 
-            WHERE provider_name = :provider AND title = :title AND official_application_url = :app_url
-        ");
-        $stmtCheck->execute([
-            'provider' => $providerName,
-            'title' => $title,
-            'app_url' => $officialApplicationUrl
-        ]);
+        if (!empty($officialApplicationUrl)) {
+            $stmtCheck = $db->prepare("
+                SELECT COUNT(*) FROM scholarships 
+                WHERE provider_name = :provider AND title = :title AND official_application_url = :app_url
+            ");
+            $stmtCheck->execute([
+                'provider' => $providerName,
+                'title' => $title,
+                'app_url' => $officialApplicationUrl
+            ]);
+        } else {
+            $stmtCheck = $db->prepare("
+                SELECT COUNT(*) FROM scholarships 
+                WHERE provider_name = :provider AND title = :title
+            ");
+            $stmtCheck->execute([
+                'provider' => $providerName,
+                'title' => $title
+            ]);
+        }
         if ((int)$stmtCheck->fetchColumn() > 0) {
-            $errors['duplicate'] = 'A scholarship with the same title, provider, and application URL already exists.';
+            $errors['duplicate'] = 'A scholarship with the same title and provider already exists.';
         }
 
         $coverImage = null;
@@ -468,13 +502,15 @@ class ScholarshipController {
                 INSERT INTO scholarships (
                     title, slug, provider_name, provider_type, description, short_description, 
                     official_website, official_application_url, country_id, study_level, funding_type, 
-                    application_type, status, verification_status, application_open_date, application_deadline, 
-                    cover_image, is_featured, quality_status, recurring_interval, created_by, updated_by, created_at, updated_at
+                    application_type, status, verification_status, verified_at, verified_by, published_at,
+                    application_open_date, application_deadline, cover_image, is_featured, quality_status, 
+                    recurring_interval, created_by, updated_by, created_at, updated_at
                 ) VALUES (
                     :title, :slug, :provider_name, :provider_type, :description, :short_description, 
                     :official_website, :official_application_url, :country_id, :study_level, :funding_type, 
-                    :application_type, 'draft', 'unverified', :open_date, :deadline_date, 
-                    :cover_image, :is_featured, :quality_status, :recurring_interval, :created_by, :updated_by, NOW(), NOW()
+                    :application_type, :status, :verification_status, :verified_at, :verified_by, :published_at,
+                    :open_date, :deadline_date, :cover_image, :is_featured, :quality_status, 
+                    :recurring_interval, :created_by, :updated_by, NOW(), NOW()
                 )
             ");
 
@@ -491,6 +527,11 @@ class ScholarshipController {
                 'study_level' => $studyLevel ?: null,
                 'funding_type' => $fundingType ?: null,
                 'application_type' => $applicationType ?: null,
+                'status' => $status,
+                'verification_status' => $verificationStatus,
+                'verified_at' => $verifiedAt,
+                'verified_by' => $verifiedBy,
+                'published_at' => $publishedAt,
                 'open_date' => $openDate ?: null,
                 'deadline_date' => $deadlineDate ?: null,
                 'cover_image' => $coverImage,
@@ -657,7 +698,20 @@ class ScholarshipController {
             \App\Services\CacheService::clear();
             $this->logAudit('created', $scholarshipId);
 
-            header("Location: " . url('/admin/scholarships?success=Scholarship created successfully.'));
+            if ($status === 'published') {
+                $matchingService = new \App\Services\ScholarshipMatchingService();
+                $matchingService->recalculateForScholarship($scholarshipId);
+                $this->logAudit('published', $scholarshipId);
+                $successMsg = 'Scholarship created and published successfully.';
+            } else {
+                $successMsg = 'Scholarship saved as draft successfully.';
+            }
+
+            if (defined('TESTING_MODE') && TESTING_MODE) {
+                return;
+            }
+
+            header("Location: " . url('/admin/scholarships?success=' . urlencode($successMsg)));
             exit();
 
         } catch (Exception $e) {
@@ -2007,11 +2061,15 @@ class ScholarshipController {
         $_SESSION['scholarship_errors'] = $errors;
         $_SESSION['scholarship_old'] = $old;
         
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            return;
+        }
+
         $referer = $_SERVER['HTTP_REFERER'] ?? '';
         if (!empty($referer)) {
             header("Location: " . $referer);
         } else {
-            header("Location: " . url('/admin/scholarships'));
+            header("Location: " . url('/admin/scholarships/create'));
         }
         exit();
     }

@@ -626,22 +626,32 @@ class AuthenticationTest {
 
         // 4. Assert that background cron worker processes the queued notification
         $queueService = new \App\Services\NotificationQueueService();
-        $processed = $queueService->processQueue(10);
+        $processedTotal = 0;
+        $processedLog = null;
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $processed = $queueService->processQueue(50);
+            $processedTotal += $processed;
 
-        if ($processed < 1) {
+            $logStmt->execute([
+                'uid' => $userId,
+                'type' => \App\Services\NotificationTypes::PASSWORD_RESET,
+                'email' => $email
+            ]);
+            $processedLog = $logStmt->fetch(PDO::FETCH_ASSOC);
+            if ($processedLog && $processedLog['status'] === 'sent') {
+                break;
+            }
+            if ($processed === 0) {
+                break;
+            }
+        }
+
+        if ($processedTotal < 1) {
             throw new \Exception("Forgot Password Queue Error: Queue worker did not process the queued password reset notification.");
         }
 
-        // Assert status changed from pending to sent
-        $logStmt->execute([
-            'uid' => $userId,
-            'type' => \App\Services\NotificationTypes::PASSWORD_RESET,
-            'email' => $email
-        ]);
-        $processedLog = $logStmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($processedLog['status'] !== 'sent') {
-            throw new \Exception("Forgot Password Queue Error: Status after queue worker execution should be 'sent', found: " . $processedLog['status']);
+        if (!$processedLog || $processedLog['status'] !== 'sent') {
+            throw new \Exception("Forgot Password Queue Error: Status after queue worker execution should be 'sent', found: " . ($processedLog['status'] ?? 'null'));
         }
 
         // Clean globals
