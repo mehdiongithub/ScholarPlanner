@@ -54,14 +54,80 @@
     </div>
 </div>
 
+<!-- Core & Vendor Scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script defer src="<?= asset('assets/js/lucide.min.js') ?>"></script>
+<script defer src="<?= asset('assets/js/main.js') ?>"></script>
+
 <script>
-    // Initialize Lucide Icons
-    try {
-        if (typeof lucide !== 'undefined') {
-            lucide.createIcons();
+    // Global Toast Notification Helper
+    window.showToast = function(message, type = 'success') {
+        const oldToast = document.querySelector('.toast-notification');
+        if (oldToast) oldToast.remove();
+
+        const toast = document.createElement('div');
+        toast.className = `toast-notification ${type}`;
+        toast.style.position = 'fixed';
+        toast.style.top = '24px';
+        toast.style.right = '24px';
+        toast.style.padding = '14px 18px';
+        toast.style.borderRadius = '10px';
+        toast.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+        toast.style.display = 'flex';
+        toast.style.alignItems = 'center';
+        toast.style.gap = '10px';
+        toast.style.zIndex = '9999';
+        toast.style.transition = 'all 0.3s ease';
+
+        if (type === 'success') {
+            toast.style.background = '#ecfdf5';
+            toast.style.border = '1px solid #d1fae5';
+            toast.style.color = '#065f46';
+        } else {
+            toast.style.background = '#fef2f2';
+            toast.style.border = '1px solid #fee2e2';
+            toast.style.color = '#991b1b';
         }
-    } catch (e) {
-        console.error("Lucide load error:", e);
+
+        toast.innerHTML = `
+            <span style="font-size: 0.875rem; font-weight: 600;">${message}</span>
+            <button class="toast-close" style="background: none; border: none; cursor: pointer; color: inherit; display:flex; align-items:center;">
+                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+        `;
+
+        document.body.appendChild(toast);
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+
+        toast.querySelector('.toast-close').addEventListener('click', () => {
+            toast.remove();
+        });
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    };
+
+    // Initialize Lucide Icons
+    function initLucideSafe() {
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            try {
+                lucide.createIcons();
+            } catch (e) {
+                console.error("Lucide load error:", e);
+            }
+        } else {
+            setTimeout(initLucideSafe, 50);
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initLucideSafe);
+    } else {
+        initLucideSafe();
     }
 
     // Toggle Mobile Sidebar Drawer

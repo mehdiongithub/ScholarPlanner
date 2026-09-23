@@ -41,17 +41,18 @@ $og_image = $ogImage ?? 'https://scholarplanner.com/assets/images/logo.webp';
     <noscript>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     </noscript>
-    <?php if (!empty($lcpPreload)): ?>
+    <?php if (!empty($lcpPreloadMobile) && !empty($lcpPreload)): ?>
+    <link rel="preload" as="image" href="<?= e($lcpPreloadMobile) ?>" media="(max-width: 640px)" fetchpriority="high">
+    <link rel="preload" as="image" href="<?= e($lcpPreload) ?>" media="(min-width: 641px)" fetchpriority="high">
+    <?php elseif (!empty($lcpPreload)): ?>
     <link rel="preload" as="image" href="<?= e($lcpPreload) ?>" fetchpriority="high">
     <?php endif; ?>
     <link rel="stylesheet" href="<?= asset('assets/css/style.css') ?>">
     <?php if (!empty($needsSelect2)): ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
     <?php endif; ?>
-    <?php if (!empty($needsCarousel)): ?>
-    <!-- Owl Carousel CSS (loaded only when carousel present) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.theme.default.min.css">
+    <?php if (!empty($extraHead)): ?>
+    <?= $extraHead ?>
     <?php endif; ?>
     <?php if (!empty($schemaJsonLd)): ?>
     <script type="application/ld+json">

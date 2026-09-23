@@ -1,3 +1,7 @@
+<?php
+$title = 'Application Details';
+ob_start();
+?>
 <style>
         .detail-layout {
             min-height: 100vh;
@@ -358,15 +362,19 @@
                 grid-template-columns: 1fr;
             }
         }
+        @media (max-width: 991px) {
+            .detail-content {
+                margin: 16px auto;
+                padding: 0;
+            }
+        }
     </style>
-</head>
-<body>
 <?php
-$title = 'Application Details';
+$extraHead = ob_get_clean();
 include ROOT_PATH . '/app/Views/layouts/student_header.php';
 ?>
 
-        <main class="detail-content">
+        <div class="detail-content">
             <a href="/applications" class="back-link">
                 <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
                 <span>Back to Tracker</span>
@@ -669,8 +677,7 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                     </div>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
 
     <script>
         // Toggle submission date visibility

@@ -22,14 +22,14 @@ $schemaJsonLd = [
         'logo' => 'https://scholarplanner.com/assets/images/logo.webp'
     ]
 ];
-$needsCarousel = true;
 $lcpPreload = url('/storage/banners/german-scholarship.webp');
+$lcpPreloadMobile = url('/storage/banners/german-scholarship-mobile.webp');
 include ROOT_PATH . '/app/Views/layouts/public_header.php';
 ?>
 
-    <!-- ============================================
-         BANNER OWL CAROUSEL Styling & Markup
-         ============================================ -->
+        <!-- ============================================
+             RESPONSIVE HERO BANNER SLIDER (Zero-Dependency & Zero-CLS)
+             ============================================ -->
         <style>
         .banner-carousel-wrapper {
             width: 100%;
@@ -37,38 +37,53 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             margin-bottom: 0;
             overflow: hidden;
             background-color: #0f172a;
-        }
-        .main-banner-carousel .item {
-            height: 480px;
-            background-size: cover;
-            background-position: center;
             position: relative;
+        }
+        .banner-slider {
+            position: relative;
+            width: 100%;
+            height: 480px;
+            overflow: hidden;
+        }
+        .banner-slide {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-        /* Zero-CLS: Render first slide statically before Owl Carousel JS loads */
-        .main-banner-carousel:not(.owl-loaded) {
-            display: block !important;
-            height: 480px;
-        }
-        .main-banner-carousel:not(.owl-loaded) .item {
-            display: none;
-        }
-        .main-banner-carousel:not(.owl-loaded) .item:first-child {
-            display: flex !important;
-            height: 480px;
-        }
-        .main-banner-carousel .carousel-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.45) 100%);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 600ms ease, visibility 600ms ease;
             z-index: 1;
         }
-        .main-banner-carousel .carousel-content {
+        .banner-slide.active {
+            opacity: 1;
+            visibility: visible;
+            z-index: 2;
+        }
+        .banner-bg-pic {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        .banner-bg-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
+        .banner-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.82) 0%, rgba(15, 23, 42, 0.48) 100%);
+            z-index: 1;
+        }
+        .banner-content {
             position: relative;
             z-index: 2;
             max-width: 840px;
@@ -79,7 +94,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             flex-direction: column;
             align-items: center;
         }
-        .main-banner-carousel .carousel-content h2 {
+        .banner-content h2 {
             font-size: clamp(1.75rem, 4vw, 2.75rem);
             font-weight: 700;
             margin-bottom: 0.875rem;
@@ -87,7 +102,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             line-height: 1.2;
             text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
         }
-        .main-banner-carousel .carousel-content p {
+        .banner-content p {
             font-size: clamp(0.9375rem, 1.8vw, 1.25rem);
             color: #cbd5e1;
             margin-bottom: 1.75rem;
@@ -95,7 +110,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             max-width: 680px;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
         }
-        .main-banner-carousel .carousel-content .btn {
+        .banner-content .btn {
             padding: 0.75rem 1.75rem;
             font-size: 0.9375rem;
             font-weight: 600;
@@ -106,122 +121,87 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             align-items: center;
             gap: 8px;
         }
-        .main-banner-carousel .carousel-content .btn:hover {
+        .banner-content .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
         }
-
-        /* Customize Owl Carousel controls to match professional branding */
-        .main-banner-carousel.owl-carousel .owl-nav button.owl-prev,
-        .main-banner-carousel.owl-carousel .owl-nav button.owl-next {
+        .banner-nav-btn {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
             width: 48px;
             height: 48px;
-            background: rgba(255, 255, 255, 0.15) !important;
-            color: #ffffff !important;
-            border-radius: 50% !important;
-            font-size: 1.5rem !important;
-            line-height: 48px !important;
-            margin: 0 !important;
-            transition: background 150ms ease, color 150ms ease !important;
+            background: rgba(255, 255, 255, 0.18);
+            color: #ffffff;
+            border-radius: 50%;
+            font-size: 1.5rem;
             display: flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
+            z-index: 10;
+            border: 1px solid rgba(255,255,255,0.25);
+            transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+            user-select: none;
         }
-        .main-banner-carousel.owl-carousel .owl-nav button.owl-prev:hover,
-        .main-banner-carousel.owl-carousel .owl-nav button.owl-next:hover {
-            background: #ffffff !important;
-            color: #0f172a !important;
+        .banner-nav-btn:hover {
+            background: #ffffff;
+            color: #0f172a;
+            transform: translateY(-50%) scale(1.05);
         }
-        .main-banner-carousel.owl-carousel .owl-nav button.owl-prev {
-            left: 24px;
-        }
-        .main-banner-carousel.owl-carousel .owl-nav button.owl-next {
-            right: 24px;
-        }
-        .main-banner-carousel.owl-carousel .owl-dots {
+        .banner-nav-prev { left: 24px; }
+        .banner-nav-next { right: 24px; }
+        .banner-dots {
             position: absolute;
             bottom: 24px;
             left: 0;
             right: 0;
-            text-align: center;
-            margin: 0 !important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
             z-index: 10;
         }
-        .main-banner-carousel.owl-carousel .owl-dots .owl-dot span {
+        .banner-dot {
             width: 10px;
             height: 10px;
-            background: rgba(255, 255, 255, 0.4) !important;
-            transition: background 150ms ease, transform 150ms ease;
+            background: rgba(255, 255, 255, 0.4);
             border-radius: 50%;
-            display: block;
+            cursor: pointer;
+            transition: background 150ms ease, transform 150ms ease;
+            border: none;
+            padding: 0;
         }
-        .main-banner-carousel.owl-carousel .owl-dots .owl-dot.active span {
-            background: #ffffff !important;
-            transform: scale(1.2);
+        .banner-dot.active {
+            background: #ffffff;
+            transform: scale(1.3);
         }
-
-        /* Responsiveness media queries */
         @media (max-width: 768px) {
-            .banner-carousel-wrapper {
-                min-height: 380px;
-            }
-            .main-banner-carousel .item,
-            .main-banner-carousel:not(.owl-loaded),
-            .main-banner-carousel:not(.owl-loaded) .item:first-child {
-                height: 380px !important;
-            }
-            .main-banner-carousel .carousel-content {
-                padding: 1.25rem 1.25rem;
-            }
-            .main-banner-carousel .carousel-content h2 {
-                font-size: 1.875rem;
-            }
-            .main-banner-carousel .carousel-content p {
-                font-size: 1rem;
-                margin-bottom: 1.25rem;
-            }
-            .main-banner-carousel.owl-carousel .owl-nav {
-                display: none !important;
-            }
+            .banner-carousel-wrapper, .banner-slider { min-height: 380px; height: 380px; }
+            .banner-content { padding: 1.25rem 1.25rem; }
+            .banner-content h2 { font-size: 1.875rem; }
+            .banner-content p { font-size: 1rem; margin-bottom: 1.25rem; }
+            .banner-nav-btn { display: none; }
         }
         @media (max-width: 480px) {
-            .banner-carousel-wrapper {
-                min-height: 320px;
-            }
-            .main-banner-carousel .item,
-            .main-banner-carousel:not(.owl-loaded),
-            .main-banner-carousel:not(.owl-loaded) .item:first-child {
-                height: 320px !important;
-            }
-            .main-banner-carousel .carousel-content {
-                padding: 1rem 0.875rem;
-            }
-            .main-banner-carousel .carousel-content h2 {
-                font-size: 1.35rem;
-                line-height: 1.25;
-                margin-bottom: 0.5rem;
-            }
-            .main-banner-carousel .carousel-content p {
-                font-size: 0.85rem;
-                line-height: 1.4;
-                margin-bottom: 1rem;
-            }
-            .main-banner-carousel .carousel-content .btn {
-                padding: 0.55rem 1.15rem;
-                font-size: 0.8125rem;
-                min-height: 38px;
-            }
+            .banner-carousel-wrapper, .banner-slider { min-height: 320px; height: 320px; }
+            .banner-content { padding: 1rem 0.875rem; }
+            .banner-content h2 { font-size: 1.35rem; line-height: 1.25; margin-bottom: 0.5rem; }
+            .banner-content p { font-size: 0.85rem; line-height: 1.4; margin-bottom: 1rem; }
+            .banner-content .btn { padding: 0.55rem 1.15rem; font-size: 0.8125rem; min-height: 38px; }
         }
         </style>
 
-        <section class="banner-carousel-wrapper">
-            <div class="owl-carousel owl-theme main-banner-carousel">
-                <div class="item" style="background-image: url('<?= url('/storage/banners/german-scholarship.webp') ?>');">
-                    <div class="carousel-overlay"></div>
-                    <div class="carousel-content">
+        <section class="banner-carousel-wrapper" aria-label="Featured Scholarships Carousel" id="bannerCarouselWrapper">
+            <div class="banner-slider" id="bannerSlider">
+                <!-- Slide 1 (LCP Element) -->
+                <div class="banner-slide active" data-index="0">
+                    <picture class="banner-bg-pic">
+                        <source media="(max-width: 640px)" srcset="<?= url('/storage/banners/german-scholarship-mobile.webp') ?>">
+                        <img src="<?= url('/storage/banners/german-scholarship.webp') ?>" alt="German Scholarships" class="banner-bg-img" width="1400" height="788" loading="eager" fetchpriority="high">
+                    </picture>
+                    <div class="banner-overlay"></div>
+                    <div class="banner-content">
                         <h2>Fully Funded German Scholarships</h2>
                         <p>Discover government & university programs with full tuition coverage and monthly stipends.</p>
                         <a href="<?= url('/scholarships') ?>" class="btn btn-primary">
@@ -230,9 +210,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                         </a>
                     </div>
                 </div>
-                <div class="item" style="background-image: url('<?= url('/storage/banners/master-usa.webp') ?>');">
-                    <div class="carousel-overlay"></div>
-                    <div class="carousel-content">
+
+                <!-- Slide 2 -->
+                <div class="banner-slide" data-index="1">
+                    <picture class="banner-bg-pic">
+                        <source media="(max-width: 640px)" srcset="<?= url('/storage/banners/master-usa-mobile.webp') ?>">
+                        <img src="<?= url('/storage/banners/master-usa.webp') ?>" alt="Master's in USA" class="banner-bg-img" width="1400" height="788" loading="lazy">
+                    </picture>
+                    <div class="banner-overlay"></div>
+                    <div class="banner-content">
                         <h2>Master's Programs in the USA</h2>
                         <p>Get matched with prestigious American universities offering research and teaching assistantships.</p>
                         <a href="<?= url('/register') ?>" class="btn btn-primary">
@@ -241,9 +227,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                         </a>
                     </div>
                 </div>
-                <div class="item" style="background-image: url('<?= url('/storage/banners/china-phd.webp') ?>');">
-                    <div class="carousel-overlay"></div>
-                    <div class="carousel-content">
+
+                <!-- Slide 3 -->
+                <div class="banner-slide" data-index="2">
+                    <picture class="banner-bg-pic">
+                        <source media="(max-width: 640px)" srcset="<?= url('/storage/banners/china-phd-mobile.webp') ?>">
+                        <img src="<?= url('/storage/banners/china-phd.webp') ?>" alt="China PhD Fellowships" class="banner-bg-img" width="1400" height="788" loading="lazy">
+                    </picture>
+                    <div class="banner-overlay"></div>
+                    <div class="banner-content">
                         <h2>China PhD & Research Fellowships</h2>
                         <p>Explore doctoral programs with complete funding, free accommodation, and monthly allowances.</p>
                         <a href="<?= url('/scholarships') ?>" class="btn btn-primary">
@@ -252,6 +244,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                         </a>
                     </div>
                 </div>
+            </div>
+
+            <!-- Controls -->
+            <button class="banner-nav-btn banner-nav-prev" id="bannerPrevBtn" aria-label="Previous Slide">&lsaquo;</button>
+            <button class="banner-nav-btn banner-nav-next" id="bannerNextBtn" aria-label="Next Slide">&rsaquo;</button>
+            <div class="banner-dots" id="bannerDots">
+                <button class="banner-dot active" data-slide="0" aria-label="Go to slide 1"></button>
+                <button class="banner-dot" data-slide="1" aria-label="Go to slide 2"></button>
+                <button class="banner-dot" data-slide="2" aria-label="Go to slide 3"></button>
             </div>
         </section>
         <!-- ============================================
@@ -1492,37 +1493,80 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             </div>
         </section>
 
-    <!-- Initialize Owl Carousel for Home Page Banners -->
+    <!-- Modern Zero-Dependency Banner Slider Script -->
     <script>
-    function initHomeCarousel() {
-        if (typeof jQuery !== 'undefined' && typeof jQuery.fn !== 'undefined' && jQuery.fn.owlCarousel) {
-            jQuery(".main-banner-carousel").owlCarousel({
-                items: 1,
-                loop: true,
-                autoplay: true,
-                autoplayTimeout: 6000,
-                autoplayHoverPause: true,
-                nav: true,
-                navText: ["&lsaquo;", "&rsaquo;"],
-                dots: true,
-                responsive: {
-                    0: {
-                        nav: false
-                    },
-                    768: {
-                        nav: true
-                    }
-                }
-            });
-        } else {
-            setTimeout(initHomeCarousel, 50);
+    (function() {
+        const slider = document.getElementById('bannerSlider');
+        if (!slider) return;
+        const slides = slider.querySelectorAll('.banner-slide');
+        const dots = document.querySelectorAll('#bannerDots .banner-dot');
+        const prevBtn = document.getElementById('bannerPrevBtn');
+        const nextBtn = document.getElementById('bannerNextBtn');
+        const wrapper = document.getElementById('bannerCarouselWrapper');
+        if (slides.length <= 1) return;
+
+        let currentIndex = 0;
+        let timer = null;
+
+        function goToSlide(index) {
+            slides[currentIndex].classList.remove('active');
+            if (dots[currentIndex]) dots[currentIndex].classList.remove('active');
+            currentIndex = (index + slides.length) % slides.length;
+            slides[currentIndex].classList.add('active');
+            if (dots[currentIndex]) dots[currentIndex].classList.add('active');
         }
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initHomeCarousel);
-    } else {
-        initHomeCarousel();
-    }
+
+        function nextSlide() { goToSlide(currentIndex + 1); }
+        function prevSlide() { goToSlide(currentIndex - 1); }
+
+        function startAutoplay() {
+            stopAutoplay();
+            timer = setInterval(nextSlide, 6000);
+        }
+        function stopAutoplay() {
+            if (timer) { clearInterval(timer); timer = null; }
+        }
+
+        if (nextBtn) nextBtn.addEventListener('click', function() { nextSlide(); startAutoplay(); });
+        if (prevBtn) prevBtn.addEventListener('click', function() { prevSlide(); startAutoplay(); });
+
+        dots.forEach(function(dot) {
+            dot.addEventListener('click', function() {
+                const target = parseInt(this.getAttribute('data-slide'), 10);
+                if (!isNaN(target)) { goToSlide(target); startAutoplay(); }
+            });
+        });
+
+        if (wrapper) {
+            wrapper.addEventListener('mouseenter', stopAutoplay);
+            wrapper.addEventListener('mouseleave', startAutoplay);
+
+            // Touch swipe gesture support for mobile
+            let startX = 0;
+            let startY = 0;
+            wrapper.addEventListener('touchstart', function(e) {
+                if (e.touches.length === 1) {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    stopAutoplay();
+                }
+            }, { passive: true });
+
+            wrapper.addEventListener('touchend', function(e) {
+                if (e.changedTouches.length === 1) {
+                    const diffX = e.changedTouches[0].clientX - startX;
+                    const diffY = e.changedTouches[0].clientY - startY;
+                    if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY)) {
+                        if (diffX < 0) nextSlide();
+                        else prevSlide();
+                    }
+                    startAutoplay();
+                }
+            }, { passive: true });
+        }
+
+        startAutoplay();
+    })();
     </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/public_footer.php'; ?>

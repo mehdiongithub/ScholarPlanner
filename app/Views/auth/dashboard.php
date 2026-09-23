@@ -4,6 +4,17 @@ $user = $user ?? [];
 $first_name = $user['first_name'] ?? 'Student';
 $last_name = $user['last_name'] ?? '';
 $fullName = trim($first_name . ' ' . $last_name);
+$matches = $matches ?? [];
+$savedScholarships = $savedScholarships ?? [];
+$upcomingDeadlines = $upcomingDeadlines ?? [];
+$recentApplications = $recentApplications ?? [];
+$deadlinesCount = $deadlinesCount ?? 0;
+$matchesCount = $matchesCount ?? 0;
+$savedCount = $savedCount ?? 0;
+$appsCount = $appsCount ?? 0;
+$completion = $completion ?? 0;
+$docReadiness = $docReadiness ?? 0;
+$csrf_token = $csrf_token ?? (\class_exists('App\Helpers\Security') ? \App\Helpers\Security::csrfToken() : '');
 
 // Circular initials generator
 $firstInitial = mb_substr($first_name, 0, 1);
@@ -55,6 +66,9 @@ $planPriceFormatted = ($planPrice == (int)$planPrice) ? number_format($planPrice
 $planCurrency = !empty($alertPlan['currency']) ? $alertPlan['currency'] : 'PKR';
 $planName = !empty($alertPlan['name']) ? $alertPlan['name'] : 'Premium Monthly';
 $planInterval = !empty($alertPlan['billing_interval']) ? $alertPlan['billing_interval'] : 'month';
+
+$title = 'Dashboard';
+ob_start();
 ?>
 <style>
         :root {
@@ -1579,10 +1593,8 @@ $planInterval = !empty($alertPlan['billing_interval']) ? $alertPlan['billing_int
             html { scroll-behavior: auto; }
         }
     </style>
-</head>
-<body>
 <?php
-$title = 'Dashboard';
+$extraHead = ob_get_clean();
 include ROOT_PATH . '/app/Views/layouts/student_header.php';
 ?>
 
@@ -2125,379 +2137,150 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
             </div>
         </div><!-- /checkout-page -->
 
-    </div><!-- /dash-main -->
-</div><!-- /dash-layout -->
+    // ===== CHECKOUT INTERACTION LOGIC (IF ACCESSED) =====
+    (function() {
+        let selectedMethod = 'easypaisa';
+        const phoneInput = document.getElementById('phoneInput');
+        const phoneError = document.getElementById('phoneError');
+        const phoneErrorText = document.getElementById('phoneErrorText');
+        const proceedCheckout = document.getElementById('proceedCheckout');
+        const dashboardPage = document.getElementById('dashboardPage');
+        const checkoutPage = document.getElementById('checkoutPage');
+        const checkoutBack = document.getElementById('checkoutBack');
+        const methodEasypaisa = document.getElementById('methodEasypaisa');
+        const methodJazzcash = document.getElementById('methodJazzcash');
+        const payMethodName = document.getElementById('payMethodName');
+        const summaryPhoneNum = document.getElementById('summaryPhoneNum');
+        const confirmPayBtn = document.getElementById('confirmPayBtn');
+        const checkoutSuccess = document.getElementById('checkoutSuccess');
+        const checkoutForm = document.getElementById('checkoutForm');
+        const successBackBtn = document.getElementById('successBackBtn');
+        const copyNumberBtn = document.getElementById('copyNumberBtn');
 
-<!-- Hidden secure POST logout form -->
-<form id="logoutForm" action="/logout" method="POST" style="display: none;">
-    <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
-</form>
-
-<!-- ===== WHATSAPP SUBSCRIPTION MODAL ===== -->
-<div class="modal-overlay" id="waModal" role="dialog" aria-modal="true" aria-label="Activate WhatsApp Alerts">
-    <div class="modal">
-        <div class="modal-header">
-            <h3>Activate WhatsApp Alerts</h3>
-            <button class="modal-close" id="waModalClose" aria-label="Close">
-                <i data-lucide="x"></i>
-            </button>
-        </div>
-        <div class="modal-body">
-            <div class="modal-features">
-                <div class="modal-feature">
-                    <i data-lucide="circle-check"></i>
-                    Instant WhatsApp notifications for new matches
-                </div>
-                <div class="modal-feature">
-                    <i data-lucide="circle-check"></i>
-                    Deadline reminders before closing dates
-                </div>
-                <div class="modal-feature">
-                    <i data-lucide="circle-check"></i>
-                    Email alerts included at no extra cost
-                </div>
-                <div class="modal-feature">
-                    <i data-lucide="circle-check"></i>
-                    Daily matching updates
-                </div>
-            </div>
-
-            <!-- Phone input -->
-            <label style="font-size:0.875rem;font-weight:650;color:var(--text-700);display:block;margin-bottom:6px">
-                Your WhatsApp Number
-            </label>
-            <div class="phone-input-group" id="phoneInputGroup">
-                <div class="phone-code">
-                    🇵🇰 +92
-                </div>
-                <input
-                    type="tel"
-                    class="phone-input"
-                    id="phoneInput"
-                    placeholder="3XX XXXXXXX"
-                    maxlength="11"
-                    inputmode="numeric"
-                    autocomplete="tel-national"
-                    aria-label="WhatsApp phone number"
-                >
-            </div>
-            <p class="phone-hint">
-                <i data-lucide="info"></i>
-                Enter your 10-digit number without the 0 prefix (e.g., 3XX XXXXXXX)
-            </p>
-            <p class="phone-error" id="phoneError">
-                <i data-lucide="alert-circle"></i>
-                <span id="phoneErrorText">Please enter a valid Pakistani phone number</span>
-            </p>
-
-            <!-- Price summary -->
-            <div class="modal-price-summary">
-                <div class="modal-price-row">
-                    <span class="label"><i data-lucide="message-square"></i> WhatsApp Alerts</span>
-                    <span>Included</span>
-                </div>
-                <div class="modal-price-row">
-                    <span class="label"><i data-lucide="mail"></i> Email Alerts</span>
-                    <span>Included</span>
-                </div>
-                <div class="modal-price-row">
-                    <span class="label"><i data-lucide="calendar"></i> Billing</span>
-                    <span>Monthly</span>
-                </div>
-                <div class="modal-price-row total">
-                    <span>Total</span>
-                    <span>PKR <?= e($planPriceFormatted) ?> /mo</span>
-                </div>
-            </div>
-
-            <button class="btn btn-whatsapp" id="proceedCheckout" type="button" style="width:100%">
-                <i data-lucide="arrow-right"></i>
-                Proceed to Checkout
-            </button>
-
-            <p style="text-align:center;font-size:0.75rem;color:var(--text-400);margin-top:12px">
-                Cancel anytime from your dashboard. No hidden charges.
-            </p>
-        </div>
-    </div>
-</div>
-
-<script>
-    // Initialize Lucide icons
-    lucide.createIcons();
-
-    // ===== TOAST NOTIFICATION HELPER =====
-    function showToast(message, type = 'success') {
-        // Remove existing toast if present
-        const oldToast = document.querySelector('.toast-notification');
-        if (oldToast) oldToast.remove();
-
-        const toast = document.createElement('div');
-        toast.className = `toast-notification ${type}`;
-        toast.style.position = 'fixed';
-        toast.style.top = '24px';
-        toast.style.right = '24px';
-        toast.style.padding = '14px 18px';
-        toast.style.borderRadius = '10px';
-        toast.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-        toast.style.display = 'flex';
-        toast.style.alignItems = 'center';
-        toast.style.gap = '10px';
-        toast.style.zIndex = '9999';
-        toast.style.transition = 'all 0.3s ease';
-
-        if (type === 'success') {
-            toast.style.background = '#ecfdf5';
-            toast.style.border = '1px solid #d1fae5';
-            toast.style.color = '#065f46';
-        } else {
-            toast.style.background = '#fef2f2';
-            toast.style.border = '1px solid #fee2e2';
-            toast.style.color = '#991b1b';
+        function validatePhone(num) {
+            var cleaned = num.replace(/[\s\-]/g, '');
+            return /^3\d{9}$/.test(cleaned);
         }
 
-        toast.innerHTML = `
-            <span style="font-size: 0.875rem; font-weight: 600;">${message}</span>
-            <button class="toast-close" style="background: none; border: none; cursor: pointer; color: inherit; display:flex; align-items:center;">
-                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
-            </button>
-        `;
-
-        document.body.appendChild(toast);
-        lucide.createIcons();
-
-        toast.querySelector('.toast-close').addEventListener('click', () => {
-            toast.remove();
-        });
-
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(-10px)';
-            setTimeout(() => toast.remove(), 300);
-        }, 4000);
-    }
-
-    // ===== STATE =====
-    let selectedMethod = 'easypaisa';
-    let userPhone = '';
-
-    // ===== ELEMENTS =====
-    const sidebar = document.getElementById('adminSidebar');
-    const sidebarOverlay = document.getElementById('sidebarOverlay');
-    const dashboardMobileToggle = document.getElementById('mobileToggle');
-    const waModal = document.getElementById('waModal');
-    const waModalClose = document.getElementById('waModalClose');
-    const openWaModal = document.getElementById('openWaModal');
-    const sidebarWaLink = document.getElementById('sidebarWaLink');
-    const phoneInput = document.getElementById('phoneInput');
-    const phoneError = document.getElementById('phoneError');
-    const phoneErrorText = document.getElementById('phoneErrorText');
-    const proceedCheckout = document.getElementById('proceedCheckout');
-    const dashboardPage = document.getElementById('dashboardPage');
-    const checkoutPage = document.getElementById('checkoutPage');
-    const checkoutBack = document.getElementById('checkoutBack');
-    const methodEasypaisa = document.getElementById('methodEasypaisa');
-    const methodJazzcash = document.getElementById('methodJazzcash');
-    const payMethodName = document.getElementById('payMethodName');
-    const summaryPhoneNum = document.getElementById('summaryPhoneNum');
-    const confirmPayBtn = document.getElementById('confirmPayBtn');
-    const checkoutSuccess = document.getElementById('checkoutSuccess');
-    const checkoutForm = document.getElementById('checkoutForm');
-    const successBackBtn = document.getElementById('successBackBtn');
-    const copyNumberBtn = document.getElementById('copyNumberBtn');
-
-    // ===== SIDEBAR TOGGLE (MOBILE) =====
-    function openSidebar() {
-        sidebar.classList.add('open');
-        sidebarOverlay.classList.add('open');
-        document.body.style.overflow = 'hidden';
-    }
-
-    // Close sidebar when a link is clicked on mobile
-    function closeSidebar() {
-        sidebar.classList.remove('open');
-        sidebarOverlay.classList.remove('open');
-        document.body.style.overflow = '';
-    }
-
-    if (dashboardMobileToggle) dashboardMobileToggle.addEventListener('click', openSidebar);
-    if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeSidebar();
-            closeWaModal();
-        }
-    });
-
-    // Close sidebar when a link is clicked on mobile
-    sidebar.querySelectorAll('.sidebar-link').forEach(function(link) {
-        link.addEventListener('click', function() {
-            if (window.innerWidth < 1024) {
-                closeSidebar();
-            }
-        });
-    });
-
-    // ===== WHATSAPP MODAL =====
-    function openWaModalFn() {
-        waModal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-        setTimeout(function() { phoneInput.focus(); }, 300);
-    }
-
-    function closeWaModal() {
-        waModal.classList.remove('active');
-        document.body.style.overflow = '';
-        phoneError.classList.remove('visible');
-    }
-
-    /* Button modal functionality commented out for now - will update later
-    if (openWaModal) openWaModal.addEventListener('click', openWaModalFn);
-    if (sidebarWaLink) {
-        sidebarWaLink.addEventListener('click', function(e) {
-            e.preventDefault();
-            openWaModalFn();
-        });
-    }
-    */
-    if (waModalClose) waModalClose.addEventListener('click', closeWaModal);
-
-    waModal.addEventListener('click', function(e) {
-        if (e.target === waModal) closeWaModal();
-    });
-
-    // ===== PHONE VALIDATION =====
-    function validatePhone(num) {
-        var cleaned = num.replace(/[\s\-]/g, '');
-        if (!/^3\d{9}$/.test(cleaned)) return false;
-        return true;
-    }
-
-    function formatPhone(num) {
-        var cleaned = num.replace(/[\s\-]/g, '');
-        if (cleaned.length <= 3) return cleaned;
-        if (cleaned.length <= 6) return cleaned.slice(0, 3) + ' ' + cleaned.slice(3);
-        return cleaned.slice(0, 3) + ' ' + cleaned.slice(3, 7) + ' ' + cleaned.slice(7);
-    }
-
-    phoneInput.addEventListener('input', function() {
-        this.value = this.value.replace(/[^0-9\s]/g, '');
-        phoneError.classList.remove('visible');
-    });
-
-    // ===== PROCEED TO CHECKOUT =====
-    proceedCheckout.addEventListener('click', function() {
-        var raw = phoneInput.value.trim();
-
-        if (!validatePhone(raw)) {
-            phoneErrorText.textContent = 'Please enter a valid Pakistani phone number (e.g., 3XX XXXXXXX)';
-            phoneError.classList.add('visible');
-            phoneInput.focus();
-            return;
+        function formatPhone(num) {
+            var cleaned = num.replace(/[\s\-]/g, '');
+            if (cleaned.length <= 3) return cleaned;
+            if (cleaned.length <= 6) return cleaned.slice(0, 3) + ' ' + cleaned.slice(3);
+            return cleaned.slice(0, 3) + ' ' + cleaned.slice(3, 7) + ' ' + cleaned.slice(7);
         }
 
-        phoneError.classList.remove('visible');
-        userPhone = formatPhone(raw);
-        summaryPhoneNum.textContent = '+92 ' + userPhone;
-
-        closeWaModal();
-
-        setTimeout(function() {
-            dashboardPage.classList.add('hidden');
-            checkoutPage.classList.add('active');
-            checkoutSuccess.classList.remove('active');
-            checkoutForm.style.display = '';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 200);
-    });
-
-    // ===== CHECKOUT BACK =====
-    checkoutBack.addEventListener('click', function(e) {
-        e.preventDefault();
-        checkoutPage.classList.remove('active');
-        dashboardPage.classList.remove('hidden');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
-    successBackBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        checkoutPage.classList.remove('active');
-        checkoutSuccess.classList.remove('active');
-        checkoutForm.style.display = '';
-        dashboardPage.classList.remove('hidden');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
-    // ===== PAYMENT METHOD SELECTION =====
-    function selectMethod(method) {
-        selectedMethod = method;
-
-        methodEasypaisa.classList.toggle('selected', method === 'easypaisa');
-        methodJazzcash.classList.toggle('selected', method === 'jazzcash');
-
-        methodEasypaisa.setAttribute('aria-checked', String(method === 'easypaisa'));
-        methodJazzcash.setAttribute('aria-checked', String(method === 'jazzcash'));
-
-        var name = method === 'easypaisa' ? 'Easypaisa' : 'JazzCash';
-        payMethodName.textContent = name;
-    }
-
-    methodEasypaisa.addEventListener('click', function() { selectMethod('easypaisa'); });
-    methodJazzcash.addEventListener('click', function() { selectMethod('jazzcash'); });
-
-    [methodEasypaisa, methodJazzcash].forEach(function(el) {
-        el.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                this.click();
-            }
-        });
-    });
-
-    // ===== CONFIRM PAYMENT =====
-    confirmPayBtn.addEventListener('click', function() {
-        checkoutForm.style.display = 'none';
-        checkoutSuccess.classList.add('active');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        lucide.createIcons();
-    });
-
-    // ===== COPY NUMBER =====
-    copyNumberBtn.addEventListener('click', function() {
-        var text = '03XXXXXXXXX';
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).then(function() {
-                copyNumberBtn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Copied';
-                lucide.createIcons();
-                setTimeout(function() {
-                    copyNumberBtn.innerHTML = '<i data-lucide="copy" style="width:14px;height:14px"></i> Copy';
-                    lucide.createIcons();
-                }, 2000);
+        if (phoneInput) {
+            phoneInput.addEventListener('input', function() {
+                this.value = this.value.replace(/[^0-9\s]/g, '');
+                if (phoneError) phoneError.classList.remove('visible');
             });
-        } else {
-            var ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.left = '-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-            copyNumberBtn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Copied';
-            lucide.createIcons();
-            setTimeout(function() {
-                copyNumberBtn.innerHTML = '<i data-lucide="copy" style="width:14px;height:14px"></i> Copy';
-                lucide.createIcons();
-            }, 2000);
+            phoneInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && proceedCheckout) {
+                    proceedCheckout.click();
+                }
+            });
         }
-    });
 
-    phoneInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            proceedCheckout.click();
+        if (proceedCheckout) {
+            proceedCheckout.addEventListener('click', function() {
+                var raw = phoneInput ? phoneInput.value.trim() : '';
+                if (!validatePhone(raw)) {
+                    if (phoneErrorText) phoneErrorText.textContent = 'Please enter a valid Pakistani phone number (e.g., 3XX XXXXXXX)';
+                    if (phoneError) phoneError.classList.add('visible');
+                    if (phoneInput) phoneInput.focus();
+                    return;
+                }
+                if (phoneError) phoneError.classList.remove('visible');
+                var userPhone = formatPhone(raw);
+                if (summaryPhoneNum) summaryPhoneNum.textContent = '+92 ' + userPhone;
+
+                var waModal = document.getElementById('waModal');
+                if (waModal) waModal.classList.remove('active');
+
+                setTimeout(function() {
+                    if (dashboardPage) dashboardPage.classList.add('hidden');
+                    if (checkoutPage) checkoutPage.classList.add('active');
+                    if (checkoutSuccess) checkoutSuccess.classList.remove('active');
+                    if (checkoutForm) checkoutForm.style.display = '';
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 200);
+            });
         }
-    });
+
+        if (checkoutBack) {
+            checkoutBack.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (checkoutPage) checkoutPage.classList.remove('active');
+                if (dashboardPage) dashboardPage.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
+
+        if (successBackBtn) {
+            successBackBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (checkoutPage) checkoutPage.classList.remove('active');
+                if (checkoutSuccess) checkoutSuccess.classList.remove('active');
+                if (checkoutForm) checkoutForm.style.display = '';
+                if (dashboardPage) dashboardPage.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
+
+        function selectMethod(method) {
+            selectedMethod = method;
+            if (methodEasypaisa) {
+                methodEasypaisa.classList.toggle('selected', method === 'easypaisa');
+                methodEasypaisa.setAttribute('aria-checked', String(method === 'easypaisa'));
+            }
+            if (methodJazzcash) {
+                methodJazzcash.classList.toggle('selected', method === 'jazzcash');
+                methodJazzcash.setAttribute('aria-checked', String(method === 'jazzcash'));
+            }
+            if (payMethodName) {
+                payMethodName.textContent = method === 'easypaisa' ? 'Easypaisa' : 'JazzCash';
+            }
+        }
+
+        if (methodEasypaisa) methodEasypaisa.addEventListener('click', function() { selectMethod('easypaisa'); });
+        if (methodJazzcash) methodJazzcash.addEventListener('click', function() { selectMethod('jazzcash'); });
+
+        [methodEasypaisa, methodJazzcash].forEach(function(el) {
+            if (el) {
+                el.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        this.click();
+                    }
+                });
+            }
+        });
+
+        if (confirmPayBtn) {
+            confirmPayBtn.addEventListener('click', function() {
+                if (checkoutForm) checkoutForm.style.display = 'none';
+                if (checkoutSuccess) checkoutSuccess.classList.add('active');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+            });
+        }
+
+        if (copyNumberBtn) {
+            copyNumberBtn.addEventListener('click', function() {
+                var text = '03XXXXXXXXX';
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text).then(function() {
+                        copyNumberBtn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Copied';
+                        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+                        setTimeout(function() {
+                            copyNumberBtn.innerHTML = '<i data-lucide="copy" style="width:14px;height:14px"></i> Copy';
+                            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+                        }, 2000);
+                    });
+                }
+            });
+        }
+    })();
 
     // ===== AJAX BOOKMARK TOGGLE (SAVE/UNSAVE) =====
     document.addEventListener('click', function(e) {
@@ -2509,7 +2292,6 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
             const isSaved = toggleBtn.getAttribute('data-saved') === 'true';
             const action = isSaved ? 'unsave' : 'save';
 
-            // Disable buttons during action
             toggleBtn.disabled = true;
 
             const formData = new FormData();
@@ -2532,14 +2314,16 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                 const newSavedState = !isSaved;
                 toggleBtn.setAttribute('data-saved', newSavedState ? 'true' : 'false');
                 toggleBtn.innerHTML = `<i data-lucide="${newSavedState ? 'bookmark-check' : 'bookmark'}" style="width:16px; height:16px;"></i>`;
-                lucide.createIcons();
-                showToast(data.message || (newSavedState ? 'Scholarship bookmarked!' : 'Bookmark removed!'), 'success');
-                
-                // Lazy reload list widgets or update counts count dynamically
+                if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+                if (typeof showToast === 'function') {
+                    showToast(data.message || (newSavedState ? 'Scholarship bookmarked!' : 'Bookmark removed!'), 'success');
+                }
                 setTimeout(() => window.location.reload(), 1000);
             })
             .catch(err => {
-                showToast(err.message || 'Verification failed.', 'error');
+                if (typeof showToast === 'function') {
+                    showToast(err.message || 'Verification failed.', 'error');
+                }
             })
             .finally(() => {
                 toggleBtn.disabled = false;
@@ -2576,20 +2360,21 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                     row.style.opacity = '0';
                     setTimeout(() => {
                         row.remove();
-                        // If no bookmarks left, show empty state
                         const savedContainer = document.getElementById('savedListContainer');
                         if (savedContainer && savedContainer.children.length === 0) {
                             window.location.reload();
                         }
                     }, 300);
                 }
-                showToast(data.message || 'Bookmark removed!', 'success');
-                
-                // Reload after delay to sync other stats/counts
+                if (typeof showToast === 'function') {
+                    showToast(data.message || 'Bookmark removed!', 'success');
+                }
                 setTimeout(() => window.location.reload(), 1000);
             })
             .catch(err => {
-                showToast(err.message || 'Failed to remove bookmark.', 'error');
+                if (typeof showToast === 'function') {
+                    showToast(err.message || 'Failed to remove bookmark.', 'error');
+                }
             })
             .finally(() => {
                 unsaveBtn.disabled = false;
@@ -2598,5 +2383,4 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
     });
 </script>
 
-</body>
-</html>
+<?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

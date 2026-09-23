@@ -1,3 +1,7 @@
+<?php
+$title = 'Billing & Plan Management';
+ob_start();
+?>
 <style>
         .billing-layout {
             min-height: 100vh;
@@ -102,20 +106,22 @@
             color: var(--text-600);
             font-weight: 600;
         }
+        @media (max-width: 991px) {
+            .billing-container {
+                margin: 16px auto;
+                padding: 0;
+            }
+            .billing-section {
+                padding: 20px 16px;
+            }
+        }
     </style>
-</head>
-<body>
 <?php
-$title = 'Billing & Plan Management';
+$extraHead = ob_get_clean();
 include ROOT_PATH . '/app/Views/layouts/student_header.php';
 ?>
-<script>
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
 
-        <main class="billing-container">
+        <div class="billing-container">
             <div style="margin-bottom: 32px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
                 <div>
                     <h1 style="font-size: 2rem; font-weight: 800; color: var(--text-900);">Billing & Plan Management</h1>
@@ -238,7 +244,6 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                     <?php endif; ?>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
 
 <?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

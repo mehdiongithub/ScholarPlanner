@@ -19,6 +19,12 @@ RewriteRule ^storage/(private_uploads|logs|cache)($|/) - [F,L]
     Deny from all
 </FilesMatch>
 
+# Canonical HTTPS & non-www redirect for scholarplanner.com (single 301 hop to eliminate redirect chains)
+RewriteCond %{HTTP_HOST} ^www\.scholarplanner\.com$ [NC,OR]
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP_HOST} ^(www\.)?scholarplanner\.com$ [NC]
+RewriteRule ^(.*)$ https://scholarplanner.com/$1 [L,R=301]
+
 # Redirect all requests to index.php if they are not existing files/directories
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

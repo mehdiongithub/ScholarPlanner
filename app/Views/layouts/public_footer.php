@@ -54,15 +54,8 @@
     </footer>
 
     <!-- Core & Vendor Scripts -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <?php if (!empty($needsCarousel)): ?>
-    <!-- Owl Carousel JS (loaded only when carousel present, strictly after jQuery) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
-    <?php endif; ?>
-    <script defer src="https://unpkg.com/lucide@0.460.0"></script>
-    <script defer src="<?= asset('assets/js/main.js') ?>"></script>
     <?php if (!empty($needsSelect2)): ?>
-    <!-- Select2 JS (loaded only when searchable selects present) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         function initPublicSelect2() {
@@ -82,6 +75,8 @@
         }
     </script>
     <?php endif; ?>
+    <script defer src="<?= asset('assets/js/lucide.min.js') ?>"></script>
+    <script defer src="<?= asset('assets/js/main.js') ?>"></script>
     <script>
         function initLucideSafe() {
             if (typeof lucide !== 'undefined' && lucide.createIcons) {

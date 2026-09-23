@@ -1,3 +1,7 @@
+<?php
+$title = 'Application Tracker';
+ob_start();
+?>
 <style>
         .tracker-layout {
             min-height: 100vh;
@@ -352,15 +356,19 @@
                 justify-content: flex-start;
             }
         }
+        @media (max-width: 991px) {
+            .tracker-content {
+                margin: 16px auto;
+                padding: 0;
+            }
+        }
     </style>
-</head>
-<body>
 <?php
-$title = 'Application Tracker';
+$extraHead = ob_get_clean();
 include ROOT_PATH . '/app/Views/layouts/student_header.php';
 ?>
 
-        <main class="tracker-content">
+        <div class="tracker-content">
             <div class="welcome-section">
                 <div>
                     <h1 class="welcome-title">Application Tracker</h1>
@@ -518,7 +526,6 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                     <?php endfor; ?>
                 </nav>
             <?php endif; ?>
-        </main>
-    </div>
+        </div>
 
 <?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

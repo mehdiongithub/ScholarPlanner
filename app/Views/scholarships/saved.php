@@ -1,3 +1,7 @@
+<?php
+$title = 'My Bookmarked Scholarships';
+ob_start();
+?>
 <style>
         .page-layout {
             min-height: 100vh;
@@ -189,22 +193,28 @@
             font-size: 0.75rem;
             border-radius: 4px;
             text-decoration: none;
-            font-weight: 600;
+        @media (max-width: 991px) {
+            .list-layout {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            .page-content {
+                margin: 16px auto;
+                padding: 0;
+            }
+        }
+        @media (max-width: 640px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
-</head>
-<body>
 <?php
-$title = 'My Bookmarked Scholarships';
+$extraHead = ob_get_clean();
 include ROOT_PATH . '/app/Views/layouts/student_header.php';
 ?>
-<script>
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
 
-        <main class="page-content">
+        <div class="page-content">
             <div style="margin-bottom: 24px;">
                 <h1 style="font-size: 2rem; font-weight: 700; color: var(--text-900);">My Bookmarked Scholarships</h1>
                 <p style="color: var(--text-500);">Opportunities you have saved for tracking and comparison.</p>
@@ -403,7 +413,6 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                     <?php endif; ?>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
 
 <?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

@@ -1,3 +1,7 @@
+<?php
+$title = 'My Profile';
+ob_start();
+?>
 <style>
         .profile-layout {
             min-height: 100vh;
@@ -361,17 +365,19 @@
                 gap: 4px;
             }
         }
+        @media (max-width: 991px) {
+            .profile-content {
+                margin: 16px auto;
+                padding: 0;
+            }
+        }
     </style>
 <?php
-$title = 'My Profile';
+$extraHead = ob_get_clean();
 include ROOT_PATH . '/app/Views/layouts/student_header.php';
 ?>
-<script>
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-</script>
-        <main class="profile-content">
+
+        <div class="profile-content">
             <!-- Banner summary card -->
             <div class="banner-card">
                 <div class="banner-info">
@@ -573,10 +579,8 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
                             </span>
                         </div>
                     </div>
-                    </div>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
 
 <?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>
