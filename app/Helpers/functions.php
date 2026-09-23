@@ -171,6 +171,10 @@ if (!function_exists('encode_id')) {
 
 if (!function_exists('decode_id')) {
     function decode_id(?string $token): ?int {
-        return \App\Services\UrlIdService::decode($token);
+        $id = \App\Services\UrlIdService::decode($token);
+        if ($id === null && $token !== null && is_numeric($token) && (int)$token > 0) {
+            return (int)$token;
+        }
+        return $id;
     }
 }

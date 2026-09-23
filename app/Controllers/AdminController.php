@@ -1248,11 +1248,20 @@ class AdminController {
      */
     public function fieldsStore(): void {
         Auth::requirePermission('settings.edit');
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/fields"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1260,8 +1269,33 @@ class AdminController {
         $desc = trim($_POST['description'] ?? '');
 
         if ($name === '') {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Field Name is required.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'Field Name is required.';
-            header("Location: " . url("/admin/academic/fields"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        // Duplicate name check
+        $stmtCheck = $this->db->prepare("SELECT id FROM fields_of_study WHERE LOWER(name) = LOWER(:name) LIMIT 1");
+        $stmtCheck->execute(['name' => $name]);
+        if ($stmtCheck->fetch()) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'A Field of Study with this name already exists.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'A Field of Study with this name already exists.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1270,20 +1304,61 @@ class AdminController {
         $fId = $this->db->lastInsertId();
 
         $this->logAction('field_create', 'academic', 'fields_of_study', $fId, ['name' => $name]);
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Field of Study added successfully.',
+                'field' => [
+                    'id' => encode_id((int)$fId),
+                    'name' => $name,
+                    'description' => $desc
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
         $_SESSION['admin_success'] = 'Field of Study added successfully.';
-        header("Location: " . url("/admin/academic/fields"));
+        if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
+        exit();
     }
 
     public function fieldsEdit(string $id): void {
         Auth::requirePermission('settings.view');
         $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $stmt = $this->db->prepare("SELECT * FROM fields_of_study WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
         $field = $stmt->fetch();
         if (!$field) {
-            http_response_code(404);
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(404);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Field not found.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            if (!headers_sent()) http_response_code(404);
             echo "Field not found";
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'field' => [
+                    'record_id' => encode_id((int)$field['id']),
+                    'name' => $field['name'],
+                    'description' => $field['description'] ?? ''
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1301,11 +1376,20 @@ class AdminController {
         Auth::requirePermission('settings.edit');
         $id = $this->resolveId($id);
         $encId = encode_id($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/fields/$encId/edit"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1313,8 +1397,33 @@ class AdminController {
         $desc = trim($_POST['description'] ?? '');
 
         if ($name === '') {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Field Name is required.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'Field Name is required.';
-            header("Location: " . url("/admin/academic/fields/$encId/edit"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        // Duplicate name check (excluding current id)
+        $stmtCheck = $this->db->prepare("SELECT id FROM fields_of_study WHERE LOWER(name) = LOWER(:name) AND id != :id LIMIT 1");
+        $stmtCheck->execute(['name' => $name, 'id' => $id]);
+        if ($stmtCheck->fetch()) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'A Field of Study with this name already exists.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'A Field of Study with this name already exists.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1322,8 +1431,25 @@ class AdminController {
         $stmt->execute(['name' => $name, 'desc' => $desc, 'id' => $id]);
 
         $this->logAction('field_update', 'academic', 'fields_of_study', $id, ['name' => $name]);
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Field of Study updated successfully.',
+                'field' => [
+                    'id' => $encId,
+                    'name' => $name,
+                    'description' => $desc
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
         $_SESSION['admin_success'] = 'Field of Study updated successfully.';
-        header("Location: " . url("/admin/academic/fields"));
+        if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 
@@ -1333,26 +1459,53 @@ class AdminController {
     public function fieldsDelete(string $id): void {
         Auth::requirePermission('settings.edit');
         $id = $this->resolveId($id, true);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'CSRF verification failed']);
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
-        $stmt = $this->db->prepare("DELETE FROM fields_of_study WHERE id = ?");
-        $stmt->execute([$id]);
+        try {
+            $stmt = $this->db->prepare("DELETE FROM fields_of_study WHERE id = ?");
+            $stmt->execute([$id]);
 
-        $this->logAction('field_delete', 'academic', 'fields_of_study', $id);
-        
-        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => true, 'message' => 'Field deleted successfully.']);
+            $this->logAction('field_delete', 'academic', 'fields_of_study', $id);
+            
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Field of Study deleted successfully.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_success'] = 'Field of Study deleted successfully.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        } catch (\PDOException $e) {
+            $errMsg = 'Cannot delete this Field of Study because it is currently linked to scholarships or student profiles.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(409);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $errMsg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $errMsg;
+            if (!headers_sent()) header("Location: " . url("/admin/academic/fields"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
-        $_SESSION['admin_success'] = 'Field of Study deleted successfully.';
-        header("Location: " . url("/admin/academic/fields"));
     }
 
     /**
@@ -1376,21 +1529,58 @@ class AdminController {
      */
     public function degreesStore(): void {
         Auth::requirePermission('settings.edit');
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/degrees"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
         $name = trim($_POST['name'] ?? '');
         $sort = (int)($_POST['sort_order'] ?? 0);
         $status = trim($_POST['status'] ?? 'active');
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
         if ($name === '') {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Degree Level Name is required.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'Degree Level Name is required.';
-            header("Location: " . url("/admin/academic/degrees"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        // Duplicate name check
+        $stmtCheck = $this->db->prepare("SELECT id FROM degree_levels WHERE LOWER(name) = LOWER(:name) LIMIT 1");
+        $stmtCheck->execute(['name' => $name]);
+        if ($stmtCheck->fetch()) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'A Degree Level with this name already exists.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'A Degree Level with this name already exists.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1399,20 +1589,63 @@ class AdminController {
         $dId = $this->db->lastInsertId();
 
         $this->logAction('degree_create', 'academic', 'degree_levels', $dId, ['name' => $name]);
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Degree Level added successfully.',
+                'degree' => [
+                    'id' => encode_id((int)$dId),
+                    'name' => $name,
+                    'sort_order' => $sort,
+                    'status' => $status
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
         $_SESSION['admin_success'] = 'Degree Level added successfully.';
-        header("Location: " . url("/admin/academic/degrees"));
+        if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
+        exit();
     }
 
     public function degreesEdit(string $id): void {
         Auth::requirePermission('settings.view');
         $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $stmt = $this->db->prepare("SELECT * FROM degree_levels WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
         $degree = $stmt->fetch();
         if (!$degree) {
-            http_response_code(404);
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(404);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Degree level not found.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            if (!headers_sent()) http_response_code(404);
             echo "Degree level not found";
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'degree' => [
+                    'record_id' => encode_id((int)$degree['id']),
+                    'name' => $degree['name'],
+                    'sort_order' => (int)$degree['sort_order'],
+                    'status' => $degree['status'] ?? 'active'
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1430,21 +1663,58 @@ class AdminController {
         Auth::requirePermission('settings.edit');
         $id = $this->resolveId($id);
         $encId = encode_id($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/degrees/$encId/edit"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
         $name = trim($_POST['name'] ?? '');
         $sort = (int)($_POST['sort_order'] ?? 0);
         $status = trim($_POST['status'] ?? 'active');
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
         if ($name === '') {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Degree Level Name is required.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'Degree Level Name is required.';
-            header("Location: " . url("/admin/academic/degrees/$encId/edit"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        // Duplicate name check (excluding current id)
+        $stmtCheck = $this->db->prepare("SELECT id FROM degree_levels WHERE LOWER(name) = LOWER(:name) AND id != :id LIMIT 1");
+        $stmtCheck->execute(['name' => $name, 'id' => $id]);
+        if ($stmtCheck->fetch()) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'A Degree Level with this name already exists.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'A Degree Level with this name already exists.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1452,8 +1722,26 @@ class AdminController {
         $stmt->execute(['name' => $name, 'sort' => $sort, 'status' => $status, 'id' => $id]);
 
         $this->logAction('degree_update', 'academic', 'degree_levels', $id, ['name' => $name]);
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Degree Level updated successfully.',
+                'degree' => [
+                    'id' => $encId,
+                    'name' => $name,
+                    'sort_order' => $sort,
+                    'status' => $status
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
         $_SESSION['admin_success'] = 'Degree Level updated successfully.';
-        header("Location: " . url("/admin/academic/degrees"));
+        if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 
@@ -1463,26 +1751,53 @@ class AdminController {
     public function degreesDelete(string $id): void {
         Auth::requirePermission('settings.edit');
         $id = $this->resolveId($id, true);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'CSRF verification failed']);
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
-        $stmt = $this->db->prepare("DELETE FROM degree_levels WHERE id = ?");
-        $stmt->execute([$id]);
+        try {
+            $stmt = $this->db->prepare("DELETE FROM degree_levels WHERE id = ?");
+            $stmt->execute([$id]);
 
-        $this->logAction('degree_delete', 'academic', 'degree_levels', $id);
-        
-        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => true, 'message' => 'Degree Level deleted successfully.']);
+            $this->logAction('degree_delete', 'academic', 'degree_levels', $id);
+            
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Degree Level deleted successfully.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_success'] = 'Degree Level deleted successfully.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        } catch (\PDOException $e) {
+            $errMsg = 'Cannot delete this Degree Level because it is currently linked to scholarships or student profiles.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(409);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $errMsg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $errMsg;
+            if (!headers_sent()) header("Location: " . url("/admin/academic/degrees"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
-        $_SESSION['admin_success'] = 'Degree Level deleted successfully.';
-        header("Location: " . url("/admin/academic/degrees"));
     }
 
     /**
@@ -1506,20 +1821,57 @@ class AdminController {
      */
     public function fundingStore(): void {
         Auth::requirePermission('settings.edit');
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/funding"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
         $name = trim($_POST['name'] ?? '');
         $status = trim($_POST['status'] ?? 'active');
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
         if ($name === '') {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Funding Type Name is required.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'Funding Type Name is required.';
-            header("Location: " . url("/admin/academic/funding"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        // Duplicate name check
+        $stmtCheck = $this->db->prepare("SELECT id FROM funding_types WHERE LOWER(name) = LOWER(:name) LIMIT 1");
+        $stmtCheck->execute(['name' => $name]);
+        if ($stmtCheck->fetch()) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'A Funding Type with this name already exists.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'A Funding Type with this name already exists.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1528,20 +1880,61 @@ class AdminController {
         $fId = $this->db->lastInsertId();
 
         $this->logAction('funding_create', 'academic', 'funding_types', $fId, ['name' => $name]);
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Funding Type added successfully.',
+                'funding' => [
+                    'id' => encode_id((int)$fId),
+                    'name' => $name,
+                    'status' => $status
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
         $_SESSION['admin_success'] = 'Funding Type added successfully.';
-        header("Location: " . url("/admin/academic/funding"));
+        if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
+        exit();
     }
 
     public function fundingEdit(string $id): void {
         Auth::requirePermission('settings.view');
         $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $stmt = $this->db->prepare("SELECT * FROM funding_types WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
         $funding = $stmt->fetch();
         if (!$funding) {
-            http_response_code(404);
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(404);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Funding type not found.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            if (!headers_sent()) http_response_code(404);
             echo "Funding type not found";
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'funding' => [
+                    'record_id' => encode_id((int)$funding['id']),
+                    'name' => $funding['name'],
+                    'status' => $funding['status'] ?? 'active'
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1559,20 +1952,57 @@ class AdminController {
         Auth::requirePermission('settings.edit');
         $id = $this->resolveId($id);
         $encId = encode_id($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
-            header("Location: " . url("/admin/academic/funding/$encId/edit"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
         $name = trim($_POST['name'] ?? '');
         $status = trim($_POST['status'] ?? 'active');
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
         if ($name === '') {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Funding Type Name is required.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'Funding Type Name is required.';
-            header("Location: " . url("/admin/academic/funding/$encId/edit"));
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
+        // Duplicate name check (excluding current id)
+        $stmtCheck = $this->db->prepare("SELECT id FROM funding_types WHERE LOWER(name) = LOWER(:name) AND id != :id LIMIT 1");
+        $stmtCheck->execute(['name' => $name, 'id' => $id]);
+        if ($stmtCheck->fetch()) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'A Funding Type with this name already exists.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'A Funding Type with this name already exists.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding/$encId/edit"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1580,8 +2010,25 @@ class AdminController {
         $stmt->execute(['name' => $name, 'status' => $status, 'id' => $id]);
 
         $this->logAction('funding_update', 'academic', 'funding_types', $id, ['name' => $name]);
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'message' => 'Funding Type updated successfully.',
+                'funding' => [
+                    'id' => $encId,
+                    'name' => $name,
+                    'status' => $status
+                ]
+            ]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        }
+
         $_SESSION['admin_success'] = 'Funding Type updated successfully.';
-        header("Location: " . url("/admin/academic/funding"));
+        if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 
@@ -1591,26 +2038,76 @@ class AdminController {
     public function fundingDelete(string $id): void {
         Auth::requirePermission('settings.edit');
         $id = $this->resolveId($id, true);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'CSRF verification failed']);
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
-        $stmt = $this->db->prepare("DELETE FROM funding_types WHERE id = ?");
-        $stmt->execute([$id]);
+        // Check if funding type is currently used by any scholarships
+        $stmtF = $this->db->prepare("SELECT name FROM funding_types WHERE id = ? LIMIT 1");
+        $stmtF->execute([$id]);
+        $existing = $stmtF->fetch();
+        if ($existing) {
+            $stmtCount = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE LOWER(funding_type) = LOWER(:name)");
+            $stmtCount->execute(['name' => $existing['name']]);
+            if ((int)$stmtCount->fetchColumn() > 0) {
+                $errMsg = 'Cannot delete this Funding Type because it is currently assigned to one or more scholarships.';
+                if ($isAjax) {
+                    if (!headers_sent()) http_response_code(409);
+                    if (!headers_sent()) header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'error' => $errMsg]);
+                    if (defined('TESTING_MODE') && TESTING_MODE) return;
+                    exit();
+                }
+                $_SESSION['admin_errors'] = $errMsg;
+                if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+        }
 
-        $this->logAction('funding_delete', 'academic', 'funding_types', $id);
-        
-        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => true, 'message' => 'Funding Type deleted successfully.']);
+        try {
+            $stmt = $this->db->prepare("DELETE FROM funding_types WHERE id = ?");
+            $stmt->execute([$id]);
+
+            $this->logAction('funding_delete', 'academic', 'funding_types', $id);
+            
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Funding Type deleted successfully.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_success'] = 'Funding Type deleted successfully.';
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
+            exit();
+        } catch (\PDOException $e) {
+            $errMsg = 'Cannot delete this Funding Type because it is currently linked to existing records.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(409);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $errMsg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $errMsg;
+            if (!headers_sent()) header("Location: " . url("/admin/academic/funding"));
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
-        $_SESSION['admin_success'] = 'Funding Type deleted successfully.';
-        header("Location: " . url("/admin/academic/funding"));
     }
 
     // ==========================================
@@ -3827,25 +4324,26 @@ class AdminController {
     public function fieldsData(): void {
         Auth::requireRole(['admin', 'employee']);
         if (!Auth::hasPermission('settings.view')) {
-            http_response_code(403);
-            header('Content-Type: application/json');
+            if (!headers_sent()) http_response_code(403);
+            if (!headers_sent()) header('Content-Type: application/json');
             echo json_encode(['error' => 'Forbidden']);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
         $db = \App\Services\Database::connection();
         $columns = [
             'id' => 'id',
             'name' => 'name',
-            'status' => 'status'
+            'description' => 'description'
         ];
-        $searchableColumns = ['name', 'status'];
+        $searchableColumns = ['name', 'description'];
         $columnMapping = [
             'name' => 'name',
-            'status' => 'status'
+            'description' => 'description'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
-            'academic_fields',
+            'fields_of_study',
             $columns,
             $searchableColumns,
             $columnMapping,
@@ -3858,17 +4356,19 @@ class AdminController {
                 return $row;
             }
         );
-        header('Content-Type: application/json');
+        if (!headers_sent()) header('Content-Type: application/json');
         echo json_encode($result);
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 
     public function degreesData(): void {
         Auth::requireRole(['admin', 'employee']);
         if (!Auth::hasPermission('settings.view')) {
-            http_response_code(403);
-            header('Content-Type: application/json');
+            if (!headers_sent()) http_response_code(403);
+            if (!headers_sent()) header('Content-Type: application/json');
             echo json_encode(['error' => 'Forbidden']);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
         $db = \App\Services\Database::connection();
@@ -3899,17 +4399,19 @@ class AdminController {
                 return $row;
             }
         );
-        header('Content-Type: application/json');
+        if (!headers_sent()) header('Content-Type: application/json');
         echo json_encode($result);
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 
     public function fundingData(): void {
         Auth::requireRole(['admin', 'employee']);
         if (!Auth::hasPermission('settings.view')) {
-            http_response_code(403);
-            header('Content-Type: application/json');
+            if (!headers_sent()) http_response_code(403);
+            if (!headers_sent()) header('Content-Type: application/json');
             echo json_encode(['error' => 'Forbidden']);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
         $db = \App\Services\Database::connection();
@@ -3938,8 +4440,9 @@ class AdminController {
                 return $row;
             }
         );
-        header('Content-Type: application/json');
+        if (!headers_sent()) header('Content-Type: application/json');
         echo json_encode($result);
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 

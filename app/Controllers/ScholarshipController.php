@@ -155,6 +155,20 @@ class ScholarshipController {
     }
 
     /**
+     * Helper to resolve encrypted token or raw integer ID to numeric ID
+     */
+    private function resolveScholarshipId(string $id): int {
+        $rawId = decode_id($id);
+        if ($rawId === null && is_numeric($id) && (int)$id > 0) {
+            $rawId = (int)$id;
+        }
+        if ($rawId === null) {
+            $this->abort404();
+        }
+        return $rawId;
+    }
+
+    /**
      * GET /admin/scholarships
      * Admin/Employee Dashboard Listing
      */
@@ -253,18 +267,23 @@ class ScholarshipController {
 
         // Fetch dropdown values
         $countries = $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $fundings = $db->query("SELECT id, name FROM funding_types ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
         view('admin.scholarships.index', [
             'scholarships' => $scholarships,
             'countries' => $countries,
+            'fundings' => $fundings,
             'page' => $page,
             'totalPages' => $totalPages,
             'totalCount' => $totalCount,
             'search' => $search,
             'countryId' => $countryId,
+            'selectedCountry' => $countryId,
             'degree' => $degree,
             'funding' => $funding,
+            'selectedFunding' => $funding,
             'status' => $status,
+            'selectedStatus' => $status,
             'verified' => $verified,
             'featured' => $featured,
             'sort' => $sort,
@@ -728,11 +747,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.edit');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         // 1. Fetch main record
@@ -808,11 +823,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.edit');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         // Verify exists
@@ -1201,11 +1212,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.delete');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1252,11 +1259,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.publish');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1336,11 +1339,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.archive');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1372,11 +1371,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.publish');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -1412,11 +1407,7 @@ class ScholarshipController {
         Auth::requireRole(['admin', 'employee']);
         Auth::requirePermission('scholarships.create');
 
-        $rawId = decode_id($id);
-        if ($rawId === null) {
-            $this->abort404();
-        }
-        $id = $rawId;
+        $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
 
         $csrf = $_POST['csrf_token'] ?? null;
@@ -2037,6 +2028,15 @@ class ScholarshipController {
             $docReadiness = $readinessService->calculateForScholarship(Auth::userId(), $id);
         }
 
+        // 12. Check if user is authorized to access official application link (logged in with active paid subscription, or staff)
+        $canApply = false;
+        if (Auth::isAuthenticated()) {
+            $user = Auth::currentUser();
+            $isAdminOrStaff = $user && in_array($user['role_name'] ?? '', ['super_admin', 'admin', 'employee'], true);
+            $hasActivePaid = \App\Services\SubscriptionService::hasActivePaidSubscription((int)$user['id']);
+            $canApply = $isAdminOrStaff || $hasActivePaid;
+        }
+
         view('scholarships.show', [
             'scholarship' => $scholarship,
             'fields' => $fields,
@@ -2050,7 +2050,8 @@ class ScholarshipController {
             'rules' => $rules,
             'deadlineStatus' => $deadlineStatus,
             'matchResult' => $matchResult,
-            'docReadiness' => $docReadiness
+            'docReadiness' => $docReadiness,
+            'canApply' => $canApply
         ]);
     }
 
@@ -2616,9 +2617,10 @@ class ScholarshipController {
     public function scholarshipsData(): void {
         Auth::requireRole(['admin', 'employee']);
         if (!Auth::hasPermission('scholarships.view')) {
-            http_response_code(403);
-            header('Content-Type: application/json');
+            if (!headers_sent()) http_response_code(403);
+            if (!headers_sent()) header('Content-Type: application/json');
             echo json_encode(['error' => 'Forbidden']);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
         $db = \App\Services\Database::connection();
@@ -2626,15 +2628,36 @@ class ScholarshipController {
         $customWhere = "";
         $customParams = [];
         
-        if (!empty($_GET['status'])) {
+        // Status filter: only filter when a specific status is requested (e.g. 'draft', 'published', 'archived').
+        // When status is empty or 'all', display all scholarships (both draft and published).
+        if (!empty($_GET['status']) && $_GET['status'] !== 'all') {
             $customWhere = "scholarships.status = :status";
-            $customParams['status'] = $_GET['status'];
+            $customParams['status'] = trim($_GET['status']);
         }
-        if (!empty($_GET['country_id'])) {
+
+        // Custom search query from filter card
+        if (!empty($_GET['search_query'])) {
+            $sq = '%' . trim($_GET['search_query']) . '%';
             if ($customWhere !== "") $customWhere .= " AND ";
-            $customWhere .= "scholarships.country_id = :country_id";
-            $customParams['country_id'] = $_GET['country_id'];
+            $customWhere .= "(scholarships.title LIKE :sq_title OR scholarships.provider_name LIKE :sq_provider OR countries.name LIKE :sq_country OR scholarships.slug LIKE :sq_slug)";
+            $customParams['sq_title'] = $sq;
+            $customParams['sq_provider'] = $sq;
+            $customParams['sq_country'] = $sq;
+            $customParams['sq_slug'] = $sq;
         }
+
+        // Country filter
+        if (!empty($_GET['country_id'])) {
+            if ($_GET['country_id'] === 'multi') {
+                if ($customWhere !== "") $customWhere .= " AND ";
+                $customWhere .= "scholarships.country_id IS NULL";
+            } else if (is_numeric($_GET['country_id'])) {
+                if ($customWhere !== "") $customWhere .= " AND ";
+                $customWhere .= "scholarships.country_id = :country_id";
+                $customParams['country_id'] = (int)$_GET['country_id'];
+            }
+        }
+
         if (!empty($_GET['degree_level_id'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
             $customWhere .= "EXISTS (
@@ -2644,11 +2667,15 @@ class ScholarshipController {
             )";
             $customParams['degree_level_id'] = $_GET['degree_level_id'];
         }
+
+        // Funding type filter
         if (!empty($_GET['funding_type'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
-            $customWhere .= "scholarships.funding_type = :funding_type";
-            $customParams['funding_type'] = $_GET['funding_type'];
+            $customWhere .= "(scholarships.funding_type = :funding_type OR scholarships.funding_type LIKE :funding_type_like)";
+            $customParams['funding_type'] = trim($_GET['funding_type']);
+            $customParams['funding_type_like'] = '%' . trim($_GET['funding_type']) . '%';
         }
+
         if (!empty($_GET['expired'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
             $customWhere .= "scholarships.application_deadline < CURDATE()";
@@ -2696,8 +2723,9 @@ class ScholarshipController {
                 return $row;
             }
         );
-        header('Content-Type: application/json');
+        if (!headers_sent()) header('Content-Type: application/json');
         echo json_encode($result);
+        if (defined('TESTING_MODE') && TESTING_MODE) return;
         exit();
     }
 }

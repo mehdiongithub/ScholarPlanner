@@ -84,7 +84,10 @@ $og_image = $ogImage ?? 'https://scholarplanner.com/assets/images/logo.webp';
                         <i data-lucide="arrow-right" style="width:16px;height:16px;margin-left:4px"></i>
                     </a>
                 <?php else: ?>
-                    <a href="<?= url('/login') ?>" class="btn-login">Log In</a>
+                    <a href="<?= url('/login') ?>" class="btn-login">
+                        <i data-lucide="log-in" style="width:15px;height:15px"></i>
+                        <span>Log In</span>
+                    </a>
                     <a href="<?= url('/register') ?>" class="btn btn-primary btn-get-started">Get Started</a>
                 <?php endif; ?>
             </div>
@@ -119,7 +122,10 @@ $og_image = $ogImage ?? 'https://scholarplanner.com/assets/images/logo.webp';
             <?php if ($user): ?>
                 <a href="<?= url($user['role_name'] === 'visitor' ? '/dashboard' : '/admin') ?>" class="btn btn-primary" style="justify-content:center">Dashboard</a>
             <?php else: ?>
-                <a href="<?= url('/login') ?>" class="btn-login" style="display:block;margin-bottom:12px">Log In</a>
+                <a href="<?= url('/login') ?>" class="btn-login" style="display:flex;margin-bottom:12px;align-items:center;justify-content:center;gap:8px;">
+                    <i data-lucide="log-in" style="width:16px;height:16px"></i>
+                    <span>Log In</span>
+                </a>
                 <a href="<?= url('/register') ?>" class="btn btn-primary" style="justify-content:center">Get Started</a>
             <?php endif; ?>
         </div>

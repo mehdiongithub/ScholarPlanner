@@ -69,6 +69,10 @@ $router->get('/admin/scholarships/create', ['App\Controllers\ScholarshipControll
 $router->post('/admin/scholarships', ['App\Controllers\ScholarshipController', 'store']);
 $router->get('/admin/scholarships/{id}/edit', ['App\Controllers\ScholarshipController', 'edit']);
 $router->post('/admin/scholarships/{id}/update', ['App\Controllers\ScholarshipController', 'update']);
+$router->get('/admin/scholarships/{id}/update', function(string $id) {
+    header("Location: " . url('/admin/scholarships/' . $id . '/edit'));
+    exit();
+});
 $router->post('/admin/scholarships/{id}/delete', ['App\Controllers\ScholarshipController', 'delete']);
 $router->post('/admin/scholarships/{id}/publish', ['App\Controllers\ScholarshipController', 'publish']);
 $router->post('/admin/scholarships/{id}/unpublish', ['App\Controllers\ScholarshipController', 'unpublish']);

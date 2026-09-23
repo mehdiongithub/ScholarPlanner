@@ -4,6 +4,14 @@ $description = $scholarship['short_description'] ?: substr(strip_tags($scholarsh
 $canonicalUrl = 'https://scholarplanner.com/scholarships/' . $scholarship['slug'];
 $ogType = 'article';
 $ogImage = !empty($scholarship['cover_image']) ? (str_starts_with($scholarship['cover_image'], 'http') ? $scholarship['cover_image'] : 'https://scholarplanner.com' . url($scholarship['cover_image'])) : 'https://scholarplanner.com/assets/images/logo.webp';
+
+$canApply = $canApply ?? (
+    \App\Services\Auth::isAuthenticated() && (
+        in_array(\App\Services\Auth::currentUser()['role_name'] ?? '', ['super_admin', 'admin', 'employee'], true) ||
+        \App\Services\SubscriptionService::hasActivePaidSubscription(\App\Services\Auth::userId())
+    )
+);
+
 include ROOT_PATH . '/app/Views/layouts/public_header.php';
 ?>
 
@@ -46,6 +54,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             padding: 0 20px;
             flex-grow: 1;
         }
+        .banner-card {
             margin-bottom: 32px;
             display: flex;
             align-items: center;
@@ -197,17 +206,15 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         .btn {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
             gap: 8px;
-            padding: 12px 24px;
             font-size: 0.875rem;
             font-weight: 600;
+            padding: 10px 20px;
             border-radius: var(--radius-lg);
-            text-decoration: none;
+            transition: all 0.2s;
             cursor: pointer;
             border: none;
-            width: 100%;
-            transition: all 0.2s;
+            text-decoration: none;
         }
         .btn-primary {
             background: var(--primary);
@@ -223,6 +230,10 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         }
         .btn-secondary:hover {
             background: #f1f5f9;
+        }
+        .apply-box .btn {
+            width: 100%;
+            justify-content: center;
         }
         .spec-grid {
             display: grid;
@@ -292,26 +303,9 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         .crit-warning { color: #f59e0b; }
         .crit-danger { color: #ef4444; }
     </style>
-</head>
-<body>
-    <div class="page-layout">
-        <header class="main-header" role="banner">
-            <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-box-img">
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>
-                <?php if (\App\Services\Auth::isAuthenticated()): ?>
-                    <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-                    <a href="<?= url('/documents') ?>" class="nav-link">Documents</a>
-                    <a href="<?= url('/applications') ?>" class="nav-link">Applications</a>
-                <?php else: ?>
-                    <a href="<?= url('/login') ?>" class="nav-link">Log In</a>
-                <?php endif; ?>
-            </div>
-        </header>
 
-        <main class="page-content">
+    <div class="page-layout">
+        <div class="page-content">
             <!-- Cover Image Section -->
             <div style="margin-bottom: 24px; border-radius: var(--radius-2xl); overflow: hidden; height: clamp(200px, 30vw, 320px); border: 1px solid var(--border); box-shadow: var(--shadow-sm); position: relative; background: #fff;">
                 <?php if (!empty($scholarship['cover_image'])): ?>
@@ -635,16 +629,39 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                             </div>
                         </div>
 
-                        <?php if (!empty($scholarship['official_application_url'])): ?>
-                            <a href="<?= e($scholarship['official_application_url']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:12px;">
-                                <span>Apply on Official Website</span>
-                                <i data-lucide="external-link" style="width:16px; height:16px;"></i>
-                            </a>
-                        <?php elseif (!empty($scholarship['official_website'])): ?>
-                            <a href="<?= e($scholarship['official_website']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:12px;">
-                                <span>Visit Official Portal</span>
-                                <i data-lucide="external-link" style="width:16px; height:16px;"></i>
-                            </a>
+                        <?php if ($canApply): ?>
+                            <?php if (!empty($scholarship['official_application_url'])): ?>
+                                <a href="<?= e($scholarship['official_application_url']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:12px;">
+                                    <span>Apply on Official Website</span>
+                                    <i data-lucide="external-link" style="width:16px; height:16px;"></i>
+                                </a>
+                            <?php elseif (!empty($scholarship['official_website'])): ?>
+                                <a href="<?= e($scholarship['official_website']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:12px;">
+                                    <span>Visit Official Portal</span>
+                                    <i data-lucide="external-link" style="width:16px; height:16px;"></i>
+                                </a>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <div style="margin-bottom: 16px; padding: 14px; background: #f8fafc; border: 1px dashed var(--border); border-radius: var(--radius-lg); text-align: center;">
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 0.875rem; color: var(--text-800); margin-bottom: 6px;">
+                                    <i data-lucide="lock" style="width: 15px; height: 15px; color: #f59e0b;"></i>
+                                    <span>Official Application Link</span>
+                                </div>
+                                <p style="font-size: 0.8125rem; color: var(--text-500); margin-bottom: 12px; line-height: 1.4;">
+                                    Direct application links are available exclusively to active paid subscribers.
+                                </p>
+                                <?php if (!\App\Services\Auth::isAuthenticated()): ?>
+                                    <a href="<?= url('/login') ?>" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 0.8125rem; padding: 8px 16px; min-height: 38px; gap: 6px;">
+                                        <i data-lucide="log-in" style="width: 14px; height: 14px;"></i>
+                                        <span>Log In to Access</span>
+                                    </a>
+                                <?php else: ?>
+                                    <a href="<?= url('/pricing') ?>" class="btn btn-primary" style="width: 100%; justify-content: center; font-size: 0.8125rem; padding: 8px 16px; min-height: 38px; gap: 6px;">
+                                        <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+                                        <span>Upgrade Plan to Apply</span>
+                                    </a>
+                                <?php endif; ?>
+                            </div>
                         <?php endif; ?>
 
                         <?php if (\App\Services\Auth::isAuthenticated() && \App\Services\Auth::currentUser()['role_name'] === 'visitor'): ?>
@@ -678,7 +695,11 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                                     <i data-lucide="shield-check" style="width:14px; height:14px; color:#059669;"></i>
                                     <span>Verified Source Link</span>
                                 </div>
-                                <a href="<?= e($source['source_url']) ?>" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; word-break:break-all;"><?= e($source['source_name']) ?></a>
+                                <?php if ($canApply): ?>
+                                    <a href="<?= e($source['source_url']) ?>" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; word-break:break-all;"><?= e($source['source_name']) ?></a>
+                                <?php else: ?>
+                                    <span style="color:var(--text-600);"><?= e($source['source_name']) ?></span>
+                                <?php endif; ?>
                                 <?php if (!empty($source['last_checked_at'])): ?>
                                     <div style="margin-top:4px;">Last verified: <?= e(date('M d, Y', strtotime($source['last_checked_at']))) ?></div>
                                 <?php endif; ?>
@@ -687,7 +708,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                     </div>
                 </div>
             </div>
-        </main>
+        </div>
     </div>
 
 <?php include ROOT_PATH . '/app/Views/layouts/public_footer.php'; ?>

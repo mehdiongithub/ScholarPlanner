@@ -1,58 +1,214 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
-<div style="margin-bottom: 24px;">
-    <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Academic Configuration</h1>
-    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage Fields of Study, Academic Degrees, and Funding Types.</p>
+<style>
+/* Modal overlay & flex centering */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+}
+.modal-overlay.active {
+    display: flex !important;
+}
+.modal-box {
+    background: #ffffff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 540px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    border: 1px solid #e2e8f0;
+    animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+.modal-box-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #ffffff;
+}
+.modal-body-scroll {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+.modal-box-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #f1f5f9;
+    background: #f8fafc;
+}
+.btn-action-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #2563eb;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+}
+.btn-action-edit:hover {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+.btn-action-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #dc2626;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-action-delete:hover {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+.data-table-card {
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+</style>
+
+<!-- Header & Add Button Bar -->
+<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Academic Configuration</h1>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Manage Fields of Study, Academic Degrees, and Funding Types.</p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="openAddFundingModal()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-weight: 600; border-radius: 8px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        <i data-lucide="plus" style="width: 18px; height: 18px;"></i>
+        <span>Add Funding Type</span>
+    </button>
 </div>
 
 <!-- Navigation Tabs -->
-<div class="location-nav">
+<div class="location-nav" style="margin-bottom: 24px;">
     <a href="<?= url('/admin/academic/fields') ?>" class="location-nav-link">Fields of Study</a>
     <a href="<?= url('/admin/academic/degrees') ?>" class="location-nav-link">Degrees</a>
     <a href="<?= url('/admin/academic/funding') ?>" class="location-nav-link active">Funding Types</a>
 </div>
 
-<div class="location-layout">
-    <!-- Quick Add Form -->
-    <div>
-        <div class="form-card">
-            <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Add New Funding Type</h2>
-            <form action="<?= url('/admin/academic/funding') ?>" method="POST">
-                <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                
-                <div class="form-group">
-                    <label class="form-label" for="name">Funding Type Name</label>
-                    <input type="text" name="name" id="name" class="form-control" placeholder="e.g. Fully Funded" required>
+<!-- Full Width Data Table Card -->
+<div class="data-table-card">
+    <div style="overflow-x: auto;">
+        <table class="employees-table" id="funding-datatable" style="width:100%">
+            <thead>
+                <tr>
+                    <th style="width: 55%;">Funding Type Name</th>
+                    <th style="width: 20%;">Status</th>
+                    <th style="width: 25%; text-align: center;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add / Edit Funding Type Modal -->
+<div id="fundingModal" class="modal-overlay" style="display: none;">
+    <div class="modal-box">
+        <!-- Header -->
+        <div class="modal-box-header">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div id="fundingModalIcon" style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i data-lucide="coins" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 id="fundingModalTitle" style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a;">Add New Funding Type</h3>
+                    <p id="fundingModalSubtitle" style="margin: 2px 0 0 0; font-size: 0.8125rem; color: #64748b;">Configure funding type name and activation status.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeFundingModal()" aria-label="Close" style="background: none; border: none; cursor: pointer; color: #94a3b8; padding: 6px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <!-- Form Body -->
+        <form id="fundingForm" onsubmit="submitFundingForm(event)">
+            <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
+            <input type="hidden" id="fundingRecordId" name="record_id" value="">
+
+            <div class="modal-body-scroll">
+                <!-- In-modal Alert Notification -->
+                <div id="fundingModalAlert" style="display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: 8px; font-size: 0.875rem; line-height: 1.4;"></div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label" for="modal_funding_name" style="font-weight: 600; font-size: 0.875rem; color: #334155; margin-bottom: 6px; display: block;">
+                        Funding Type Name <span style="color: #ef4444;">*</span>
+                    </label>
+                    <input type="text" name="name" id="modal_funding_name" class="form-control" placeholder="e.g. Fully Funded" required maxlength="50" style="padding: 10px 14px; font-size: 0.875rem; border: 1px solid #cbd5e1; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                    <small style="color: #64748b; font-size: 0.75rem; margin-top: 4px; display: block;">Must be unique across all funding types.</small>
                 </div>
 
-                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 12px;">Add Funding Type</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Data Table -->
-    <div>
-        <div class="data-table-card">
-            <div style="overflow-x: auto;">
-                <table class="employees-table" id="funding-datatable" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>Funding Type Name</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                </table>
+                <div class="form-group" style="margin-bottom: 8px;">
+                    <label class="form-label" for="modal_funding_status" style="font-weight: 600; font-size: 0.875rem; color: #334155; margin-bottom: 6px; display: block;">
+                        Status
+                    </label>
+                    <select name="status" id="modal_funding_status" class="form-control" style="padding: 10px 14px; font-size: 0.875rem; border: 1px solid #cbd5e1; border-radius: 8px; width: 100%; box-sizing: border-box; background: #ffffff;">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                    <small style="color: #64748b; font-size: 0.75rem; margin-top: 4px; display: block;">Inactive funding types cannot be chosen for new scholarships.</small>
+                </div>
             </div>
-        </div>
+
+            <!-- Footer -->
+            <div class="modal-box-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeFundingModal()" style="padding: 9px 18px; font-size: 0.875rem; font-weight: 600; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; cursor: pointer;">Cancel</button>
+                <button type="submit" id="fundingSubmitBtn" class="btn btn-primary" style="padding: 9px 20px; font-size: 0.875rem; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <span id="fundingSubmitBtnText">Add Funding Type</span>
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
 <script>
 $(document).ready(function() {
-    ScholarPlannerDataTable('#funding-datatable', {
+    var table = ScholarPlannerDataTable('#funding-datatable', {
         ajax: {
             url: '<?= url("/admin/academic/funding/data") ?>',
             type: 'GET'
@@ -61,42 +217,194 @@ $(document).ready(function() {
             { 
                 data: 'name',
                 render: function(data, type, row) {
-                    return '<strong>' + data + '</strong>';
+                    var safeName = $('<div>').text(data || '').html();
+                    return '<strong style="color: #0f172a; font-weight: 600;">' + safeName + '</strong>';
                 }
             },
             { 
                 data: 'status',
                 render: function(data, type, row) {
-                    var cls = data === 'active' ? 'active' : 'inactive';
-                    return '<span class="status-badge ' + cls + '">' + data + '</span>';
+                    var statusVal = (data || 'active').toLowerCase();
+                    var cls = statusVal === 'active' ? 'active' : 'inactive';
+                    var label = statusVal.charAt(0).toUpperCase() + statusVal.slice(1);
+                    return '<span class="status-badge ' + cls + '">' + label + '</span>';
                 }
             },
             {
                 data: null,
                 orderable: false,
                 render: function(data, type, row) {
-                    var editUrl = '<?= url("/admin/academic/funding") ?>' + '/' + row.record_id + '/edit';
                     var safeName = $('<div>').text(row.name || '').html();
-                    return '<a href="' + editUrl + '" class="action-link">Edit</a>' +
-                           '<a href="javascript:void(0)" class="action-link danger btn-delete-funding" data-id="' + row.record_id + '" data-name="' + safeName + '">Delete</a>';
+                    var safeStatus = $('<div>').text(row.status || 'active').html();
+                    return '<div style="display: flex; gap: 8px; justify-content: center; align-items: center;">' +
+                           '<button type="button" class="btn-action-edit btn-edit-funding" data-id="' + row.record_id + '" data-name="' + safeName + '" data-status="' + safeStatus + '">' +
+                           '<i data-lucide="edit-2" style="width: 14px; height: 14px;"></i> Edit</button>' +
+                           '<button type="button" class="btn-action-delete btn-delete-funding" data-id="' + row.record_id + '" data-name="' + safeName + '">' +
+                           '<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> Delete</button>' +
+                           '</div>';
                 }
             }
-        ]
+        ],
+        drawCallback: function() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
     });
 
+    // Edit button click delegation
+    $(document).on('click', '.btn-edit-funding', function(e) {
+        e.preventDefault();
+        var recordId = $(this).attr('data-id');
+        var name = $(this).attr('data-name');
+        var status = $(this).attr('data-status');
+        openEditFundingModal(recordId, name, status);
+    });
+
+    // Delete button click delegation
     $(document).on('click', '.btn-delete-funding', function(e) {
         e.preventDefault();
         var recordId = $(this).attr('data-id');
         var name = $(this).attr('data-name');
         deleteFunding(recordId, name);
     });
+
+    // Close modal on escape
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            if ($('#fundingModal').is(':visible')) {
+                closeFundingModal();
+            }
+        }
+    });
+
+    // Close modal on click outside box
+    $('#fundingModal').on('click', function(e) {
+        if (e.target === this) {
+            closeFundingModal();
+        }
+    });
 });
+
+function openAddFundingModal() {
+    $('#fundingModalTitle').text('Add New Funding Type');
+    $('#fundingModalSubtitle').text('Configure funding type name and activation status.');
+    $('#fundingSubmitBtnText').text('Add Funding Type');
+    $('#fundingRecordId').val('');
+    $('#modal_funding_name').val('');
+    $('#modal_funding_status').val('active');
+    $('#fundingModalAlert').hide().removeClass('alert-danger alert-success').empty();
+    
+    var formAction = '<?= url("/admin/academic/funding") ?>';
+    $('#fundingForm').attr('action', formAction).attr('data-mode', 'add');
+    
+    $('#fundingModal').css('display', 'flex').addClass('active');
+    setTimeout(function() {
+        $('#modal_funding_name').focus();
+    }, 100);
+
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+function openEditFundingModal(recordId, name, status) {
+    $('#fundingModalTitle').text('Edit Funding Type');
+    $('#fundingModalSubtitle').text('Modify metadata name and activation statuses.');
+    $('#fundingSubmitBtnText').text('Save Changes');
+    $('#fundingRecordId').val(recordId);
+    $('#modal_funding_name').val(name || '');
+    $('#modal_funding_status').val(status || 'active');
+    $('#fundingModalAlert').hide().removeClass('alert-danger alert-success').empty();
+
+    var formAction = '<?= url("/admin/academic/funding") ?>/' + recordId + '/update';
+    $('#fundingForm').attr('action', formAction).attr('data-mode', 'edit');
+
+    $('#fundingModal').css('display', 'flex').addClass('active');
+    setTimeout(function() {
+        $('#modal_funding_name').focus();
+    }, 100);
+
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+function closeFundingModal() {
+    $('#fundingModal').hide().removeClass('active');
+    $('#fundingForm')[0].reset();
+    $('#fundingRecordId').val('');
+    $('#fundingModalAlert').hide().empty();
+    $('#fundingSubmitBtn').prop('disabled', false);
+}
+
+function submitFundingForm(event) {
+    event.preventDefault();
+    var form = document.getElementById('fundingForm');
+    var actionUrl = form.getAttribute('action');
+    var formData = new FormData(form);
+    var submitBtn = document.getElementById('fundingSubmitBtn');
+    var submitBtnText = document.getElementById('fundingSubmitBtnText');
+    var alertBox = document.getElementById('fundingModalAlert');
+
+    submitBtn.disabled = true;
+    var originalText = submitBtnText.textContent;
+    submitBtnText.textContent = 'Saving...';
+    $(alertBox).hide().empty();
+
+    fetch(actionUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        return response.json().then(data => ({
+            status: response.status,
+            ok: response.ok,
+            data: data
+        }));
+    })
+    .then(res => {
+        submitBtn.disabled = false;
+        submitBtnText.textContent = originalText;
+
+        if (res.ok && res.data.success) {
+            closeFundingModal();
+            $('#funding-datatable').DataTable().ajax.reload(null, false);
+        } else {
+            var errorMsg = (res.data && res.data.error) ? res.data.error : 'An error occurred while saving.';
+            $(alertBox)
+                .css({
+                    'display': 'block',
+                    'background': '#fef2f2',
+                    'border': '1px solid #fee2e2',
+                    'color': '#991b1b'
+                })
+                .html('<strong>Error:</strong> ' + $('<div>').text(errorMsg).html());
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        submitBtn.disabled = false;
+        submitBtnText.textContent = originalText;
+        $(alertBox)
+            .css({
+                'display': 'block',
+                'background': '#fef2f2',
+                'border': '1px solid #fee2e2',
+                'color': '#991b1b'
+            })
+            .html('<strong>Error:</strong> Failed to communicate with server. Please try again.');
+    });
+}
 
 function deleteFunding(recordId, name) {
     adminConfirm({
         title: 'Delete Funding Type',
         message: 'Are you sure you want to delete funding type ' + (name ? '<strong>"' + adminEscapeHtml(name) + '"</strong>' : 'this record') + '?',
-        subtext: 'This action cannot be undone.',
+        subtext: 'This action cannot be undone and will permanently remove this funding type.',
         confirmText: 'Yes, Delete',
         confirmClass: 'btn-danger',
         icon: 'trash-2'

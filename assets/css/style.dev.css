@@ -381,29 +381,53 @@
         .header-actions {
             display: none;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             flex-shrink: 0;
         }
 
         .header-actions .btn-login {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
             font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--text-600);
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
+            font-weight: 600;
+            color: var(--text-700);
+            padding: 8px 18px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: #ffffff;
             transition: all 150ms ease;
+            white-space: nowrap;
             min-height: 40px;
+            line-height: 1.2;
+            text-decoration: none;
+            flex-shrink: 0;
+            cursor: pointer;
         }
 
         .header-actions .btn-login:hover {
-            color: var(--text-900);
-            background: var(--bg-50);
+            color: var(--primary);
+            background: var(--primary-50);
+            border-color: var(--primary-200);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .header-actions .btn-login i,
+        .header-actions .btn-login svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
         }
 
         .header-actions .btn-get-started {
             font-size: 0.875rem;
             padding: 8px 20px;
             min-height: 40px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            width: auto;
         }
 
         /* Mobile menu button */
@@ -590,6 +614,21 @@
             }
             .mobile-menu-btn {
                 display: none;
+            }
+        }
+
+        @media (min-width: 1024px) and (max-width: 1180px) {
+            .nav-desktop a {
+                padding: 8px 10px;
+                font-size: 0.8125rem;
+            }
+            .header-actions {
+                gap: 6px;
+            }
+            .header-actions .btn-login,
+            .header-actions .btn-get-started {
+                padding: 8px 14px;
+                font-size: 0.8125rem;
             }
         }
 

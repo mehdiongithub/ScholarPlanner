@@ -606,6 +606,17 @@ class ScholarshipMatchingService {
     }
 
     private function evaluateCgpa(?array $education, ?float $minCgpa, ?float $cgpaScale): array {
+        if ($education && !empty($education['cgpa'])) {
+            $userCgpa = (float)$education['cgpa'];
+            $userScale = (float)($education['cgpa_scale'] ?? 4.0);
+            if ($userCgpa < 0 || $userScale <= 0) {
+                return ['status' => 'FAILED', 'message' => 'Academic records contain negative values or zero scales, which are invalid.'];
+            }
+            if ($userCgpa > $userScale) {
+                return ['status' => 'FAILED', 'message' => "Your CGPA ($userCgpa) cannot be greater than its scale ($userScale)."];
+            }
+        }
+
         if ($minCgpa === null) {
             return ['status' => 'MATCHED', 'message' => 'No minimum CGPA required.'];
         }

@@ -147,20 +147,9 @@ if ($isStudent) {
             gap: 12px;
         }
     </style>
-</head>
-<body>
-    <div class="pricing-layout">
-        <header class="main-header" role="banner">
-            <a href="/" class="logo-box">
-                <img src="<?= asset('assets/images/logo.webp') ?>" alt="ScholarPlanner Logo" class="logo-box-img">
-            </a>
-            <div class="nav-links">
-                <a href="<?= url('/scholarships') ?>" class="nav-link">Search Scholarships</a>
-                <a href="<?= url('/dashboard') ?>" class="nav-link">Dashboard</a>
-            </div>
-        </header>
 
-        <main class="pricing-container">
+    <div class="pricing-layout">
+        <div class="pricing-container">
             <div class="pricing-header">
                 <h1>Simple, Transparent Pricing</h1>
                 <p>Choose the plan that fits your academic journey and scholarship applications.</p>
@@ -271,7 +260,7 @@ if ($isStudent) {
                     </div>
                 <?php endforeach; ?>
             </div>
-        </main>
+        </div>
     </div>
 
 <?php

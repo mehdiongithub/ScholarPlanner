@@ -25,6 +25,26 @@ class SubscriptionService {
     ];
 
     /**
+     * Check if a user has an active, paid subscription.
+     * Returns true if user has an active, protected, or valid non-expired cancelled paid subscription.
+     */
+    public static function hasActivePaidSubscription(?int $userId): bool {
+        if (!$userId) {
+            return false;
+        }
+
+        $plan = self::getActivePlan($userId);
+        $slug = $plan['plan_slug'] ?? '';
+        $price = (float)($plan['price'] ?? 0);
+        $status = $plan['status'] ?? '';
+
+        $isPaid = ($price > 0) || ($slug === 'premium-monthly');
+        $hasValidStatus = in_array($status, ['active', 'protected', 'cancelled'], true);
+
+        return $isPaid && $hasValidStatus;
+    }
+
+    /**
      * Determine if a user has access to a specific feature.
      */
     public static function can(?int $userId, string $feature): bool {

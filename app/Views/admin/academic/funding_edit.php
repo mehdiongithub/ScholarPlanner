@@ -25,7 +25,7 @@
     }
 </style>
 
-<a href="/admin/academic/funding" class="back-btn">
+<a href="<?= url('/admin/academic/funding') ?>" class="back-btn">
     <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
     <span>Back to Funding Types</span>
 </a>
@@ -34,7 +34,7 @@
     <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0 0 8px 0; color: #1e293b;">Edit Funding Type</h1>
     <p style="margin: 0 0 24px 0; color: #64748b; font-size: 0.875rem;">Modify metadata name and activation statuses.</p>
 
-    <form action="/admin/academic/funding/<?= $funding['id'] ?>/update" method="POST">
+    <form action="<?= url('/admin/academic/funding/' . encode_id((int)$funding['id']) . '/update') ?>" method="POST">
         <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
 
         <div class="form-group">
@@ -51,7 +51,7 @@
         </div>
 
         <div style="margin-top: 30px; display: flex; gap: 12px; justify-content: flex-end;">
-            <a href="/admin/academic/funding" class="btn btn-secondary">Cancel</a>
+            <a href="<?= url('/admin/academic/funding') ?>" class="btn btn-secondary">Cancel</a>
             <button type="submit" class="btn btn-primary">Save Changes</button>
         </div>
     </form>

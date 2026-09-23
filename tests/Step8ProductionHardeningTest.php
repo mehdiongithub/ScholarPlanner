@@ -8,6 +8,7 @@ if (!defined('BYPASS_BATCH_CUTOFF')) {
 }
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/WacrmWhatsAppProviderTest.php';
 
 use App\Services\Database;
 use App\Services\NotificationSchedulerService;
@@ -15,6 +16,7 @@ use App\Services\NotificationQueueService;
 use App\Services\NotificationService;
 use App\Services\SubscriptionService;
 use App\Services\WhatsApp\ScholarshipMessageFormatter;
+use App\Services\WhatsApp\CurlMockRegistry;
 
 class Step8ProductionHardeningTest {
     private PDO $db;
@@ -628,6 +630,15 @@ class Step8ProductionHardeningTest {
         $this->assert($pendingItem['status'] === 'pending', "Newly scheduled item must start in 'pending'");
 
         // Step B: Worker processes queue
+        CurlMockRegistry::reset();
+        CurlMockRegistry::$httpCode = 200;
+        CurlMockRegistry::$response = json_encode([
+            'messages' => [['id' => 'wamid.HBgL_step8_meta_123']],
+            'data' => [
+                'message_id' => 'msg_wacrm_step8_' . uniqid(),
+                'whatsapp_message_id' => 'wamid.step8.test'
+            ]
+        ]);
         $processed = $this->queueService->processQueue(50);
         $this->assert($processed >= 1, "Worker must process at least 1 item");
 
