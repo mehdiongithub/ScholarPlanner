@@ -1,5 +1,26 @@
 <?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
 
+<?php
+$formatNextRun = function(?string $rawRun): string {
+    if (empty($rawRun) || $rawRun === 'None scheduled') {
+        return 'None scheduled';
+    }
+    $ts = strtotime($rawRun);
+    if (!$ts) {
+        return 'None scheduled';
+    }
+    $datePart = date('Y-m-d', $ts);
+    $today = date('Y-m-d');
+    $tomorrow = date('Y-m-d', strtotime('+1 day'));
+    if ($datePart === $today) {
+        return 'Today, ' . date('g:i A', $ts);
+    } elseif ($datePart === $tomorrow) {
+        return 'Tomorrow, ' . date('g:i A', $ts);
+    }
+    return date('D, M j - g:i A', $ts);
+};
+?>
+
 <style>
 .metric-cards-grid {
     display: grid;
@@ -292,7 +313,11 @@
                 Configure daily dispatch timings, specific days of the week, and trigger on-demand WhatsApp scholarship notifications.
             </p>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn" onclick="openTestWaModal()" style="background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; font-weight: 600; padding: 10px 16px; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="message-circle" style="width: 16px; height: 16px;"></i>
+                <span>Send Test WhatsApp</span>
+            </button>
             <button type="button" class="btn" onclick="openDryRunModal()" style="background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 10px 16px; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 6px;">
                 <i data-lucide="eye" style="width: 16px; height: 16px;"></i>
                 <span>Dry-Run Inspection</span>
@@ -341,7 +366,7 @@
                 <i data-lucide="calendar" style="width: 24px; height: 24px;"></i>
             </div>
             <div class="metric-info">
-                <h3 style="font-size: 1.15rem;"><?= !empty($matchingNextRun) ? date('g:i A', strtotime($matchingNextRun)) : 'N/A' ?></h3>
+                <h3 style="font-size: 1.15rem;"><?= !empty($matchingNextRun) ? $formatNextRun($matchingNextRun) : 'N/A' ?></h3>
                 <p>Next Match Dispatch</p>
             </div>
         </div>
@@ -431,7 +456,7 @@
                     <div style="background: #ffffff; border: 1px solid #f1f5f9; border-radius: 8px; padding: 10px 12px;">
                         <span style="color: #64748b; display: block; font-size: 0.725rem;">Next Scheduled Run:</span>
                         <strong style="color: #0f172a; font-size: 0.8125rem;" id="display-next-matching">
-                            <?= !empty($matchingNextRun) ? date('D, M j - g:i A', strtotime($matchingNextRun)) : 'N/A' ?>
+                            <?= $formatNextRun($matchingNextRun) ?>
                         </strong>
                     </div>
                     <div style="background: #ffffff; border: 1px solid #f1f5f9; border-radius: 8px; padding: 10px 12px;">
@@ -524,7 +549,7 @@
                     <div style="background: #ffffff; border: 1px solid #f1f5f9; border-radius: 8px; padding: 10px 12px;">
                         <span style="color: #64748b; display: block; font-size: 0.725rem;">Next Scheduled Run:</span>
                         <strong style="color: #0f172a; font-size: 0.8125rem;" id="display-next-deadline">
-                            <?= !empty($deadlineNextRun) ? date('D, M j - g:i A', strtotime($deadlineNextRun)) : 'N/A' ?>
+                            <?= $formatNextRun($deadlineNextRun) ?>
                         </strong>
                     </div>
                     <div style="background: #ffffff; border: 1px solid #f1f5f9; border-radius: 8px; padding: 10px 12px;">
@@ -563,14 +588,55 @@
 
     </div>
 
-    <!-- Instructions / Cron Callout -->
-    <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 18px 24px; display: flex; align-items: flex-start; gap: 14px;">
-        <div style="width: 36px; height: 36px; border-radius: 8px; background: #dbeafe; color: #1d4ed8; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
-            <i data-lucide="info" style="width: 20px; height: 20px;"></i>
+    <!-- Automated Linux & Web Cron Setup Guide + Health Status -->
+    <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: <?= !empty($cronActive) ? '#dcfce7' : '#fee2e2' ?>; color: <?= !empty($cronActive) ? '#15803d' : '#dc2626' ?>; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i data-lucide="<?= !empty($cronActive) ? 'activity' : 'alert-triangle' ?>" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div>
+                    <h4 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a;">
+                        Server Cron Worker: 
+                        <span style="color: <?= !empty($cronActive) ? '#15803d' : '#dc2626' ?>;">
+                            <?= !empty($cronActive) ? '🟢 Active & Running' : '⚠️ Inactive / Not Detected' ?>
+                        </span>
+                    </h4>
+                    <p style="margin: 2px 0 0 0; font-size: 0.8125rem; color: #64748b;">
+                        Last background check-in: <strong><?= e($cronHeartbeatDisplay ?? 'Never') ?></strong>
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn" onclick="triggerWebCronTick()" style="background-color: #f8fafc; border: 1px solid #cbd5e1; color: #334155; font-size: 0.8rem; font-weight: 600; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                    <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                    <span>Trigger Web Cron Tick</span>
+                </button>
+            </div>
         </div>
-        <div style="font-size: 0.85rem; color: #1e40af; line-height: 1.55;">
-            <strong>Automated Linux / cPanel Cron Scheduling:</strong><br>
-            The server's background scheduler executes <code>cron/scheduler.php</code> every minute. It automatically evaluates the timing and days configured above. When the clock strikes your chosen time on an allowed day, WhatsApp alerts are queued and dispatched with zero manual intervention required.
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px;">
+                <div style="font-size: 0.825rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="terminal" style="width: 15px; height: 15px; color: #2563eb;"></i>
+                    <span>Option 1: Hostinger / cPanel Linux Command (Recommended)</span>
+                </div>
+                <p style="margin: 0 0 8px 0; font-size: 0.775rem; color: #64748b;">Run every minute (* * * * *) in Hostinger Cron Jobs:</p>
+                <div style="position: relative;">
+                    <pre style="background: #0f172a; color: #38bdf8; padding: 10px 12px; border-radius: 6px; font-size: 0.75rem; margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">* * * * * /usr/bin/php <?= ROOT_PATH ?>/cron/scheduler.php &gt; /dev/null 2&gt;&amp;1</pre>
+                </div>
+            </div>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px;">
+                <div style="font-size: 0.825rem; font-weight: 700; color: #1e293b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="globe" style="width: 15px; height: 15px; color: #059669;"></i>
+                    <span>Option 2: Hostinger URL Cron / Cron-Job.org (Web Runner)</span>
+                </div>
+                <p style="margin: 0 0 8px 0; font-size: 0.775rem; color: #64748b;">If CLI crons are unavailable, ping this URL every minute:</p>
+                <div style="position: relative;">
+                    <pre style="background: #0f172a; color: #4ade80; padding: 10px 12px; border-radius: 6px; font-size: 0.75rem; margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all;"><?= url('/cron/run?token=' . ($cronSecretToken ?? '')) ?></pre>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -748,6 +814,60 @@
                 Close
             </button>
         </div>
+    </div>
+</div>
+
+<!-- Modal 4: Send Test WhatsApp Message Modal -->
+<div id="testWaModal" class="modal-overlay" style="display: none;">
+    <div class="modal-box" style="max-width: 500px;">
+        <div class="modal-box-header">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="message-circle" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a;">Send Test WhatsApp Alert</h3>
+                    <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: #64748b;">Verify WhatsApp provider connectivity and instant delivery.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeTestWaModal()" style="background: none; border: none; cursor: pointer; color: #94a3b8; padding: 4px;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="testWaForm" onsubmit="executeSendTestWa(event)">
+            <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
+
+            <div class="modal-body-scroll">
+                <div id="testWaAlert" style="display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: 8px; font-size: 0.825rem;"></div>
+
+                <div style="margin-bottom: 14px;">
+                    <label class="form-label" style="font-weight: 600; font-size: 0.8125rem; color: #334155;">Recipient WhatsApp Phone Number <span style="color: #ef4444;">*</span></label>
+                    <input type="text" name="phone" id="testWaPhoneInput" class="form-control" required 
+                           placeholder="+923251371826" 
+                           value="<?= e($user['whatsapp_phone'] ?? $user['phone'] ?? '+923251371826') ?>" 
+                           style="font-size: 0.95rem; font-weight: 600; padding: 10px 14px;">
+                    <small style="color: #64748b; font-size: 0.75rem; display: block; margin-top: 4px;">
+                        Include international country code prefix (e.g. <code>+923001234567</code>).
+                    </small>
+                </div>
+
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; font-size: 0.8rem; color: #475569;">
+                    <i data-lucide="info" style="width: 14px; height: 14px; color: #2563eb; display: inline-block; vertical-align: middle; margin-right: 4px;"></i>
+                    This sends an immediate live verification alert using your configured WhatsApp gateway (WACRM/UltraMsg).
+                </div>
+            </div>
+
+            <div class="modal-box-footer">
+                <button type="button" class="btn" onclick="closeTestWaModal()" style="background-color: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 9px 18px; font-weight: 600;">
+                    Cancel
+                </button>
+                <button type="submit" id="btnSubmitTestWa" class="btn btn-primary" style="padding: 9px 22px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                    <i data-lucide="send" style="width: 15px; height: 15px;"></i>
+                    <span>Send Test Message Now</span>
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -1035,12 +1155,89 @@ function closeDryRunModal() {
     $('#dryRunModal').removeClass('active');
 }
 
+function openTestWaModal() {
+    $('#testWaAlert').hide();
+    $('#testWaModal').addClass('active');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeTestWaModal() {
+    $('#testWaModal').removeClass('active');
+}
+
+function executeSendTestWa(e) {
+    e.preventDefault();
+    var btn = $('#btnSubmitTestWa');
+    var alertBox = $('#testWaAlert');
+    btn.prop('disabled', true).css('opacity', '0.7');
+    alertBox.hide();
+
+    $.ajax({
+        url: '<?= url("/admin/alert-timers/send-test") ?>',
+        type: 'POST',
+        data: $('#testWaForm').serialize(),
+        dataType: 'json',
+        success: function(res) {
+            btn.prop('disabled', false).css('opacity', '1');
+            if (res.success) {
+                alertBox.show().css({
+                    'background-color': '#dcfce7',
+                    'border': '1px solid #bbf7d0',
+                    'color': '#15803d'
+                }).html('<i data-lucide="check-circle" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></i> ' + res.message);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                showToast(res.message, 'success');
+            } else {
+                alertBox.show().css({
+                    'background-color': '#fee2e2',
+                    'border': '1px solid #fecaca',
+                    'color': '#dc2626'
+                }).html('<i data-lucide="alert-circle" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></i> ' + (res.error || 'Failed to dispatch test message.'));
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        },
+        error: function(xhr) {
+            btn.prop('disabled', false).css('opacity', '1');
+            var msg = xhr.responseJSON?.error || 'Failed to dispatch test message.';
+            alertBox.show().css({
+                'background-color': '#fee2e2',
+                'border': '1px solid #fecaca',
+                'color': '#dc2626'
+            }).html('<i data-lucide="alert-circle" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></i> ' + msg);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    });
+}
+
+function triggerWebCronTick() {
+    showToast('Executing web cron scheduler tick...', 'success');
+    $.ajax({
+        url: '<?= url("/cron/run?token=" . ($cronSecretToken ?? "")) ?>',
+        type: 'GET',
+        dataType: 'json',
+        success: function(res) {
+            if (res.success) {
+                showToast('Web cron executed successfully! Outbox dispatched: ' + (res.outbox_dispatched || 0) + ' messages.', 'success');
+                setTimeout(function() {
+                    location.reload();
+                }, 1500);
+            } else {
+                showToast(res.error || 'Cron tick failed.', 'error');
+            }
+        },
+        error: function(xhr) {
+            showToast(xhr.responseJSON?.error || 'Cron tick execution failed.', 'error');
+        }
+    });
+}
+
 // Escape key to close modals
 $(document).keyup(function(e) {
     if (e.key === "Escape") {
         closeEditModal();
         closeRunNowModal();
         closeDryRunModal();
+        closeTestWaModal();
     }
 });
 </script>

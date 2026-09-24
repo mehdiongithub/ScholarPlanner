@@ -2972,6 +2972,33 @@ class AdminController {
             (!empty($schedulerSettings['deadline_scheduler_enabled']) ? 1 : 0)
         );
 
+        $lastHeartbeat = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'cron_last_heartbeat_at' LIMIT 1")->fetchColumn();
+        $cronActive = false;
+        $cronHeartbeatDisplay = 'Never';
+        if ($lastHeartbeat) {
+            $ts = strtotime($lastHeartbeat);
+            $secondsAgo = time() - $ts;
+            $cronActive = ($secondsAgo <= 600);
+            if ($secondsAgo < 60) {
+                $cronHeartbeatDisplay = 'Just now (' . $secondsAgo . 's ago)';
+            } elseif ($secondsAgo < 3600) {
+                $cronHeartbeatDisplay = round($secondsAgo / 60) . ' mins ago';
+            } else {
+                $cronHeartbeatDisplay = date('M j, g:i A', $ts);
+            }
+        }
+
+        $cronSecretToken = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'cron_secret_token' LIMIT 1")->fetchColumn();
+        if (!$cronSecretToken) {
+            $cronSecretToken = bin2hex(random_bytes(16));
+            $stmtToken = $this->db->prepare("
+                INSERT INTO settings (`key`, `value`, `type`, `group_name`, `is_public`) 
+                VALUES ('cron_secret_token', :tok, 'string', 'security', 0)
+                ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)
+            ");
+            $stmtToken->execute(['tok' => $cronSecretToken]);
+        }
+
         View::render('admin.alert_timers.index', [
             'user' => Auth::currentUser(),
             'settings' => $schedulerSettings,
@@ -2981,6 +3008,9 @@ class AdminController {
             'pendingQueue' => $pendingQueue,
             'failedCount' => $failedCount,
             'activeTimersCount' => $activeTimersCount,
+            'cronActive' => $cronActive,
+            'cronHeartbeatDisplay' => $cronHeartbeatDisplay,
+            'cronSecretToken' => $cronSecretToken,
             'csrf_token' => Security::csrfToken()
         ]);
     }
@@ -3245,13 +3275,18 @@ class AdminController {
                 $result = $schedulerService->runMatchingJob();
                 $schedulerService->recordJobExecution('matching', 'SUCCESS', $slotKey);
 
+                // Auto-dispatch pending queue notifications immediately
+                $queueService = new \App\Services\NotificationQueueService($this->db);
+                $dispatchedCount = $queueService->processQueue(50);
+                $result['dispatched_count'] = $dispatchedCount;
+
                 $this->logAction('manual_trigger', 'alert_timers', 'matching_job', null, $result);
 
                 header('Content-Type: application/json');
                 echo json_encode([
                     'success' => true,
                     'timer_type' => 'matching',
-                    'message' => "Daily Matching Alerts evaluated! {$result['users_processed']} students checked, {$result['matches_found']} matches identified, {$result['whatsapp_batches']} WhatsApp message digests enqueued.",
+                    'message' => "Daily Matching Alerts evaluated & dispatched! {$result['users_processed']} students checked, {$result['matches_found']} matches found, {$result['whatsapp_batches']} WhatsApp digest(s) enqueued. Outbox worker dispatched {$dispatchedCount} notification(s) immediately.",
                     'details' => $result
                 ]);
                 exit();
@@ -3260,13 +3295,18 @@ class AdminController {
                 $result = $schedulerService->runDeadlineRemindersJob();
                 $schedulerService->recordJobExecution('deadline', 'SUCCESS', $slotKey);
 
+                // Auto-dispatch pending queue notifications immediately
+                $queueService = new \App\Services\NotificationQueueService($this->db);
+                $dispatchedCount = $queueService->processQueue(50);
+                $result['dispatched_count'] = $dispatchedCount;
+
                 $this->logAction('manual_trigger', 'alert_timers', 'deadline_job', null, $result);
 
                 header('Content-Type: application/json');
                 echo json_encode([
                     'success' => true,
                     'timer_type' => 'deadline',
-                    'message' => "Deadline Reminders evaluated! {$result['users_processed']} students checked, {$result['reminders_enqueued']} WhatsApp reminders enqueued.",
+                    'message' => "Deadline Reminders evaluated & dispatched! {$result['users_processed']} students checked, {$result['reminders_enqueued']} WhatsApp reminders enqueued. Outbox worker dispatched {$dispatchedCount} notification(s) immediately.",
                     'details' => $result
                 ]);
                 exit();
@@ -3280,6 +3320,139 @@ class AdminController {
             http_response_code(500);
             header('Content-Type: application/json');
             echo json_encode(['success' => false, 'error' => 'Execution error: ' . $e->getMessage()]);
+            exit();
+        }
+    }
+
+    /**
+     * GET/POST /cron/run?token=...
+     * Secure Web Cron endpoint for Hostinger URL crons or external cron triggers
+     */
+    public function cronWebTick(): void {
+        $suppliedToken = trim($_GET['token'] ?? $_POST['token'] ?? ($_SERVER['HTTP_X_CRON_KEY'] ?? ''));
+        $expectedToken = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'cron_secret_token' LIMIT 1")->fetchColumn();
+
+        $isAuthenticatedAdmin = Auth::check() && (Auth::hasRole('admin') || Auth::hasRole('super_admin'));
+
+        if (!$isAuthenticatedAdmin && (!empty($expectedToken) && !hash_equals($expectedToken, $suppliedToken))) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Unauthorized cron access token.']);
+            exit();
+        }
+
+        $scheduler = new \App\Services\NotificationSchedulerService($this->db);
+        $scheduler->recordCronHeartbeat();
+
+        // 1. Recover stale processing
+        $recovery = $scheduler->recoverStaleProcessing(15, 3);
+
+        // 2. Evaluate & Execute Matching (with 120-min tolerance)
+        $matchingResult = null;
+        $matchingDue = $scheduler->isMatchingScheduleDue(null, null, 120);
+        if ($matchingDue['due']) {
+            $slotKey = $matchingDue['slot'] ?? ('matching_web_' . date('Y-m-d_H:i'));
+            try {
+                $matchingResult = $scheduler->runMatchingJob();
+                $scheduler->recordJobExecution('matching', 'SUCCESS', $slotKey);
+            } catch (Exception $e) {
+                $scheduler->recordJobExecution('matching', 'FAILED', $slotKey, $e->getMessage());
+            }
+        }
+
+        // 3. Evaluate & Execute Deadline (with 120-min tolerance)
+        $deadlineResult = null;
+        $deadlineDue = $scheduler->isDeadlineScheduleDue(null, null, 120);
+        if ($deadlineDue['due']) {
+            $slotKey = $deadlineDue['slot'] ?? ('deadline_web_' . date('Y-m-d_H:i'));
+            try {
+                $deadlineResult = $scheduler->runDeadlineRemindersJob();
+                $scheduler->recordJobExecution('deadline', 'SUCCESS', $slotKey);
+            } catch (Exception $e) {
+                $scheduler->recordJobExecution('deadline', 'FAILED', $slotKey, $e->getMessage());
+            }
+        }
+
+        // 4. Dispatch Outbox Queue
+        $queueService = new \App\Services\NotificationQueueService($this->db);
+        $dispatched = $queueService->processQueue(50);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'message' => 'Scheduler web tick executed successfully.',
+            'heartbeat' => date('Y-m-d H:i:s'),
+            'matching_due' => $matchingDue['due'],
+            'matching_reason' => $matchingDue['reason'],
+            'deadline_due' => $deadlineDue['due'],
+            'deadline_reason' => $deadlineDue['reason'],
+            'outbox_dispatched' => $dispatched,
+            'stale_recovered' => $recovery['recovered'] ?? 0
+        ]);
+        exit();
+    }
+
+    /**
+     * POST /admin/alert-timers/send-test
+     * Send an immediate test WhatsApp notification to verify provider integration
+     */
+    public function alertTimersSendTest(): void {
+        Auth::requireRole(['admin', 'employee']);
+        if (!Auth::hasRole('admin') && !Auth::hasPermission('settings.edit')) {
+            Auth::abort403();
+        }
+
+        if (!Security::verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF security token.']);
+            exit();
+        }
+
+        $phone = trim($_POST['phone'] ?? '');
+        if (empty($phone)) {
+            $currentUser = Auth::currentUser();
+            $phone = $currentUser['whatsapp_phone'] ?? $currentUser['phone'] ?? '';
+        }
+
+        $normalizedPhone = !empty($phone) ? \App\Services\NotificationService::normalizePhoneNumber($phone) : null;
+        if (empty($normalizedPhone)) {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Please provide a valid WhatsApp phone number with country code (e.g. +923001234567).']);
+            exit();
+        }
+
+        try {
+            $waService = new \App\Services\WhatsAppNotificationService();
+            $testMsg = "🎓 *ScholarPlanner Alert Timers Test*\n\n"
+                     . "Assalam-o-Alaikum!\n"
+                     . "This is an instant verification message from ScholarPlanner.\n\n"
+                     . "✔ Timezone: Asia/Karachi\n"
+                     . "✔ Outbox Dispatch: Operational\n"
+                     . "✔ WhatsApp Channel: Active\n\n"
+                     . "Timestamp: " . date('Y-m-d H:i:s') . "\n"
+                     . "https://scholarplanner.com";
+
+            $res = $waService->sendTextMessage($normalizedPhone, $testMsg);
+            if (!empty($res['success'])) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => "Test WhatsApp message sent successfully to {$normalizedPhone}!"
+                ]);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => false,
+                    'error' => "WhatsApp provider was unable to dispatch the message to {$normalizedPhone}: " . ($res['error'] ?? 'Check API credentials.')
+                ]);
+            }
+            exit();
+        } catch (Exception $e) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Dispatch error: ' . $e->getMessage()]);
             exit();
         }
     }
@@ -3663,6 +3836,14 @@ class AdminController {
         ]);
         $grantId = (int)$this->db->lastInsertId();
 
+        // Activate default subscriber notification preferences:
+        // - Email Notifications: ON
+        // - WhatsApp Notifications: ON
+        // - Daily Updates Frequency: OFF
+        // - Weekly Summaries: OFF
+        // - Deadline Reminders: ON
+        \App\Services\SubscriptionService::activateManualSubscriptionNotifications($userId, $this->db);
+
         $activationUrl = absolute_url('/subscriptions/activate?token=' . $token);
 
         // Enqueue activation email if requested
@@ -3715,12 +3896,12 @@ class AdminController {
                 'email_queued' => $emailQueued,
                 'email_sent' => $emailQueued,
                 'email_error' => $emailError,
-                'message' => 'Subscription grant created successfully. ' . ($emailQueued ? 'Activation email queued for background delivery.' : 'Activation link ready to copy.')
+                'message' => 'Subscription grant created and notification preferences activated successfully. ' . ($emailQueued ? 'Activation email queued for background delivery.' : 'Activation link ready to copy.')
             ]);
             exit();
         }
 
-        $_SESSION['admin_success'] = "Subscription grant created successfully. " . ($emailQueued ? "Activation email queued for background delivery." : "Activation link is ready.");
+        $_SESSION['admin_success'] = "Subscription grant created and notification preferences activated successfully. " . ($emailQueued ? "Activation email queued for background delivery." : "Activation link is ready.");
         header("Location: " . url("/admin/manual-subscriptions"));
         exit();
     }
@@ -3767,6 +3948,7 @@ class AdminController {
         $queued = false;
         $queueError = null;
         try {
+            \App\Services\SubscriptionService::activateManualSubscriptionNotifications((int)$grant['user_id'], $this->db);
             $queueService = new \App\Services\NotificationQueueService();
             $idempotencyKey = 'manual_sub_resend_' . $rawId . '_' . time();
             $queued = $queueService->enqueue(

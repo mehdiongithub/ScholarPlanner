@@ -288,7 +288,12 @@ $router->get('/admin/alert-timers/data', ['App\Controllers\AdminController', 'al
 $router->post('/admin/alert-timers/update', ['App\Controllers\AdminController', 'alertTimersUpdate']);
 $router->post('/admin/alert-timers/toggle-status', ['App\Controllers\AdminController', 'alertTimersToggleStatus']);
 $router->post('/admin/alert-timers/run-now', ['App\Controllers\AdminController', 'alertTimersRunNow']);
+$router->post('/admin/alert-timers/send-test', ['App\Controllers\AdminController', 'alertTimersSendTest']);
 $router->get('/admin/alert-timers/dry-run', ['App\Controllers\AdminController', 'alertTimersDryRun']);
+
+// Production Web Cron Endpoints
+$router->get('/cron/run', ['App\Controllers\AdminController', 'cronWebTick']);
+$router->post('/cron/run', ['App\Controllers\AdminController', 'cronWebTick']);
 
 // Server-Side DataTables JSON endpoints
 $router->get('/admin/plans/data', ['App\Controllers\AdminController', 'plansData']);

@@ -265,10 +265,20 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     </div>
 <?php endif; ?>
 
-<?php if (!empty($errors['system'])): ?>
-    <div style="background-color:#fef2f2; border:1px solid #fca5a5; color:#991b1b; padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.875rem; display:flex; align-items:center; gap:10px;">
-        <i data-lucide="alert-circle" style="width:20px; height:20px; color:#dc2626; flex-shrink:0;"></i>
-        <span><?= e($errors['system']) ?></span>
+<?php if (!empty($errors) && is_array($errors)): ?>
+    <div style="background-color:#fef2f2; border:1px solid #fca5a5; color:#991b1b; padding:12px 18px; border-radius:8px; margin-bottom:20px; font-size:0.875rem; display:flex; align-items:flex-start; gap:10px;">
+        <i data-lucide="alert-circle" style="width:20px; height:20px; color:#dc2626; flex-shrink:0; margin-top:2px;"></i>
+        <div>
+            <?php if (count($errors) === 1): ?>
+                <span><?= e(reset($errors)) ?></span>
+            <?php else: ?>
+                <ul style="margin:0; padding-left:18px;">
+                    <?php foreach ($errors as $err): ?>
+                        <li><?= e($err) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
     </div>
 <?php endif; ?>
 
@@ -464,6 +474,22 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
     </div>
 
     <!-- Section 1B: Academic History & Degrees -->
+    <?php
+    $primaryEdu = null;
+    if (!empty($education)) {
+        foreach ($education as $eRecord) {
+            if (!empty($eRecord['is_current'])) {
+                $primaryEdu = $eRecord;
+                break;
+            }
+        }
+        if (!$primaryEdu) {
+            $primaryEdu = $education[0];
+        }
+    }
+    $isEduEditMode = ($primaryEdu !== null);
+    $activeEduGrading = (!empty($primaryEdu['percentage']) && empty($primaryEdu['cgpa'])) ? 'percentage' : 'cgpa';
+    ?>
     <div class="settings-card">
         <div class="settings-card-header">
             <div>
@@ -498,9 +524,15 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
                                 <?php elseif (!empty($edu['percentage'])): ?>
                                     • Percentage: <strong><?= e($edu['percentage']) ?>%</strong>
                                 <?php endif; ?>
+                                <?php if (!empty($edu['passing_year'])): ?>
+                                    • Passing Year: <strong><?= e($edu['passing_year']) ?></strong>
+                                <?php endif; ?>
                             </p>
                         </div>
                         <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick='editEduRecord(<?= json_encode($edu, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)' style="color:#2563eb; border-color:#dbeafe; background:#eff6ff;">
+                                <i data-lucide="edit-3"></i> Edit
+                            </button>
                             <form action="<?= url('/profile/education/delete') ?>" method="POST" onsubmit="return confirm('Are you sure you want to delete this qualification?');" style="margin:0;">
                                 <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
                                 <input type="hidden" name="id" value="<?= e($edu['id']) ?>">
@@ -515,62 +547,88 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
             <?php endif; ?>
         </div>
 
-        <!-- Add New Education Record Form -->
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:20px; margin-top:20px;">
-            <h3 style="font-size:1rem; font-weight:700; color:#1e293b; margin:0 0 16px;">
-                <i data-lucide="plus-circle" style="width:18px; height:18px; vertical-align:middle; color:var(--primary, #2563eb);"></i> Add Academic Record
-            </h3>
+        <!-- Add/Edit Education Record Form -->
+        <div id="edu_form_container" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:20px; margin-top:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                <h3 id="edu_form_title" style="font-size:1rem; font-weight:700; color:#1e293b; margin:0; display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="<?= $isEduEditMode ? 'edit-3' : 'plus-circle' ?>" id="edu_form_icon" style="width:18px; height:18px; color:var(--primary, #2563eb);"></i>
+                    <span id="edu_form_title_text"><?= $isEduEditMode ? 'Update Academic Record' : 'Add Academic Record' ?></span>
+                </h3>
+                <button type="button" id="btn_new_qualification" class="btn btn-secondary btn-sm" onclick="resetEduFormToAddMode()" style="display: <?= $isEduEditMode ? 'inline-flex' : 'none' ?>; align-items:center; gap:6px;">
+                    <i data-lucide="plus"></i> Add New Qualification
+                </button>
+            </div>
 
-            <form action="<?= url('/profile/education/add') ?>" method="POST">
+            <form id="edu_record_form" action="<?= $isEduEditMode ? url('/profile/education/update') : url('/profile/education/add') ?>" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
                 <input type="hidden" name="return_to" value="<?= url('/settings?tab=profile') ?>">
+                <input type="hidden" name="id" id="edu_record_id" value="<?= $isEduEditMode ? e($primaryEdu['id']) : '' ?>">
 
                 <div class="settings-form-grid">
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_degree_level">Degree Level *</label>
                         <select id="edu_degree_level" name="degree_level" class="settings-form-input" required>
                             <option value="">-- Choose Level --</option>
-                            <option value="High School">High School / Intermediate</option>
-                            <option value="Associate Degree">Associate Degree</option>
-                            <option value="Bachelor's">Bachelor's Degree</option>
-                            <option value="Master's">Master's Degree</option>
-                            <option value="MPhil">MPhil</option>
-                            <option value="PhD">PhD / Doctorate</option>
-                            <option value="Diploma">Diploma / Certificate</option>
+                            <?php 
+                            $degreeLevels = [
+                                "High School" => "High School",
+                                "Intermediate / College" => "Intermediate / College",
+                                "Diploma" => "Diploma / Certificate",
+                                "Associate Degree" => "Associate Degree",
+                                "Bachelor's" => "Bachelor's Degree",
+                                "Master's" => "Master's Degree",
+                                "MPhil" => "MPhil",
+                                "PhD" => "PhD / Doctorate",
+                                "Postdoctoral" => "Postdoctoral",
+                                "Certification" => "Certification",
+                                "Vocational" => "Vocational",
+                                "Other" => "Other"
+                            ];
+                            $selectedLvl = $isEduEditMode ? ($primaryEdu['degree_level'] ?? '') : '';
+                            foreach ($degreeLevels as $val => $label):
+                            ?>
+                                <option value="<?= e($val) ?>" <?= ($selectedLvl === $val) ? 'selected' : '' ?>><?= e($label) ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
 
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_degree_title">Degree / Certificate Title *</label>
-                        <input type="text" id="edu_degree_title" name="degree_title" class="settings-form-input" placeholder="e.g. BS Computer Science" required>
+                        <input type="text" id="edu_degree_title" name="degree_title" class="settings-form-input" placeholder="e.g. BS Computer Science" required value="<?= $isEduEditMode ? e($primaryEdu['degree_title'] ?? '') : '' ?>">
                     </div>
 
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_field_of_study">Field of Study *</label>
-                        <input type="text" id="edu_field_of_study" name="field_of_study" class="settings-form-input" placeholder="e.g. Computer Science" required>
+                        <input type="text" id="edu_field_of_study" name="field_of_study" class="settings-form-input" placeholder="e.g. Information Technology" required value="<?= $isEduEditMode ? e($primaryEdu['field_of_study'] ?? '') : '' ?>">
                     </div>
 
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_institution_type">Institution Type *</label>
                         <select id="edu_institution_type" name="institution_type" class="settings-form-input" required>
-                            <option value="university">University</option>
-                            <option value="college">College</option>
-                            <option value="school">School</option>
-                            <option value="other">Other</option>
+                            <?php
+                            $instType = $isEduEditMode ? ($primaryEdu['institution_type'] ?? 'university') : 'university';
+                            ?>
+                            <option value="university" <?= $instType === 'university' ? 'selected' : '' ?>>University</option>
+                            <option value="college" <?= $instType === 'college' ? 'selected' : '' ?>>College</option>
+                            <option value="school" <?= $instType === 'school' ? 'selected' : '' ?>>School</option>
+                            <option value="other" <?= $instType === 'other' ? 'selected' : '' ?>>Other</option>
                         </select>
                     </div>
 
                     <div class="settings-form-group full-width">
                         <label class="settings-form-label" for="edu_institution_name">Institution Name *</label>
-                        <input type="text" id="edu_institution_name" name="institution_name" class="settings-form-input" placeholder="Enter full university or college name" required>
+                        <input type="text" id="edu_institution_name" name="institution_name" class="settings-form-input" placeholder="Enter full university or college name" required value="<?= $isEduEditMode ? e($primaryEdu['institution_name'] ?? '') : '' ?>">
                     </div>
 
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_country_id">Country of Institution</label>
                         <select id="edu_country_id" name="country_id" class="settings-form-input select2-field">
                             <option value="">-- Select Country --</option>
-                            <?php foreach ($countries as $c): ?>
-                                <option value="<?= e($c['id']) ?>"><?= e($c['name']) ?></option>
+                            <?php 
+                            $selCountry = $isEduEditMode ? ($primaryEdu['country_id'] ?? null) : null;
+                            foreach ($countries as $c): 
+                            ?>
+                                <option value="<?= e($c['id']) ?>" <?= ((int)$selCountry === (int)$c['id']) ? 'selected' : '' ?>><?= e($c['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -578,48 +636,56 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="grading_type">Grading System</label>
                         <select id="grading_type" class="settings-form-input" onchange="toggleGradingFields(this.value)">
-                            <option value="cgpa">CGPA (Grade Point Average)</option>
-                            <option value="percentage">Percentage (%)</option>
+                            <option value="cgpa" <?= $activeEduGrading === 'cgpa' ? 'selected' : '' ?>>CGPA (Grade Point Average)</option>
+                            <option value="percentage" <?= $activeEduGrading === 'percentage' ? 'selected' : '' ?>>Percentage (%)</option>
                         </select>
                     </div>
 
-                    <div class="settings-form-group" id="group_cgpa">
+                    <div class="settings-form-group" id="group_cgpa" style="display: <?= $activeEduGrading === 'cgpa' ? 'block' : 'none' ?>;">
                         <label class="settings-form-label" for="edu_cgpa">Obtained CGPA</label>
                         <div style="display:flex; gap:10px;">
-                            <input type="number" step="0.01" min="0" max="10" id="edu_cgpa" name="cgpa" class="settings-form-input" placeholder="e.g. 3.65">
-                            <select name="cgpa_scale" class="settings-form-input" style="width:120px;">
-                                <option value="4.00">/ 4.00</option>
-                                <option value="5.00">/ 5.00</option>
+                            <input type="number" step="0.01" min="0" max="10" id="edu_cgpa" name="cgpa" class="settings-form-input" placeholder="e.g. 3.65" value="<?= $isEduEditMode ? e($primaryEdu['cgpa'] ?? '') : '' ?>">
+                            <select id="edu_cgpa_scale" name="cgpa_scale" class="settings-form-input" style="width:120px;">
+                                <?php $scale = $isEduEditMode ? ($primaryEdu['cgpa_scale'] ?? '4.00') : '4.00'; ?>
+                                <option value="4.00" <?= ((float)$scale == 4.0) ? 'selected' : '' ?>>/ 4.00</option>
+                                <option value="5.00" <?= ((float)$scale == 5.0) ? 'selected' : '' ?>>/ 5.00</option>
+                                <option value="10.00" <?= ((float)$scale == 10.0) ? 'selected' : '' ?>>/ 10.00</option>
                             </select>
                         </div>
                     </div>
 
-                    <div class="settings-form-group" id="group_percentage" style="display:none;">
+                    <div class="settings-form-group" id="group_percentage" style="display: <?= $activeEduGrading === 'percentage' ? 'block' : 'none' ?>;">
                         <label class="settings-form-label" for="edu_percentage">Obtained Percentage</label>
-                        <input type="number" step="0.1" min="0" max="100" id="edu_percentage" name="percentage" class="settings-form-input" placeholder="e.g. 85.5">
+                        <input type="number" step="0.1" min="0" max="100" id="edu_percentage" name="percentage" class="settings-form-input" placeholder="e.g. 85.5" value="<?= $isEduEditMode ? e($primaryEdu['percentage'] ?? '') : '' ?>">
                     </div>
 
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_start_date">Start Date</label>
-                        <input type="text" id="edu_start_date" name="start_date" class="settings-form-input datepicker" placeholder="YYYY-MM-DD">
+                        <input type="text" id="edu_start_date" name="start_date" class="settings-form-input datepicker" placeholder="YYYY-MM-DD" value="<?= $isEduEditMode ? e($primaryEdu['start_date'] ?? '') : '' ?>">
                     </div>
 
                     <div class="settings-form-group">
                         <label class="settings-form-label" for="edu_end_date">End Date (or Expected)</label>
-                        <input type="text" id="edu_end_date" name="end_date" class="settings-form-input datepicker" placeholder="YYYY-MM-DD">
+                        <input type="text" id="edu_end_date" name="end_date" class="settings-form-input datepicker" placeholder="YYYY-MM-DD" value="<?= $isEduEditMode ? e($primaryEdu['end_date'] ?? '') : '' ?>">
+                    </div>
+
+                    <div class="settings-form-group">
+                        <label class="settings-form-label" for="edu_passing_year">Graduation / Passing Year</label>
+                        <input type="number" id="edu_passing_year" name="passing_year" class="settings-form-input" min="1950" max="<?= (int)date('Y') + 15 ?>" placeholder="e.g. <?= (int)date('Y') ?>" value="<?= $isEduEditMode ? e($primaryEdu['passing_year'] ?? '') : '' ?>">
                     </div>
 
                     <div class="settings-form-group full-width">
                         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.875rem; font-weight:500;">
-                            <input type="checkbox" name="is_current" value="1" style="width:16px; height:16px;">
+                            <input type="checkbox" id="edu_is_current" name="is_current" value="1" <?= ($isEduEditMode && !empty($primaryEdu['is_current'])) ? 'checked' : '' ?> style="width:16px; height:16px;">
                             <span>I am currently enrolled / studying in this program</span>
                         </label>
                     </div>
                 </div>
 
-                <div style="margin-top:20px; display:flex; justify-content:flex-end;">
-                    <button type="submit" class="btn btn-primary" style="padding:10px 20px;">
-                        <i data-lucide="plus"></i> Add Qualification Record
+                <div style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="submit" id="edu_submit_btn" class="btn btn-primary" style="padding:10px 20px;">
+                        <i data-lucide="<?= $isEduEditMode ? 'save' : 'plus' ?>" id="edu_submit_icon"></i> 
+                        <span id="edu_submit_text"><?= $isEduEditMode ? 'Update Qualification Record' : 'Add Qualification Record' ?></span>
                     </button>
                 </div>
             </form>
@@ -1196,6 +1262,158 @@ $currentCompletion = $user['profile_completion_percentage'] ?? 0;
         } else {
             document.getElementById('group_cgpa').style.display = 'block';
             document.getElementById('group_percentage').style.display = 'none';
+        }
+    }
+
+    function editEduRecord(edu) {
+        if (!edu) return;
+
+        const form = document.getElementById('edu_record_form');
+        if (form) {
+            form.action = '<?= url("/profile/education/update") ?>';
+        }
+
+        const idField = document.getElementById('edu_record_id');
+        if (idField) idField.value = edu.id || '';
+
+        const titleText = document.getElementById('edu_form_title_text');
+        if (titleText) titleText.innerText = 'Update Academic Record';
+
+        const submitText = document.getElementById('edu_submit_text');
+        if (submitText) submitText.innerText = 'Update Qualification Record';
+
+        const icon = document.getElementById('edu_submit_icon');
+        if (icon) icon.setAttribute('data-lucide', 'save');
+
+        const formIcon = document.getElementById('edu_form_icon');
+        if (formIcon) formIcon.setAttribute('data-lucide', 'edit-3');
+
+        const btnNew = document.getElementById('btn_new_qualification');
+        if (btnNew) btnNew.style.display = 'inline-flex';
+
+        if (document.getElementById('edu_degree_level')) {
+            document.getElementById('edu_degree_level').value = edu.degree_level || '';
+        }
+        if (document.getElementById('edu_degree_title')) {
+            document.getElementById('edu_degree_title').value = edu.degree_title || '';
+        }
+        if (document.getElementById('edu_field_of_study')) {
+            document.getElementById('edu_field_of_study').value = edu.field_of_study || '';
+        }
+        if (document.getElementById('edu_institution_type')) {
+            document.getElementById('edu_institution_type').value = edu.institution_type || 'university';
+        }
+        if (document.getElementById('edu_institution_name')) {
+            document.getElementById('edu_institution_name').value = edu.institution_name || '';
+        }
+        if (document.getElementById('edu_country_id')) {
+            $('#edu_country_id').val(edu.country_id || '').trigger('change');
+        }
+
+        const startInput = document.getElementById('edu_start_date');
+        if (startInput) {
+            startInput.value = edu.start_date || '';
+            if (startInput._flatpickr) startInput._flatpickr.setDate(edu.start_date || '');
+        }
+
+        const endInput = document.getElementById('edu_end_date');
+        if (endInput) {
+            endInput.value = edu.end_date || '';
+            if (endInput._flatpickr) endInput._flatpickr.setDate(edu.end_date || '');
+        }
+
+        if (document.getElementById('edu_passing_year')) {
+            document.getElementById('edu_passing_year').value = edu.passing_year || '';
+        }
+
+        if (document.getElementById('edu_is_current')) {
+            document.getElementById('edu_is_current').checked = (parseInt(edu.is_current) === 1);
+        }
+
+        if (edu.percentage && !edu.cgpa) {
+            const gradingSelect = document.getElementById('grading_type');
+            if (gradingSelect) gradingSelect.value = 'percentage';
+            toggleGradingFields('percentage');
+            if (document.getElementById('edu_percentage')) {
+                document.getElementById('edu_percentage').value = edu.percentage;
+            }
+        } else {
+            const gradingSelect = document.getElementById('grading_type');
+            if (gradingSelect) gradingSelect.value = 'cgpa';
+            toggleGradingFields('cgpa');
+            if (document.getElementById('edu_cgpa')) {
+                document.getElementById('edu_cgpa').value = edu.cgpa || '';
+            }
+            if (edu.cgpa_scale && document.getElementById('edu_cgpa_scale')) {
+                document.getElementById('edu_cgpa_scale').value = parseFloat(edu.cgpa_scale).toFixed(2);
+            }
+        }
+
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        const formContainer = document.getElementById('edu_form_container');
+        if (formContainer) {
+            formContainer.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    function resetEduFormToAddMode() {
+        const form = document.getElementById('edu_record_form');
+        if (form) {
+            form.action = '<?= url("/profile/education/add") ?>';
+        }
+
+        const idField = document.getElementById('edu_record_id');
+        if (idField) idField.value = '';
+
+        const titleText = document.getElementById('edu_form_title_text');
+        if (titleText) titleText.innerText = 'Add Academic Record';
+
+        const submitText = document.getElementById('edu_submit_text');
+        if (submitText) submitText.innerText = 'Add Qualification Record';
+
+        const icon = document.getElementById('edu_submit_icon');
+        if (icon) icon.setAttribute('data-lucide', 'plus');
+
+        const formIcon = document.getElementById('edu_form_icon');
+        if (formIcon) formIcon.setAttribute('data-lucide', 'plus-circle');
+
+        const btnNew = document.getElementById('btn_new_qualification');
+        if (btnNew) btnNew.style.display = 'none';
+
+        if (document.getElementById('edu_degree_level')) document.getElementById('edu_degree_level').value = '';
+        if (document.getElementById('edu_degree_title')) document.getElementById('edu_degree_title').value = '';
+        if (document.getElementById('edu_field_of_study')) document.getElementById('edu_field_of_study').value = '';
+        if (document.getElementById('edu_institution_type')) document.getElementById('edu_institution_type').value = 'university';
+        if (document.getElementById('edu_institution_name')) document.getElementById('edu_institution_name').value = '';
+        if (document.getElementById('edu_country_id')) $('#edu_country_id').val('').trigger('change');
+
+        const startInput = document.getElementById('edu_start_date');
+        if (startInput) {
+            startInput.value = '';
+            if (startInput._flatpickr) startInput._flatpickr.clear();
+        }
+
+        const endInput = document.getElementById('edu_end_date');
+        if (endInput) {
+            endInput.value = '';
+            if (endInput._flatpickr) endInput._flatpickr.clear();
+        }
+
+        if (document.getElementById('edu_passing_year')) document.getElementById('edu_passing_year').value = '';
+        if (document.getElementById('edu_is_current')) document.getElementById('edu_is_current').checked = false;
+
+        const gradingSelect = document.getElementById('grading_type');
+        if (gradingSelect) gradingSelect.value = 'cgpa';
+        toggleGradingFields('cgpa');
+
+        if (document.getElementById('edu_cgpa')) document.getElementById('edu_cgpa').value = '';
+        if (document.getElementById('edu_percentage')) document.getElementById('edu_percentage').value = '';
+
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
         }
     }
 </script>

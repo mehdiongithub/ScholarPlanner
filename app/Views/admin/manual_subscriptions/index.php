@@ -470,12 +470,17 @@
                 </div>
 
                 <!-- Send Email Checkbox -->
-                <div style="margin-bottom: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; display: flex; align-items: flex-start; gap: 10px;">
-                    <input type="checkbox" name="send_email" id="sendEmailCheckbox" value="1" checked style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
-                    <label for="sendEmailCheckbox" style="font-size: 0.8125rem; color: #334155; cursor: pointer; margin: 0; line-height: 1.4;">
-                        <strong>Send activation email to student</strong><br>
-                        <span style="color: #64748b; font-size: 0.75rem;">Dispatches a branded email via background queue containing the one-click activation link.</span>
-                    </label>
+                <div style="margin-bottom: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; align-items: flex-start; gap: 10px;">
+                        <input type="checkbox" name="send_email" id="sendEmailCheckbox" value="1" checked style="margin-top: 3px; cursor: pointer; width: 16px; height: 16px;">
+                        <label for="sendEmailCheckbox" style="font-size: 0.8125rem; color: #334155; cursor: pointer; margin: 0; line-height: 1.4;">
+                            <strong>Send activation email to student</strong><br>
+                            <span style="color: #64748b; font-size: 0.75rem;">Dispatches a branded email via background queue containing the one-click activation link.</span>
+                        </label>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #0369a1; background: #e0f2fe; padding: 6px 10px; border-radius: 6px;">
+                        <i data-lucide="bell" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> Automatically activates subscriber notifications: <strong>Email (ON), WhatsApp (ON), Deadline Reminders (ON)</strong>, Daily & Weekly (OFF).
+                    </div>
                 </div>
 
                 <!-- Result Box after creation -->
@@ -573,9 +578,9 @@
 
                 <!-- Information Callout -->
                 <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; display: flex; align-items: flex-start; gap: 10px;">
-                    <i data-lucide="mail" style="width: 16px; height: 16px; color: #2563eb; flex-shrink: 0; margin-top: 2px;"></i>
+                    <i data-lucide="bell" style="width: 16px; height: 16px; color: #2563eb; flex-shrink: 0; margin-top: 2px;"></i>
                     <div style="font-size: 0.775rem; color: #1e40af; line-height: 1.45;">
-                        On confirmation, an activation email with a secure link will be <strong>queued and sent to the student</strong>. Their subscription countdown begins strictly when they click the email link.
+                        On confirmation, subscriber notifications will be automatically set to: <strong>Email: ON, WhatsApp: ON, Deadline Reminders: ON</strong> (Daily & Weekly: OFF). An activation email with a secure link will be queued for the student.
                     </div>
                 </div>
 
@@ -826,7 +831,7 @@ function submitConfirmActivation(e) {
 
                 var studentName = $('#confirmStudentName').text();
                 showTopNotice(
-                    'Plan activated successfully for <strong>' + studentName + '</strong>! Activation email has been queued for background delivery.',
+                    'Plan activated & notifications configured for <strong>' + studentName + '</strong> (Email: ON, WhatsApp: ON, Deadline: ON)! Activation email has been queued.',
                     res.activation_url
                 );
 

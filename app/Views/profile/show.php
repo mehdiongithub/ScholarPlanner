@@ -574,8 +574,8 @@ include ROOT_PATH . '/app/Views/layouts/student_header.php';
 
                         <div class="notify-item">
                             <span class="notify-label">Deadline Reminders</span>
-                            <span class="notify-status <?= ($notificationSettings['deadline_reminders']['email'] ?? false) ? 'status-on' : 'status-off' ?>">
-                                <?= ($notificationSettings['deadline_reminders']['email'] ?? false) ? 'ON' : 'OFF' ?>
+                            <span class="notify-status <?= (!empty($notificationSettings['deadline_reminders']['email']) || !empty($notificationSettings['deadline_reminders']['whatsapp'])) ? 'status-on' : 'status-off' ?>">
+                                <?= (!empty($notificationSettings['deadline_reminders']['email']) || !empty($notificationSettings['deadline_reminders']['whatsapp'])) ? 'ON' : 'OFF' ?>
                             </span>
                         </div>
                     </div>

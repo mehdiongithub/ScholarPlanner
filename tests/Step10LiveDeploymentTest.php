@@ -7,6 +7,9 @@ if (!defined('BYPASS_BATCH_CUTOFF')) {
     define('BYPASS_BATCH_CUTOFF', true);
 }
 
+require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/WacrmWhatsAppProviderTest.php';
+
 use App\Services\Database;
 use App\Services\Auth;
 use App\Helpers\Security;
@@ -18,6 +21,7 @@ use App\Services\NotificationTypes;
 use App\Services\SubscriptionService;
 use App\Services\ReferralService;
 use App\Services\PaymentService;
+use App\Services\WhatsApp\CurlMockRegistry;
 
 class Step10LiveDeploymentTest {
     private PDO $db;
@@ -695,6 +699,16 @@ class Step10LiveDeploymentTest {
 
         $matchingResult = $this->scheduler->runMatchingJob('2026-09-08', false);
         $this->db->exec("UPDATE notification_logs SET available_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE user_id = {$this->userId}");
+
+        CurlMockRegistry::reset();
+        CurlMockRegistry::$httpCode = 200;
+        CurlMockRegistry::$response = json_encode([
+            'messages' => [['id' => 'wamid.HBgL_step10_live_123']],
+            'data' => [
+                'message_id' => 'msg_wacrm_step10_' . uniqid(),
+                'whatsapp_message_id' => 'wamid.step10.test'
+            ]
+        ]);
 
         $queueService = new NotificationQueueService();
         $dispatched = $queueService->processQueue(50);

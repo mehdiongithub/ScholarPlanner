@@ -106,6 +106,9 @@ if (!$scheduler->acquireLock('app_master_scheduler', 0)) {
     exit(0);
 }
 
+// Record scheduler heartbeat
+$scheduler->recordCronHeartbeat();
+
 try {
     // 2. Recover Stale Worker Jobs (self-healing after worker timeouts/crashes)
     $recovery = $scheduler->recoverStaleProcessing(15, 3);
@@ -113,8 +116,8 @@ try {
         echo "ℹ Recovered {$recovery['recovered']} stale jobs, marked {$recovery['failed']} expired jobs as failed.\n";
     }
 
-    // 3. Evaluate & Execute Automatic Scholarship Matching Schedule
-    $matchingDue = $scheduler->isMatchingScheduleDue();
+    // 3. Evaluate & Execute Automatic Scholarship Matching Schedule (with 120-min tolerance window for hosting jitter)
+    $matchingDue = $scheduler->isMatchingScheduleDue(null, null, 120);
     if ($matchingDue['due'] || $forceMatching) {
         $slotKey = $matchingDue['slot'] ?? ('matching_forced_' . date('Y-m-d_H:i'));
         echo "🚀 Executing Automatic Scholarship Matching (Slot: {$slotKey})...\n";
@@ -133,8 +136,8 @@ try {
         echo "ℹ Automatic Matching not due ({$matchingDue['reason']}).\n";
     }
 
-    // 4. Evaluate & Execute Deadline Reminders Schedule
-    $deadlineDue = $scheduler->isDeadlineScheduleDue();
+    // 4. Evaluate & Execute Deadline Reminders Schedule (with 120-min tolerance window for hosting jitter)
+    $deadlineDue = $scheduler->isDeadlineScheduleDue(null, null, 120);
     if ($deadlineDue['due'] || $forceDeadline) {
         $slotKey = $deadlineDue['slot'] ?? ('deadline_forced_' . date('Y-m-d_H:i'));
         echo "🚀 Executing Deadline Reminders Schedule (Slot: {$slotKey})...\n";

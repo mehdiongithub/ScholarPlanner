@@ -1378,6 +1378,14 @@ class BillingController {
                 'id' => $grant['id']
             ]);
 
+            // Ensure subscriber default notification preferences are activated:
+            // - Email Notifications: ON
+            // - WhatsApp Notifications: ON
+            // - Daily Updates Frequency: OFF
+            // - Weekly Summaries: OFF
+            // - Deadline Reminders: ON
+            \App\Services\SubscriptionService::activateManualSubscriptionNotifications((int)$grant['user_id'], $this->db);
+
             $this->db->commit();
 
             Auth::logAudit($grant['user_id'], 'manual_subscription_activated', 'subscriptions', 'subscriptions', $newSubId, null, [

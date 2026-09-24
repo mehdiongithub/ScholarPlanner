@@ -7,6 +7,9 @@ if (!defined('BYPASS_BATCH_CUTOFF')) {
     define('BYPASS_BATCH_CUTOFF', true);
 }
 
+require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/WacrmWhatsAppProviderTest.php';
+
 use App\Services\Database;
 use App\Services\Auth;
 use App\Services\NotificationSchedulerService;
@@ -15,6 +18,7 @@ use App\Services\NotificationQueueService;
 use App\Services\ScholarshipMatchingService;
 use App\Services\NotificationTypes;
 use App\Services\SubscriptionService;
+use App\Services\WhatsApp\CurlMockRegistry;
 use App\Helpers\Security;
 
 class ProductionCronAutomationTest {
@@ -532,6 +536,16 @@ class ProductionCronAutomationTest {
     public function test19_MatchingJobExecutionDispatchesQueueWorker(): void {
         // Set available_at to past so queue processor picks it up
         $this->db->exec("UPDATE notification_logs SET available_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE user_id = {$this->userId}");
+
+        CurlMockRegistry::reset();
+        CurlMockRegistry::$httpCode = 200;
+        CurlMockRegistry::$response = json_encode([
+            'messages' => [['id' => 'wamid.HBgL_cron_auto_123']],
+            'data' => [
+                'message_id' => 'msg_wacrm_cron_auto_' . uniqid(),
+                'whatsapp_message_id' => 'wamid.cron_auto.test'
+            ]
+        ]);
 
         $queueService = new NotificationQueueService();
         $processed = $queueService->processQueue(10);

@@ -17,6 +17,13 @@
     </div>
 <?php endif; ?>
 
+<?php if (!empty($error_message)): ?>
+    <div style="background-color:#fee2e2; border:1px solid #fca5a5; color:#991b1b; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:0.875rem; display:flex; align-items:center; gap:8px;">
+        <i data-lucide="alert-circle" style="width:18px; height:18px;"></i>
+        <span><?= e($error_message) ?></span>
+    </div>
+<?php endif; ?>
+
 <!-- 1. Notification Preferences Card -->
 <div class="data-table-card" style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom: 24px;">
     <h2 style="font-size:1.125rem; font-weight:600; color:#1e293b; margin-top:0; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
@@ -26,6 +33,7 @@
 
     <form method="POST" action="<?= url('/profile/notifications/update') ?>">
         <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
+        <input type="hidden" name="return_to" value="<?= url('/notifications') ?>">
 
         <!-- Section A: New Scholarship Alerts -->
         <div style="border-bottom:1px solid #f1f5f9; padding-bottom:18px; margin-bottom:18px;">
@@ -84,7 +92,7 @@
 
             <?php $currentScope = $userPref['deadline_reminder_scope'] ?? 'off'; ?>
             <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
-                <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px; border:1px solid <?= $currentScope === 'off' ? '#3b82f6' : '#e2e8f0' ?>; border-radius:8px; background:<?= $currentScope === 'off' ? '#eff6ff' : '#fff' ?>;">
+                <label class="scope-card" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px; border:1px solid <?= $currentScope === 'off' ? '#3b82f6' : '#e2e8f0' ?>; border-radius:8px; background:<?= $currentScope === 'off' ? '#eff6ff' : '#fff' ?>;">
                     <input type="radio" name="deadline_reminder_scope" value="off" <?= $currentScope === 'off' ? 'checked' : '' ?> style="margin-top:3px;">
                     <div>
                         <div style="font-size:0.875rem; font-weight:600; color:#1e293b;">Option A: Do not send deadline reminders (Default - OFF)</div>
@@ -92,7 +100,7 @@
                     </div>
                 </label>
 
-                <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px; border:1px solid <?= $currentScope === 'all' ? '#3b82f6' : '#e2e8f0' ?>; border-radius:8px; background:<?= $currentScope === 'all' ? '#eff6ff' : '#fff' ?>;">
+                <label class="scope-card" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px; border:1px solid <?= $currentScope === 'all' ? '#3b82f6' : '#e2e8f0' ?>; border-radius:8px; background:<?= $currentScope === 'all' ? '#eff6ff' : '#fff' ?>;">
                     <input type="radio" name="deadline_reminder_scope" value="all" <?= $currentScope === 'all' ? 'checked' : '' ?> style="margin-top:3px;">
                     <div>
                         <div style="font-size:0.875rem; font-weight:600; color:#1e293b;">Option B: Send deadline reminders for all eligible scholarships</div>
@@ -100,7 +108,7 @@
                     </div>
                 </label>
 
-                <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px; border:1px solid <?= $currentScope === 'selected' ? '#3b82f6' : '#e2e8f0' ?>; border-radius:8px; background:<?= $currentScope === 'selected' ? '#eff6ff' : '#fff' ?>;">
+                <label class="scope-card" style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px; border:1px solid <?= $currentScope === 'selected' ? '#3b82f6' : '#e2e8f0' ?>; border-radius:8px; background:<?= $currentScope === 'selected' ? '#eff6ff' : '#fff' ?>;">
                     <input type="radio" name="deadline_reminder_scope" value="selected" <?= $currentScope === 'selected' ? 'checked' : '' ?> style="margin-top:3px;">
                     <div>
                         <div style="font-size:0.875rem; font-weight:600; color:#1e293b;">Option C: Send deadline reminders only for scholarships I select</div>
@@ -317,6 +325,21 @@ function toggleReminder(scholarshipId, isEnabled) {
         alert('An error occurred while updating the reminder.');
     });
 }
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('input[name="deadline_reminder_scope"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.querySelectorAll('.scope-card').forEach(card => {
+                card.style.borderColor = '#e2e8f0';
+                card.style.backgroundColor = '#fff';
+            });
+            const parent = this.closest('.scope-card');
+            if (parent) {
+                parent.style.borderColor = '#3b82f6';
+                parent.style.backgroundColor = '#eff6ff';
+            }
+        });
+    });
+});
 </script>
 
 <?php include ROOT_PATH . '/app/Views/layouts/student_footer.php'; ?>

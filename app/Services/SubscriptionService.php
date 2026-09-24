@@ -865,4 +865,93 @@ class SubscriptionService {
 
         return $metrics;
     }
+
+    /**
+     * Activate the default notification preferences for manual subscription grants:
+     * - Email Notifications: ON
+     * - WhatsApp Notifications: ON
+     * - Daily Updates Frequency: OFF
+     * - Weekly Summaries: OFF
+     * - Deadline Reminders: ON
+     *
+     * @param int $userId
+     * @param PDO|null $db
+     * @return void
+     */
+    public static function activateManualSubscriptionNotifications(int $userId, ?PDO $db = null): void {
+        if ($userId <= 0) {
+            return;
+        }
+
+        $db = $db ?? Database::connection();
+
+        // 1. Upsert notification_preferences for the 5 key types + matching scholarship alerts
+        $preferences = [
+            'email_alerts' => ['email' => 1, 'whatsapp' => 0],
+            'whatsapp_alerts' => ['email' => 0, 'whatsapp' => 1],
+            'daily_alerts' => ['email' => 0, 'whatsapp' => 0],
+            'weekly_digest' => ['email' => 0, 'whatsapp' => 0],
+            'deadline_reminders' => ['email' => 1, 'whatsapp' => 1],
+            'matching_scholarship_alerts' => ['email' => 1, 'whatsapp' => 1],
+            'new_scholarship_alerts' => ['email' => 1, 'whatsapp' => 1],
+        ];
+
+        $stmtPref = $db->prepare("
+            INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at)
+            VALUES (:uid, :type, :email, :wa, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE
+                email_enabled = VALUES(email_enabled),
+                whatsapp_enabled = VALUES(whatsapp_enabled),
+                updated_at = NOW()
+        ");
+
+        foreach ($preferences as $type => $flags) {
+            $stmtPref->execute([
+                'uid' => $userId,
+                'type' => $type,
+                'email' => $flags['email'],
+                'wa' => $flags['whatsapp']
+            ]);
+        }
+
+        // 2. Synchronize user_preferences table
+        $stmtUserPref = $db->prepare("
+            INSERT INTO user_preferences (
+                user_id, email_enabled, whatsapp_enabled, daily_alert_enabled,
+                deadline_reminder_scope, deadline_reminder_days, preferred_channel,
+                allow_multi_channel, created_at, updated_at
+            ) VALUES (
+                :uid, 1, 1, 0,
+                'all', '3,1', 'email',
+                1, NOW(), NOW()
+            )
+            ON DUPLICATE KEY UPDATE
+                email_enabled = 1,
+                whatsapp_enabled = 1,
+                daily_alert_enabled = 0,
+                deadline_reminder_scope = CASE WHEN deadline_reminder_scope = 'off' THEN 'all' ELSE deadline_reminder_scope END,
+                deadline_reminder_days = COALESCE(deadline_reminder_days, '3,1'),
+                allow_multi_channel = 1,
+                updated_at = NOW()
+        ");
+        $stmtUserPref->execute(['uid' => $userId]);
+
+        // 3. Synchronize users table master opt-in flags and fallback whatsapp_phone
+        $stmtUsers = $db->prepare("
+            UPDATE users
+            SET email_opt_in = 1,
+                whatsapp_opt_in = 1,
+                whatsapp_phone = CASE
+                    WHEN (whatsapp_phone IS NULL OR whatsapp_phone = '') AND phone IS NOT NULL AND phone != ''
+                    THEN phone
+                    ELSE whatsapp_phone
+                END,
+                updated_at = NOW()
+            WHERE id = :uid
+        ");
+        $stmtUsers->execute(['uid' => $userId]);
+
+        Logger::info("Activated default subscriber notification preferences for user ID: {$userId}");
+    }
 }
+

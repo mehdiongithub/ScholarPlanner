@@ -326,7 +326,7 @@ class NotificationSchedulerService {
             $candidate->setTime((int)$targetH, (int)$targetM, 0);
 
             if ($candidate > $current && in_array($candidate->format('l'), $allowedDays, true)) {
-                return $candidate->format('Y-m-d H:i (l)') . ' ' . $tzName;
+                return $candidate->format('Y-m-d H:i:s');
             }
         }
         return 'None scheduled';
@@ -335,7 +335,7 @@ class NotificationSchedulerService {
     /**
      * Evaluate if the Automatic Matching schedule is due to run.
      */
-    public function isMatchingScheduleDue(?DateTimeInterface $customTime = null, ?array $overrideSettings = null): array {
+    public function isMatchingScheduleDue(?DateTimeInterface $customTime = null, ?array $overrideSettings = null, int $toleranceMinutes = 0): array {
         $settings = $overrideSettings ?? $this->getSettings();
 
         if (!$settings['whatsapp_notifications_enabled'] || !$settings['matching_scheduler_enabled']) {
@@ -368,25 +368,38 @@ class NotificationSchedulerService {
 
         $currentTimeStr = $now->format('H:i');
         $scheduledTime = $settings['matching_send_time'];
-
-        if ($currentTimeStr !== $scheduledTime) {
-            return [
-                'due' => false,
-                'reason' => 'time_not_matched',
-                'current_time' => $currentTimeStr,
-                'scheduled_time' => $scheduledTime,
-                'now' => $now,
-                'settings' => $settings
-            ];
-        }
-
         $todayDate = $now->format('Y-m-d');
         $slotKey = "matching:{$todayDate}:{$scheduledTime}:{$tzName}";
+
         if (($settings['matching_last_run_slot'] ?? '') === $slotKey) {
             return [
                 'due' => false,
                 'reason' => 'already_executed_for_slot',
                 'slot' => $slotKey,
+                'now' => $now,
+                'settings' => $settings
+            ];
+        }
+
+        // Exact minute match or tolerance catch-up window
+        $isDue = false;
+        if ($currentTimeStr === $scheduledTime) {
+            $isDue = true;
+        } elseif ($toleranceMinutes > 0) {
+            [$targetH, $targetM] = explode(':', $scheduledTime);
+            $scheduledDt = (clone $now)->setTime((int)$targetH, (int)$targetM, 0);
+            $diffSeconds = $now->getTimestamp() - $scheduledDt->getTimestamp();
+            if ($diffSeconds >= 0 && $diffSeconds <= ($toleranceMinutes * 60)) {
+                $isDue = true;
+            }
+        }
+
+        if (!$isDue) {
+            return [
+                'due' => false,
+                'reason' => 'time_not_matched',
+                'current_time' => $currentTimeStr,
+                'scheduled_time' => $scheduledTime,
                 'now' => $now,
                 'settings' => $settings
             ];
@@ -406,7 +419,7 @@ class NotificationSchedulerService {
     /**
      * Evaluate if the Deadline Reminder schedule is due to run.
      */
-    public function isDeadlineScheduleDue(?DateTimeInterface $customTime = null, ?array $overrideSettings = null): array {
+    public function isDeadlineScheduleDue(?DateTimeInterface $customTime = null, ?array $overrideSettings = null, int $toleranceMinutes = 0): array {
         $settings = $overrideSettings ?? $this->getSettings();
 
         if (!$settings['whatsapp_notifications_enabled'] || !$settings['deadline_scheduler_enabled']) {
@@ -439,25 +452,38 @@ class NotificationSchedulerService {
 
         $currentTimeStr = $now->format('H:i');
         $scheduledTime = $settings['deadline_send_time'];
-
-        if ($currentTimeStr !== $scheduledTime) {
-            return [
-                'due' => false,
-                'reason' => 'time_not_matched',
-                'current_time' => $currentTimeStr,
-                'scheduled_time' => $scheduledTime,
-                'now' => $now,
-                'settings' => $settings
-            ];
-        }
-
         $todayDate = $now->format('Y-m-d');
         $slotKey = "deadline:{$todayDate}:{$scheduledTime}:{$tzName}";
+
         if (($settings['deadline_last_run_slot'] ?? '') === $slotKey) {
             return [
                 'due' => false,
                 'reason' => 'already_executed_for_slot',
                 'slot' => $slotKey,
+                'now' => $now,
+                'settings' => $settings
+            ];
+        }
+
+        // Exact minute match or tolerance catch-up window
+        $isDue = false;
+        if ($currentTimeStr === $scheduledTime) {
+            $isDue = true;
+        } elseif ($toleranceMinutes > 0) {
+            [$targetH, $targetM] = explode(':', $scheduledTime);
+            $scheduledDt = (clone $now)->setTime((int)$targetH, (int)$targetM, 0);
+            $diffSeconds = $now->getTimestamp() - $scheduledDt->getTimestamp();
+            if ($diffSeconds >= 0 && $diffSeconds <= ($toleranceMinutes * 60)) {
+                $isDue = true;
+            }
+        }
+
+        if (!$isDue) {
+            return [
+                'due' => false,
+                'reason' => 'time_not_matched',
+                'current_time' => $currentTimeStr,
+                'scheduled_time' => $scheduledTime,
                 'now' => $now,
                 'settings' => $settings
             ];
@@ -493,6 +519,22 @@ class NotificationSchedulerService {
             }
         } catch (Exception $e) {
             Logger::error("Failed to record scheduler job execution: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Record background scheduler heartbeat timestamp in database.
+     */
+    public function recordCronHeartbeat(): void {
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO settings (`key`, `value`, `type`, `group_name`, `is_public`) 
+                VALUES ('cron_last_heartbeat_at', NOW(), 'string', 'notifications_runtime', 1)
+                ON DUPLICATE KEY UPDATE `value` = NOW(), `updated_at` = NOW()
+            ");
+            $stmt->execute();
+        } catch (Exception $e) {
+            Logger::error("Failed to record scheduler heartbeat: " . $e->getMessage());
         }
     }
 
@@ -605,8 +647,11 @@ class NotificationSchedulerService {
                     $canWhatsAppAlerts = true;
                 }
 
-                $emailPossible = $canPremiumAlerts && $matchAlertsEmail && $genEmail && (bool)$user['email_opt_in'] && !empty($user['email']);
-                $waPossible = $canWhatsAppAlerts && $matchAlertsWa && $genWa && (bool)$user['whatsapp_opt_in'] && !empty($normalizedPhone) && !$isSunday;
+                $emailOptIn = !empty($user['email_opt_in']) || $matchAlertsEmail || !empty($userPref['email_enabled']);
+                $waOptIn = !empty($user['whatsapp_opt_in']) || $matchAlertsWa || !empty($userPref['whatsapp_enabled']);
+
+                $emailPossible = $canPremiumAlerts && $matchAlertsEmail && $genEmail && $emailOptIn && !empty($user['email']);
+                $waPossible = $canWhatsAppAlerts && $matchAlertsWa && $genWa && $waOptIn && !empty($normalizedPhone) && !$isSunday;
 
                 // Enforce lifetime 25 WhatsApp limit
                 if ($waPossible) {

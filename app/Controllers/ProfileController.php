@@ -395,10 +395,12 @@ class ProfileController {
         $userId = Auth::userId();
         $db = Database::connection();
 
+        $returnTo = !empty($_POST['return_to']) ? $_POST['return_to'] : url('/profile/edit');
+
         // CSRF Shield
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.']);
+            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.'], $returnTo);
         }
 
         // Whitelisted inputs
@@ -422,60 +424,70 @@ class ProfileController {
         $currentSemester = !empty($_POST['current_semester']) ? trim($_POST['current_semester']) : null;
         $passingYear = !empty($_POST['passing_year']) ? (int)$_POST['passing_year'] : null;
 
+        if ($isCurrent) {
+            $graduationStatus = 'ongoing';
+        }
+
         if (in_array($institutionType, ['school', 'college', 'other'])) {
             $institutionSelect = 'other';
-            $degreeTitle = $degreeLevel ?: 'N/A';
-            $fieldOfStudy = 'General';
+            if (empty($degreeTitle)) {
+                $degreeTitle = $degreeLevel ?: 'N/A';
+            }
+            if (empty($fieldOfStudy)) {
+                $fieldOfStudy = 'General';
+            }
         }
 
         $institutionId = null;
         $institutionName = '';
         $errors = [];
 
-
         // Conditional validations for semester and passing year
         if ($graduationStatus === 'ongoing' && $institutionType === 'university') {
             if (empty($currentSemester)) {
-                $errors['current_semester'] = 'Current semester is required.';
+                $currentSemester = 'Enrolled';
             }
         }
         if ($institutionType === 'university' && ($graduationStatus === 'graduated' || $graduationStatus === 'ongoing')) {
             if (empty($passingYear)) {
-                $errors['passing_year'] = 'Graduation / Passing Year is required.';
-            } elseif ($passingYear < (int)date('Y') - 100 || $passingYear > (int)date('Y') + 10) {
+                if (!empty($endDate)) {
+                    $passingYear = (int)date('Y', strtotime($endDate));
+                } else {
+                    $passingYear = (int)date('Y');
+                }
+            } elseif ($passingYear < (int)date('Y') - 100 || $passingYear > (int)date('Y') + 15) {
                 $errors['passing_year'] = 'Please enter a valid passing year.';
             }
         }
 
-        if ($institutionSelect !== null && $institutionSelect !== '') {
-            if ($institutionSelect === 'other') {
-                $institutionName = $customInstName;
-                if (empty($institutionName)) {
-                    $errors['custom_institution_name'] = 'Custom institution name is required.';
-                }
-                if (in_array($institutionType, ['university', 'school', 'college', 'other'])) {
-                    if ($countryId === null || $countryId <= 0) {
-                        $errors['edu_country_id'] = 'Institution country is required.';
-                    }
-                    if ($stateId === null || $stateId <= 0) {
-                        $errors['edu_state_id'] = 'Institution state is required.';
-                    }
-                }
-            } else {
-                $institutionId = (int)$institutionSelect;
-                $stmtName = $db->prepare("SELECT name FROM institutions WHERE id = :id LIMIT 1");
-                $stmtName->execute(['id' => $institutionId]);
-                $institutionName = $stmtName->fetchColumn() ?: '';
-            }
+        if ($institutionSelect !== null && $institutionSelect !== '' && $institutionSelect !== 'other') {
+            $institutionId = (int)$institutionSelect;
+            $stmtName = $db->prepare("SELECT name FROM institutions WHERE id = :id LIMIT 1");
+            $stmtName->execute(['id' => $institutionId]);
+            $institutionName = $stmtName->fetchColumn() ?: '';
         } else {
-            $institutionName = trim($_POST['institution_name'] ?? '');
+            $institutionName = trim($_POST['institution_name'] ?? $customInstName);
+            if (empty($institutionName) && !empty($customInstName)) {
+                $institutionName = $customInstName;
+            }
+        }
+
+        if ($institutionSelect === 'other' || empty($institutionId)) {
+            if (empty($institutionName)) {
+                $errors['institution_name'] = 'Institution name is required.';
+            }
+            if (isset($_POST['state_id']) && strpos($returnTo, 'settings') === false) {
+                if ($stateId === null || $stateId <= 0) {
+                    $errors['edu_state_id'] = 'Institution state is required.';
+                }
+            }
         }
 
         // Standard validation
         $errors = array_merge($errors, $this->validateEducation($institutionName, $degreeLevel, $degreeTitle, $fieldOfStudy, $cgpa, $cgpaScale, $percentage, $startDate, $endDate));
 
         if (!empty($errors)) {
-            $this->redirectBackWithErrors($errors);
+            $this->redirectBackWithErrors($errors, $returnTo);
         }
 
 
@@ -624,7 +636,7 @@ class ProfileController {
         } catch (Exception $e) {
             $db->rollBack();
             \App\Services\Logger::error("Failed to add education for user $userId: " . $e->getMessage());
-            $this->redirectBackWithErrors(['education' => 'An error occurred while saving your education history. Please try again.']);
+            $this->redirectBackWithErrors(['education' => 'An error occurred while saving your education history. Please try again.'], $returnTo);
         }
     }
 
@@ -637,10 +649,12 @@ class ProfileController {
         $userId = Auth::userId();
         $db = Database::connection();
 
+        $returnTo = !empty($_POST['return_to']) ? $_POST['return_to'] : url('/profile/edit');
+
         // CSRF Shield
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.']);
+            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.'], $returnTo);
         }
 
         $id = (int)($_POST['id'] ?? 0);
@@ -652,7 +666,7 @@ class ProfileController {
 
         if (!$recordOwner || (int)$recordOwner !== $userId) {
             $errors['unauthorized'] = "Unauthorized access attempt.";
-            $this->redirectBackWithErrors($errors);
+            $this->redirectBackWithErrors($errors, $returnTo);
         }
 
         // Whitelisted inputs
@@ -676,10 +690,18 @@ class ProfileController {
         $currentSemester = !empty($_POST['current_semester']) ? trim($_POST['current_semester']) : null;
         $passingYear = !empty($_POST['passing_year']) ? (int)$_POST['passing_year'] : null;
 
+        if ($isCurrent) {
+            $graduationStatus = 'ongoing';
+        }
+
         if (in_array($institutionType, ['school', 'college', 'other'])) {
             $institutionSelect = 'other';
-            $degreeTitle = $degreeLevel ?: 'N/A';
-            $fieldOfStudy = 'General';
+            if (empty($degreeTitle)) {
+                $degreeTitle = $degreeLevel ?: 'N/A';
+            }
+            if (empty($fieldOfStudy)) {
+                $fieldOfStudy = 'General';
+            }
         }
 
         $institutionId = null;
@@ -690,46 +712,49 @@ class ProfileController {
         // Conditional validations for semester and passing year
         if ($graduationStatus === 'ongoing' && $institutionType === 'university') {
             if (empty($currentSemester)) {
-                $errors['current_semester'] = 'Current semester is required.';
+                $currentSemester = 'Enrolled';
             }
         }
         if ($institutionType === 'university' && ($graduationStatus === 'graduated' || $graduationStatus === 'ongoing')) {
             if (empty($passingYear)) {
-                $errors['passing_year'] = 'Graduation / Passing Year is required.';
-            } elseif ($passingYear < (int)date('Y') - 100 || $passingYear > (int)date('Y') + 10) {
+                if (!empty($endDate)) {
+                    $passingYear = (int)date('Y', strtotime($endDate));
+                } else {
+                    $passingYear = (int)date('Y');
+                }
+            } elseif ($passingYear < (int)date('Y') - 100 || $passingYear > (int)date('Y') + 15) {
                 $errors['passing_year'] = 'Please enter a valid passing year.';
             }
         }
 
-        if ($institutionSelect !== null && $institutionSelect !== '') {
-            if ($institutionSelect === 'other') {
-                $institutionName = $customInstName;
-                if (empty($institutionName)) {
-                    $errors['custom_institution_name'] = 'Custom institution name is required.';
-                }
-                if (in_array($institutionType, ['university', 'school', 'college', 'other'])) {
-                    if ($countryId === null || $countryId <= 0) {
-                        $errors['edu_country_id'] = 'Institution country is required.';
-                    }
-                    if ($stateId === null || $stateId <= 0) {
-                        $errors['edu_state_id'] = 'Institution state is required.';
-                    }
-                }
-            } else {
-                $institutionId = (int)$institutionSelect;
-                $stmtName = $db->prepare("SELECT name FROM institutions WHERE id = :id LIMIT 1");
-                $stmtName->execute(['id' => $institutionId]);
-                $institutionName = $stmtName->fetchColumn() ?: '';
-            }
+        if ($institutionSelect !== null && $institutionSelect !== '' && $institutionSelect !== 'other') {
+            $institutionId = (int)$institutionSelect;
+            $stmtName = $db->prepare("SELECT name FROM institutions WHERE id = :id LIMIT 1");
+            $stmtName->execute(['id' => $institutionId]);
+            $institutionName = $stmtName->fetchColumn() ?: '';
         } else {
-            $institutionName = trim($_POST['institution_name'] ?? '');
+            $institutionName = trim($_POST['institution_name'] ?? $customInstName);
+            if (empty($institutionName) && !empty($customInstName)) {
+                $institutionName = $customInstName;
+            }
+        }
+
+        if ($institutionSelect === 'other' || empty($institutionId)) {
+            if (empty($institutionName)) {
+                $errors['institution_name'] = 'Institution name is required.';
+            }
+            if (isset($_POST['state_id']) && strpos($returnTo, 'settings') === false) {
+                if ($stateId === null || $stateId <= 0) {
+                    $errors['edu_state_id'] = 'Institution state is required.';
+                }
+            }
         }
 
         // Standard validation
         $errors = array_merge($errors, $this->validateEducation($institutionName, $degreeLevel, $degreeTitle, $fieldOfStudy, $cgpa, $cgpaScale, $percentage, $startDate, $endDate));
 
         if (!empty($errors)) {
-            $this->redirectBackWithErrors($errors);
+            $this->redirectBackWithErrors($errors, $returnTo);
         }
 
 
@@ -867,8 +892,9 @@ class ProfileController {
                 $this->halt("AJAX success response");
             }
 
+            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Education record updated successfully.' : url('/profile/edit?success=Education record updated successfully.');
             if (!headers_sent()) {
-                header("Location: " . url('/profile/edit?success=Education record updated successfully.'));
+                header("Location: " . $redirectUrl);
             }
             if (defined('TESTING_MODE') && TESTING_MODE) {
                 return;
@@ -878,7 +904,7 @@ class ProfileController {
         } catch (Exception $e) {
             $db->rollBack();
             \App\Services\Logger::error("Failed to update education $id for user $userId: " . $e->getMessage());
-            $this->redirectBackWithErrors(['education' => 'An error occurred while saving your education history. Please try again.']);
+            $this->redirectBackWithErrors(['education' => 'An error occurred while saving your education history. Please try again.'], $returnTo);
         }
     }
 
@@ -891,10 +917,12 @@ class ProfileController {
         $userId = Auth::userId();
         $db = Database::connection();
 
+        $returnTo = !empty($_POST['return_to']) ? $_POST['return_to'] : url('/profile/edit');
+
         // CSRF Shield
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.']);
+            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.'], $returnTo);
         }
 
         $id = (int)($_POST['id'] ?? 0);
@@ -906,7 +934,7 @@ class ProfileController {
 
         if (!$recordOwner || (int)$recordOwner !== $userId) {
             $errors['unauthorized'] = "Unauthorized access attempt.";
-            $this->redirectBackWithErrors($errors);
+            $this->redirectBackWithErrors($errors, $returnTo);
         }
 
         try {
@@ -955,7 +983,7 @@ class ProfileController {
 
         } catch (Exception $e) {
             \App\Services\Logger::error("Failed to delete education $id for user $userId: " . $e->getMessage());
-            $this->redirectBackWithErrors(['education' => 'An error occurred while deleting your education record. Please try again.']);
+            $this->redirectBackWithErrors(['education' => 'An error occurred while deleting your education record. Please try again.'], $returnTo);
         }
     }
 
@@ -1266,7 +1294,7 @@ class ProfileController {
         exit();
     }
 
-    private function redirectBackWithErrors(array $errors): void {
+    private function redirectBackWithErrors(array $errors, ?string $redirectUrl = null): void {
         $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
         if ($isAjax) {
             if (!headers_sent()) {
@@ -1276,8 +1304,9 @@ class ProfileController {
             $this->halt("AJAX errors response");
         }
         $_SESSION['profile_errors'] = $errors;
+        $target = $redirectUrl ?: url('/profile/edit');
         if (!headers_sent()) {
-            header("Location: " . url('/profile/edit'));
+            header("Location: " . $target);
         }
         $this->halt("Redirect back with errors");
     }
@@ -1427,13 +1456,24 @@ class ProfileController {
             ];
         }
 
-        // 3. Fetch user_preferences for reminder scope and days
-        $stmtUserPref = $db->prepare("SELECT deadline_reminder_scope, deadline_reminder_days FROM user_preferences WHERE user_id = :user_id LIMIT 1");
+        // 3. Fetch user_preferences for reminder scope, days, preferred_channel, and allow_multi_channel
+        $stmtUserPref = $db->prepare("SELECT * FROM user_preferences WHERE user_id = :user_id LIMIT 1");
         $stmtUserPref->execute(['user_id' => $userId]);
-        $userPref = $stmtUserPref->fetch(PDO::FETCH_ASSOC) ?: [
-            'deadline_reminder_scope' => 'off',
-            'deadline_reminder_days' => '3,1'
-        ];
+        $userPref = $stmtUserPref->fetch(PDO::FETCH_ASSOC);
+
+        if (!$userPref) {
+            $userPref = [
+                'deadline_reminder_scope' => 'off',
+                'deadline_reminder_days' => '3,1',
+                'preferred_channel' => 'email',
+                'allow_multi_channel' => 0
+            ];
+        } else {
+            $userPref['deadline_reminder_scope'] = $userPref['deadline_reminder_scope'] ?? 'off';
+            $userPref['deadline_reminder_days'] = $userPref['deadline_reminder_days'] ?? '3,1';
+            $userPref['preferred_channel'] = !empty($userPref['preferred_channel']) ? $userPref['preferred_channel'] : 'email';
+            $userPref['allow_multi_channel'] = (int)($userPref['allow_multi_channel'] ?? 0);
+        }
 
         // 4. Fetch specific scholarship reminders
         $stmtReminders = $db->prepare("
@@ -1446,6 +1486,9 @@ class ProfileController {
         $stmtReminders->execute(['user_id' => $userId]);
         $selectedReminders = $stmtReminders->fetchAll(PDO::FETCH_ASSOC);
 
+        $errors = $_SESSION['profile_errors'] ?? [];
+        unset($_SESSION['profile_errors']);
+
         view('profile.notifications', [
             'logs' => $logs,
             'prefMap' => $prefMap,
@@ -1453,7 +1496,8 @@ class ProfileController {
             'selectedReminders' => $selectedReminders,
             'csrf_token' => Security::csrfToken(),
             'title' => 'Notification Settings & Reminders',
-            'success_message' => $_GET['success'] ?? null
+            'success_message' => $_GET['success'] ?? null,
+            'error_message' => $_GET['error'] ?? ($errors['notifications'] ?? ($errors['csrf'] ?? null))
         ]);
     }
 
@@ -1465,9 +1509,11 @@ class ProfileController {
         $userId = Auth::userId();
         $db = Database::connection();
 
+        $returnTo = !empty($_POST['return_to']) ? $_POST['return_to'] : url('/notifications');
+
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.']);
+            $this->redirectBackWithErrors(['csrf' => 'CSRF verification failed. Please try again.'], $returnTo);
         }
 
         // 1. Channel toggles
@@ -1496,6 +1542,8 @@ class ProfileController {
         if (empty($sanitizedDays)) {
             $sanitizedDays = [3, 1];
         }
+        $reminderDaysStr = implode(',', $sanitizedDays);
+
         // 4. Preferred channel and multi-channel delivery setting
         $preferredChannel = strtolower(trim($_POST['preferred_channel'] ?? 'email'));
         if (!in_array($preferredChannel, ['email', 'whatsapp'], true)) {
@@ -1535,6 +1583,34 @@ class ProfileController {
                 'whatsapp' => $deadlineWhatsapp
             ]);
 
+            // Upsert whatsapp_alerts preference (used as general master gate in NotificationQueueService)
+            $isWaActive = ($newMatchWhatsapp || $deadlineWhatsapp || $preferredChannel === 'whatsapp') ? 1 : 0;
+            $stmtUpsertWa = $db->prepare("
+                INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at)
+                VALUES (:uid, 'whatsapp_alerts', 0, :whatsapp, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE 
+                    whatsapp_enabled = VALUES(whatsapp_enabled),
+                    updated_at = NOW()
+            ");
+            $stmtUpsertWa->execute([
+                'uid' => $userId,
+                'whatsapp' => $isWaActive
+            ]);
+
+            // Upsert email_alerts preference (used as general master gate in NotificationQueueService)
+            $isEmailActive = ($newMatchEmail || $deadlineEmail || $preferredChannel === 'email') ? 1 : 0;
+            $stmtUpsertEmail = $db->prepare("
+                INSERT INTO notification_preferences (user_id, notification_type, email_enabled, whatsapp_enabled, created_at, updated_at)
+                VALUES (:uid, 'email_alerts', :email, 0, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE 
+                    email_enabled = VALUES(email_enabled),
+                    updated_at = NOW()
+            ");
+            $stmtUpsertEmail->execute([
+                'uid' => $userId,
+                'email' => $isEmailActive
+            ]);
+
             // Update user_preferences for scope, timing, preferred channel and multi-channel
             $stmtUserPref = $db->prepare("
                 INSERT INTO user_preferences (user_id, deadline_reminder_scope, deadline_reminder_days, preferred_channel, allow_multi_channel, created_at, updated_at)
@@ -1554,6 +1630,26 @@ class ProfileController {
                 'multichannel' => $allowMultiChannel
             ]);
 
+            // Synchronize master user opt-in flags and ensure whatsapp_phone falls back to phone
+            $userWaOptIn = $isWaActive;
+            $userEmailOptIn = $isEmailActive;
+            $stmtSyncUser = $db->prepare("
+                UPDATE users 
+                SET whatsapp_opt_in = :wa_opt,
+                    email_opt_in = :email_opt,
+                    whatsapp_phone = CASE 
+                        WHEN (whatsapp_phone IS NULL OR whatsapp_phone = '') AND phone IS NOT NULL AND phone != '' 
+                        THEN phone 
+                        ELSE whatsapp_phone 
+                    END
+                WHERE id = :uid
+            ");
+            $stmtSyncUser->execute([
+                'wa_opt' => $userWaOptIn,
+                'email_opt' => $userEmailOptIn,
+                'uid' => $userId
+            ]);
+
             $db->commit();
             Auth::logAudit($userId, 'notification_settings_updated', 'profile', 'users', $userId);
 
@@ -1564,14 +1660,15 @@ class ProfileController {
                 $this->halt("AJAX notification preferences success");
             }
 
-            $redirectUrl = !empty($_POST['return_to']) ? $_POST['return_to'] . (strpos($_POST['return_to'], '?') !== false ? '&' : '?') . 'success=Notification settings saved successfully.' : url('/notifications?success=Notification settings saved successfully.');
+            $separator = (strpos($returnTo, '?') !== false) ? '&' : '?';
+            $redirectUrl = $returnTo . $separator . 'success=' . urlencode('Notification settings saved successfully.');
             header("Location: " . $redirectUrl);
             $this->halt("Redirect notifications");
 
         } catch (Exception $e) {
             $db->rollBack();
             \App\Services\Logger::error("Failed to update notification settings for user $userId: " . $e->getMessage());
-            $this->redirectBackWithErrors(['notifications' => 'Could not save notification settings. Please try again.']);
+            $this->redirectBackWithErrors(['notifications' => 'Could not save notification settings: ' . $e->getMessage()], $returnTo);
         }
     }
 
