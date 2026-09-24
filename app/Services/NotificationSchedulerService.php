@@ -523,16 +523,42 @@ class NotificationSchedulerService {
     }
 
     /**
-     * Record background scheduler heartbeat timestamp in database.
+     * Record background scheduler heartbeat timestamp and execution health in database.
      */
-    public function recordCronHeartbeat(): void {
+    public function recordCronHeartbeat(string $status = 'SUCCESS', ?string $executionId = null, ?string $error = null): void {
         try {
+            $tzName = $this->getSettings()['matching_timezone'] ?? ($_ENV['APP_TIMEZONE'] ?? 'Asia/Karachi');
+            try {
+                $tz = new DateTimeZone($tzName);
+            } catch (Exception $e) {
+                $tz = new DateTimeZone('Asia/Karachi');
+            }
+            $now = new DateTime('now', $tz);
+            $nowStr = $now->format('Y-m-d H:i:s');
+
             $stmt = $this->db->prepare("
                 INSERT INTO settings (`key`, `value`, `type`, `group_name`, `is_public`) 
-                VALUES ('cron_last_heartbeat_at', NOW(), 'string', 'notifications_runtime', 1)
-                ON DUPLICATE KEY UPDATE `value` = NOW(), `updated_at` = NOW()
+                VALUES (:key, :val, 'string', 'notifications_runtime', 1)
+                ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `updated_at` = NOW()
             ");
-            $stmt->execute();
+
+            // 1. Record heartbeat timestamp in application timezone
+            $stmt->execute(['key' => 'cron_last_heartbeat_at', 'val' => $nowStr]);
+
+            // 2. Record execution status
+            $stmt->execute(['key' => 'cron_last_heartbeat_status', 'val' => $status]);
+
+            // 3. Record execution ID if provided
+            if ($executionId !== null) {
+                $stmt->execute(['key' => 'cron_last_execution_id', 'val' => $executionId]);
+            }
+
+            // 4. Record error if provided
+            if ($error !== null) {
+                $stmt->execute(['key' => 'cron_last_error', 'val' => mb_substr($error, 0, 500)]);
+            } elseif ($status === 'SUCCESS') {
+                $stmt->execute(['key' => 'cron_last_error', 'val' => '']);
+            }
         } catch (Exception $e) {
             Logger::error("Failed to record scheduler heartbeat: " . $e->getMessage());
         }

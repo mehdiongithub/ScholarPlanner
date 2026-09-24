@@ -2973,14 +2973,23 @@ class AdminController {
         );
 
         $lastHeartbeat = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'cron_last_heartbeat_at' LIMIT 1")->fetchColumn();
+        $lastHeartbeatStatus = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'cron_last_heartbeat_status' LIMIT 1")->fetchColumn();
         $cronActive = false;
         $cronHeartbeatDisplay = 'Never';
         if ($lastHeartbeat) {
-            $ts = strtotime($lastHeartbeat);
+            $appTz = new \DateTimeZone($_ENV['APP_TIMEZONE'] ?? 'Asia/Karachi');
+            try {
+                $dt = new \DateTime($lastHeartbeat, $appTz);
+                $ts = $dt->getTimestamp();
+            } catch (\Exception $e) {
+                $ts = strtotime($lastHeartbeat);
+            }
             $secondsAgo = time() - $ts;
-            $cronActive = ($secondsAgo <= 600);
+            // Sensible threshold for 1-minute cron worker: 5 minutes (300 seconds)
+            $isWithinThreshold = ($secondsAgo >= -15 && $secondsAgo <= 300);
+            $cronActive = $isWithinThreshold && ($lastHeartbeatStatus !== 'FAILED');
             if ($secondsAgo < 60) {
-                $cronHeartbeatDisplay = 'Just now (' . $secondsAgo . 's ago)';
+                $cronHeartbeatDisplay = 'Just now (' . max(0, $secondsAgo) . 's ago)';
             } elseif ($secondsAgo < 3600) {
                 $cronHeartbeatDisplay = round($secondsAgo / 60) . ' mins ago';
             } else {
@@ -3342,7 +3351,8 @@ class AdminController {
         }
 
         $scheduler = new \App\Services\NotificationSchedulerService($this->db);
-        $scheduler->recordCronHeartbeat();
+        $webExecutionId = 'web_' . date('Ymd_His') . '_' . bin2hex(random_bytes(3));
+        $scheduler->recordCronHeartbeat('SUCCESS', $webExecutionId);
 
         // 1. Recover stale processing
         $recovery = $scheduler->recoverStaleProcessing(15, 3);

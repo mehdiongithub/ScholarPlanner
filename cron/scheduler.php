@@ -40,6 +40,10 @@ try {
     // Fail-safe silently
 }
 
+// Set runtime application timezone before DB connection so PDO session timezone matches
+$appTz = $_ENV['APP_TIMEZONE'] ?? 'Asia/Karachi';
+date_default_timezone_set($appTz);
+
 use App\Services\Database;
 use App\Services\Logger;
 use App\Services\NotificationSchedulerService;
@@ -66,7 +70,7 @@ $scheduler = new NotificationSchedulerService($db);
 $settings = $scheduler->getSettings();
 
 // Default Runtime Timezone for scheduler output
-$tzName = $settings['matching_timezone'] ?? ($_ENV['APP_TIMEZONE'] ?? 'Asia/Karachi');
+$tzName = $settings['matching_timezone'] ?? $appTz;
 date_default_timezone_set($tzName);
 
 echo "=================================================================\n";
@@ -106,8 +110,12 @@ if (!$scheduler->acquireLock('app_master_scheduler', 0)) {
     exit(0);
 }
 
-// Record scheduler heartbeat
-$scheduler->recordCronHeartbeat();
+// Generate unique execution ID for this cycle
+$executionId = 'sched_' . date('Ymd_His') . '_' . bin2hex(random_bytes(3));
+$schedulerSuccess = true;
+
+// Record scheduler heartbeat at the beginning of execution
+$scheduler->recordCronHeartbeat('SUCCESS', $executionId);
 
 try {
     // 2. Recover Stale Worker Jobs (self-healing after worker timeouts/crashes)
@@ -204,11 +212,17 @@ try {
         Logger::error("Master Scheduler: Queue Worker Error: " . $e->getMessage());
     }
 
-} catch (\Exception $e) {
+} catch (\Throwable $e) {
+    $schedulerSuccess = false;
     echo "❌ Scheduler Critical Exception: " . $e->getMessage() . "\n";
     Logger::error("Master Scheduler Critical Exception: " . $e->getMessage());
+    $scheduler->recordCronHeartbeat('FAILED', $executionId, $e->getMessage());
 } finally {
-    // 8. Always release master lock
+    // 8. Refresh heartbeat on completion if execution was successful
+    if ($schedulerSuccess) {
+        $scheduler->recordCronHeartbeat('SUCCESS', $executionId);
+    }
+    // Always release master lock
     $scheduler->releaseLock('app_master_scheduler');
 }
 
