@@ -1195,6 +1195,16 @@ class ScholarshipController {
             \App\Services\CacheService::clear();
             $this->logAudit('updated', $id);
 
+            // Recalculate matches if the scholarship is currently published
+            if (($oldRecord['status'] ?? '') === 'published') {
+                try {
+                    $matchingService = new \App\Services\ScholarshipMatchingService();
+                    $matchingService->recalculateForScholarship($id);
+                } catch (\Exception $ex) {
+                    Logger::error("Failed to recalculate matches on update for scholarship $id: " . $ex->getMessage());
+                }
+            }
+
             header("Location: " . url('/admin/scholarships?success=Scholarship updated successfully.'));
             exit();
 

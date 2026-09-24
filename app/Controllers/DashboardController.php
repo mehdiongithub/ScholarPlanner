@@ -51,12 +51,28 @@ class DashboardController {
             $sort = 'match_score';
         }
 
-        // Check if matches exist. If not, calculate lazy.
+        // Check if matches exist or if there are published scholarships not yet matched for this user
         $stmtCount = $db->prepare("SELECT COUNT(*) FROM scholarship_matches WHERE user_id = :user_id");
         $stmtCount->execute(['user_id' => $user['id']]);
         $hasMatches = $stmtCount->fetchColumn() > 0;
 
-        if (!$hasMatches) {
+        $hasUnmatched = false;
+        if ($hasMatches) {
+            $stmtUnmatched = $db->prepare("
+                SELECT 1 FROM scholarships s 
+                WHERE s.status = 'published' 
+                  AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM scholarship_matches m 
+                      WHERE m.scholarship_id = s.id AND m.user_id = :user_id
+                  )
+                LIMIT 1
+            ");
+            $stmtUnmatched->execute(['user_id' => $user['id']]);
+            $hasUnmatched = (bool)$stmtUnmatched->fetchColumn();
+        }
+
+        if (!$hasMatches || $hasUnmatched) {
             $matchingService = new \App\Services\ScholarshipMatchingService();
             $matchingService->recalculateForUser($user['id']);
         }
@@ -278,12 +294,28 @@ class DashboardController {
             $sort = 'match_score';
         }
 
-        // Check if matches exist. If not, calculate lazy.
+        // Check if matches exist or if there are published scholarships not yet matched for this user
         $stmtCount = $db->prepare("SELECT COUNT(*) FROM scholarship_matches WHERE user_id = :user_id");
         $stmtCount->execute(['user_id' => $user['id']]);
         $hasMatches = $stmtCount->fetchColumn() > 0;
 
-        if (!$hasMatches) {
+        $hasUnmatched = false;
+        if ($hasMatches) {
+            $stmtUnmatched = $db->prepare("
+                SELECT 1 FROM scholarships s 
+                WHERE s.status = 'published' 
+                  AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM scholarship_matches m 
+                      WHERE m.scholarship_id = s.id AND m.user_id = :user_id
+                  )
+                LIMIT 1
+            ");
+            $stmtUnmatched->execute(['user_id' => $user['id']]);
+            $hasUnmatched = (bool)$stmtUnmatched->fetchColumn();
+        }
+
+        if (!$hasMatches || $hasUnmatched) {
             $matchingService = new \App\Services\ScholarshipMatchingService();
             $matchingService->recalculateForUser($user['id']);
         }
@@ -382,10 +414,28 @@ class DashboardController {
         $user = Auth::currentUser();
         $db = Database::connection();
 
-        // Calculate if empty
+        // Calculate if empty or if there are published scholarships not yet matched
         $stmtCount = $db->prepare("SELECT COUNT(*) FROM scholarship_matches WHERE user_id = :user_id");
         $stmtCount->execute(['user_id' => $user['id']]);
-        if ($stmtCount->fetchColumn() == 0) {
+        $hasMatches = $stmtCount->fetchColumn() > 0;
+
+        $hasUnmatched = false;
+        if ($hasMatches) {
+            $stmtUnmatched = $db->prepare("
+                SELECT 1 FROM scholarships s 
+                WHERE s.status = 'published' 
+                  AND (s.application_deadline IS NULL OR s.application_deadline >= CURDATE())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM scholarship_matches m 
+                      WHERE m.scholarship_id = s.id AND m.user_id = :user_id
+                  )
+                LIMIT 1
+            ");
+            $stmtUnmatched->execute(['user_id' => $user['id']]);
+            $hasUnmatched = (bool)$stmtUnmatched->fetchColumn();
+        }
+
+        if (!$hasMatches || $hasUnmatched) {
             $matchingService = new \App\Services\ScholarshipMatchingService();
             $matchingService->recalculateForUser($user['id']);
         }

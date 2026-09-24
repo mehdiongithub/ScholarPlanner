@@ -67,9 +67,10 @@ class ScholarshipMatchingService {
             $prefDegrees = $stmtPrefDegrees->fetchAll(PDO::FETCH_COLUMN);
 
             $userFieldId = null;
-            if ($education) {
-                $stmtField = $this->db->prepare("SELECT id FROM fields_of_study WHERE name = :name LIMIT 1");
-                $stmtField->execute(['name' => $education['field_of_study']]);
+            if ($education && !empty($education['field_of_study'])) {
+                $trimmedField = trim($education['field_of_study']);
+                $stmtField = $this->db->prepare("SELECT id FROM fields_of_study WHERE LOWER(TRIM(name)) = LOWER(:name) LIMIT 1");
+                $stmtField->execute(['name' => $trimmedField]);
                 $val = $stmtField->fetchColumn();
                 $userFieldId = $val ? (int)$val : null;
             }
@@ -348,9 +349,10 @@ class ScholarshipMatchingService {
         $prefDegrees = $stmtPrefDegrees->fetchAll(PDO::FETCH_COLUMN);
 
         $userFieldId = null;
-        if ($education) {
-            $stmtField = $this->db->prepare("SELECT id FROM fields_of_study WHERE name = :name LIMIT 1");
-            $stmtField->execute(['name' => $education['field_of_study']]);
+        if ($education && !empty($education['field_of_study'])) {
+            $trimmedField = trim($education['field_of_study']);
+            $stmtField = $this->db->prepare("SELECT id FROM fields_of_study WHERE LOWER(TRIM(name)) = LOWER(:name) LIMIT 1");
+            $stmtField->execute(['name' => $trimmedField]);
             $val = $stmtField->fetchColumn();
             $userFieldId = $val ? (int)$val : null;
         }
@@ -923,9 +925,10 @@ class ScholarshipMatchingService {
             $userFieldIds = [];
             foreach ($chunk as $u) {
                 $uid = (int)$u['id'];
-                if (isset($eduMap[$uid])) {
-                    $stmtF = $this->db->prepare("SELECT id FROM fields_of_study WHERE name = :name LIMIT 1");
-                    $stmtF->execute(['name' => $eduMap[$uid]['field_of_study']]);
+                if (isset($eduMap[$uid]) && !empty($eduMap[$uid]['field_of_study'])) {
+                    $trimmedField = trim($eduMap[$uid]['field_of_study']);
+                    $stmtF = $this->db->prepare("SELECT id FROM fields_of_study WHERE LOWER(TRIM(name)) = LOWER(:name) LIMIT 1");
+                    $stmtF->execute(['name' => $trimmedField]);
                     $val = $stmtF->fetchColumn();
                     $userFieldIds[$uid] = $val ? (int)$val : null;
                 } else {
@@ -957,7 +960,7 @@ class ScholarshipMatchingService {
 
                     $match = $this->matchUserAndScholarship($uid, $scholarshipId, $userData, $schData);
                     
-                    if ($match['eligibility_status'] === 'ELIGIBLE') {
+                    if ($match['eligibility_status'] === 'ELIGIBLE' || $match['eligibility_status'] === 'POSSIBLY_ELIGIBLE') {
                         $match['user_id'] = $uid;
                         $match['scholarship_id'] = $scholarshipId;
                         $this->saveMatch($match);
