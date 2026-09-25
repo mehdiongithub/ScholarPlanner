@@ -324,35 +324,8 @@ class NotificationQueueService {
                 }
             }
 
-            // Automatic Scholarship WhatsApp Guardrails (Cutoff Gate, Sunday Rule & Lifetime 25-Message Cap)
+            // Automatic Scholarship WhatsApp Guardrails (Sunday Rule & Lifetime 25-Message Cap)
             if ($channel === 'whatsapp' && !$isTransactional) {
-                // 0. Batch Cutoff Gate: Worker MUST NOT send daily scholarship WhatsApp batch before cutoff (23:59:59 PKT)
-                if ($type === 'DAILY_MATCH_DIGEST' || strpos($item['idempotency_key'] ?? '', 'scholarship_whatsapp_') === 0) {
-                    $batchDay = $payload['calendar_day'] ?? null;
-                    if (!$batchDay && preg_match('/scholarship_whatsapp_\d+_(\d{4}-\d{2}-\d{2})/', $item['idempotency_key'] ?? '', $m)) {
-                        $batchDay = $m[1];
-                    }
-
-                    if ($batchDay !== null) {
-                        $nowPkt = \App\Services\NotificationService::getKarachiDateTime();
-                        $cutoffPkt = \App\Services\NotificationService::getCutoffDateTime($batchDay);
-                        if (!\App\Services\NotificationService::isPastCutoff($batchDay, $nowPkt) && !defined('BYPASS_BATCH_CUTOFF')) {
-                            // Batch collection window is still open! Worker must not deliver before cutoff.
-                            $db->prepare("
-                                UPDATE notification_logs 
-                                SET status = 'pending', 
-                                    available_at = :avail, 
-                                    updated_at = NOW() 
-                                WHERE id = :id
-                            ")->execute([
-                                'avail' => $cutoffPkt->format('Y-m-d H:i:s'),
-                                'id' => $item['id']
-                            ]);
-                            continue;
-                        }
-                    }
-                }
-
                 // 1. Sunday Rule: Prohibit automatic scholarship WhatsApp delivery on Sunday
                 $isSunday = \App\Services\NotificationService::$simulateSunday !== null 
                     ? \App\Services\NotificationService::$simulateSunday 
@@ -371,7 +344,9 @@ class NotificationQueueService {
                     } else {
                         // WhatsApp-only user: DEFER to Monday without dropping or skipping!
                         $nextMonday = \App\Services\NotificationService::getKarachiDateTime()->modify('next monday')->format('Y-m-d');
-                        $cutoffMonday = \App\Services\NotificationService::getCutoffDateTime($nextMonday);
+                        $stmtTime = $db->query("SELECT `value` FROM settings WHERE `key` = 'matching_send_time' LIMIT 1");
+                        $sendTime = $stmtTime ? ($stmtTime->fetchColumn() ?: '16:10') : '16:10';
+                        $availMonday = "{$nextMonday} {$sendTime}:00";
                         $db->prepare("
                             UPDATE notification_logs 
                             SET status = 'pending', 
@@ -379,7 +354,7 @@ class NotificationQueueService {
                                 updated_at = NOW() 
                             WHERE id = :id
                         ")->execute([
-                            'avail' => $cutoffMonday->format('Y-m-d H:i:s'),
+                            'avail' => $availMonday,
                             'id' => $item['id']
                         ]);
                         continue;

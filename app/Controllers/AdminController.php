@@ -3281,7 +3281,7 @@ class AdminController {
         try {
             if ($timerType === 'matching') {
                 $slotKey = 'manual_matching_' . date('Y-m-d_H:i:s');
-                $result = $schedulerService->runMatchingJob();
+                $result = $schedulerService->runMatchingJob(null, null, true);
                 $schedulerService->recordJobExecution('matching', 'SUCCESS', $slotKey);
 
                 // Auto-dispatch pending queue notifications immediately

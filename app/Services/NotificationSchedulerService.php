@@ -567,7 +567,7 @@ class NotificationSchedulerService {
     /**
      * Execute the Automatic Matching Algorithm across active users.
      */
-    public function runMatchingJob(?string $calendarDay = null, ?bool $isSunday = null): array {
+    public function runMatchingJob(?string $calendarDay = null, ?bool $isSunday = null, bool $isRunNow = false): array {
         $matchingService = new ScholarshipMatchingService();
         $notificationService = new NotificationService();
         $queueService = new NotificationQueueService();
@@ -799,13 +799,26 @@ class NotificationSchedulerService {
 
                 // If WhatsApp is active and user has >= 1 new matches, enqueue ONE combined WhatsApp job per user/day
                 if ($sendWhatsApp && !empty($newMatchesForUser)) {
-                    $notificationService->enqueueDailyWhatsAppBatch($userId, $newMatchesForUser, $calendarDay, $normalizedPhone);
+                    $notificationService->enqueueDailyWhatsAppBatch($userId, $newMatchesForUser, $calendarDay, $normalizedPhone, null, $isRunNow);
                     $whatsappBatchesEnqueued++;
                 }
 
             } catch (\Exception $e) {
                 Logger::error("Error processing matching for user ID $userId: " . $e->getMessage());
             }
+        }
+
+        if ($isRunNow) {
+            // When executing Run Now, ensure all pending/retrying WhatsApp digest batches for this day are available immediately
+            $stmtRelease = $this->db->prepare("
+                UPDATE notification_logs 
+                SET available_at = NOW(), updated_at = NOW() 
+                WHERE notification_type = 'DAILY_MATCH_DIGEST' 
+                  AND channel = 'whatsapp' 
+                  AND status IN ('pending', 'retrying') 
+                  AND idempotency_key LIKE :pattern
+            ");
+            $stmtRelease->execute(['pattern' => "scholarship_whatsapp_%_{$calendarDay}"]);
         }
 
         return [

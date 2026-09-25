@@ -408,11 +408,18 @@ class NotificationService {
 
     /**
      * Enqueue and aggregate daily WhatsApp batch for scholarships discovered on a specific calendar day.
-     * Enforces Asia/Karachi collection window (00:00:00 - 23:59:59 PKT).
-     * After cutoff (23:59:59 PKT), the batch is immutable; subsequent matches are allocated to the next open day.
+     * Normal schedule: Sets available_at to configured daily dispatch time in Asia/Karachi (e.g. 16:10).
+     * Run Now: Sets available_at <= current application time (now in Asia/Karachi).
      * On Sunday, automatic scholarship WhatsApp is deferred to Monday or falls back to email.
      */
-    public function enqueueDailyWhatsAppBatch(int $userId, array $matches, ?string $calendarDay = null, ?string $recipientPhone = null): bool {
+    public function enqueueDailyWhatsAppBatch(
+        int $userId, 
+        array $matches, 
+        ?string $calendarDay = null, 
+        ?string $recipientPhone = null,
+        ?string $availableAt = null,
+        bool $isRunNow = false
+    ): bool {
         if (empty($matches)) {
             return false;
         }
@@ -494,6 +501,26 @@ class NotificationService {
                 // The batch for $calendarDay has closed. New matches belong to current open day!
                 $calendarDay = $nowPkt->format('Y-m-d');
                 $cutoffPkt = self::getCutoffDateTime($calendarDay);
+            }
+
+            // Determine scheduled available_at based on settings (or Run Now timestamp)
+            if ($availableAt === null) {
+                if ($isRunNow) {
+                    $availableAt = $nowPkt->format('Y-m-d H:i:s');
+                } else {
+                    $stmtTime = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'matching_send_time' LIMIT 1");
+                    $sendTime = $stmtTime ? ($stmtTime->fetchColumn() ?: '16:10') : '16:10';
+                    $stmtTz = $this->db->query("SELECT `value` FROM settings WHERE `key` = 'matching_timezone' LIMIT 1");
+                    $tzName = $stmtTz ? ($stmtTz->fetchColumn() ?: self::TIMEZONE) : self::TIMEZONE;
+                    try {
+                        $schTz = new \DateTimeZone($tzName);
+                    } catch (\Exception $e) {
+                        $schTz = new \DateTimeZone(self::TIMEZONE);
+                    }
+                    $scheduledDt = new \DateTime("{$calendarDay} {$sendTime}:00", $schTz);
+                    $scheduledDt->setTimezone(new \DateTimeZone(self::TIMEZONE));
+                    $availableAt = $scheduledDt->format('Y-m-d H:i:s');
+                }
             }
 
             // Lifetime 25-message limit check using explicit whitelist
@@ -583,9 +610,6 @@ class NotificationService {
                     }
                 }
 
-                // Available at cutoff time: 23:59:59 PKT
-                $availableAt = $cutoffPkt->format('Y-m-d H:i:s');
-
                 $activePlan = \App\Services\SubscriptionService::getActivePlan($userId);
                 $subId = (!empty($activePlan['id']) && in_array($activePlan['status'] ?? '', ['active', 'protected', 'cancelled'], true)) ? (int)$activePlan['id'] : null;
 
@@ -628,7 +652,7 @@ class NotificationService {
                         $nextDayPkt->modify('+1 day');
                         $nextCalendarDay = $nextDayPkt->format('Y-m-d');
                         if (!$inTx) $this->db->commit();
-                        return $this->enqueueDailyWhatsAppBatch($userId, $unassigned, $nextCalendarDay, $recipientPhone);
+                        return $this->enqueueDailyWhatsAppBatch($userId, $unassigned, $nextCalendarDay, $recipientPhone, null, $isRunNow);
                     }
                 } elseif ($status === 'pending' || $status === 'retrying') {
                     // Batch is mutable before cutoff: merge new matches into payload
@@ -652,7 +676,7 @@ class NotificationService {
                         }
                     }
 
-                    if ($added) {
+                    if ($added || $isRunNow) {
                         $existingPayload['calendar_day'] = $calendarDay;
                         $existingPayload['match_count'] = count($mergedMatches);
                         $existingPayload['matches'] = $mergedMatches;
@@ -678,18 +702,35 @@ class NotificationService {
                             }
                         }
 
-                        $stmtUp = $this->db->prepare("
-                            UPDATE notification_logs 
-                            SET payload = :payload,
-                                scholarship_id = :sid,
-                                updated_at = NOW()
-                            WHERE id = :id
-                        ");
-                        $stmtUp->execute([
-                            'payload' => json_encode($existingPayload),
-                            'sid' => $firstSchId,
-                            'id' => $existing['id']
-                        ]);
+                        if ($isRunNow) {
+                            $stmtUp = $this->db->prepare("
+                                UPDATE notification_logs 
+                                SET payload = :payload,
+                                    scholarship_id = :sid,
+                                    available_at = :avail,
+                                    updated_at = NOW()
+                                WHERE id = :id
+                            ");
+                            $stmtUp->execute([
+                                'payload' => json_encode($existingPayload),
+                                'sid' => $firstSchId,
+                                'avail' => $availableAt,
+                                'id' => $existing['id']
+                            ]);
+                        } else {
+                            $stmtUp = $this->db->prepare("
+                                UPDATE notification_logs 
+                                SET payload = :payload,
+                                    scholarship_id = :sid,
+                                    updated_at = NOW()
+                                WHERE id = :id
+                            ");
+                            $stmtUp->execute([
+                                'payload' => json_encode($existingPayload),
+                                'sid' => $firstSchId,
+                                'id' => $existing['id']
+                            ]);
+                        }
                     }
                 }
             }
