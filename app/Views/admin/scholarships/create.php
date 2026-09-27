@@ -161,7 +161,7 @@
                 </div>
             <?php endif; ?>
 
-            <form action="<?= url('/admin/scholarships') ?>" method="POST" enctype="multipart/form-data">
+            <form id="scholarshipCreateForm" action="<?= url('/admin/scholarships') ?>" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
 
                 <!-- Section 1: Basic Information -->
@@ -647,15 +647,27 @@
             }
         }
 
-        // Sync Quill HTML to hidden textarea on form submit
-        var form = document.querySelector('form');
-        if (form) {
-            form.addEventListener('submit', function() {
+        // Sync Quill HTML to hidden textarea on form submit & button click
+        var scholarshipForm = document.getElementById('scholarshipCreateForm') || (descriptionTextarea ? descriptionTextarea.closest('form') : null);
+        if (scholarshipForm) {
+            scholarshipForm.addEventListener('submit', function() {
                 if (quill && quill.root && descriptionTextarea) {
+                    var text = quill.getText().trim();
                     var html = quill.root.innerHTML;
-                    descriptionTextarea.value = (html === '<p><br></p>') ? '' : html;
+                    descriptionTextarea.value = (text === '' || html === '<p><br></p>') ? '' : html;
                 }
             });
+
+            var saveBtn = scholarshipForm.querySelector('button[type="submit"]');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', function() {
+                    if (quill && quill.root && descriptionTextarea) {
+                        var text = quill.getText().trim();
+                        var html = quill.root.innerHTML;
+                        descriptionTextarea.value = (text === '' || html === '<p><br></p>') ? '' : html;
+                    }
+                });
+            }
         }
     </script>
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

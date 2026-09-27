@@ -782,6 +782,17 @@ class ScholarshipController {
         // Fetch languages
         $languages = $db->query("SELECT * FROM scholarship_languages WHERE scholarship_id = $id")->fetchAll(PDO::FETCH_ASSOC);
 
+        // Fetch source info
+        $stmtSource = $db->prepare("SELECT * FROM scholarship_sources WHERE scholarship_id = :id ORDER BY id ASC LIMIT 1");
+        $stmtSource->execute(['id' => $id]);
+        $source = $stmtSource->fetch(PDO::FETCH_ASSOC) ?: [];
+        if (empty($source) && (!empty($scholarship['official_website']) || !empty($scholarship['provider_name']))) {
+            $source = [
+                'source_name' => $scholarship['provider_name'] ?? 'Official Website',
+                'source_url' => $scholarship['official_website'] ?? ''
+            ];
+        }
+
         // Fetch lookups from database
         $degrees = $db->query("SELECT * FROM degree_levels WHERE status = 'active' ORDER BY sort_order ASC, name ASC")->fetchAll(PDO::FETCH_ASSOC);
         $fundings = $db->query("SELECT * FROM funding_types WHERE status = 'active' ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
@@ -808,7 +819,7 @@ class ScholarshipController {
             'rules' => $rules,
             'benefits' => $benefits,
             'languages' => $languages,
-            'source' => $source ?? null,
+            'source' => $source,
             'degrees' => $degrees,
             'fundings' => $fundings,
             'csrf_token' => Security::csrfToken(),

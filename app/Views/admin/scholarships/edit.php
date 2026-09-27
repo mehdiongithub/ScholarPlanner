@@ -179,8 +179,8 @@
             $minPctVal = $old['minimum_percentage'] ?? ($rules['minimum_percentage'] ?? '');
             $genderReqVal = $old['gender_requirement'] ?? ($rules['gender_requirement'] ?? '');
 
-            $sourceNameVal = $old['source_name'] ?? ($source['source_name'] ?? '');
-            $sourceUrlVal = $old['source_url'] ?? ($source['source_url'] ?? '');
+            $sourceNameVal = $old['source_name'] ?? ($source['source_name'] ?? ($scholarship['provider_name'] ?? ''));
+            $sourceUrlVal = $old['source_url'] ?? ($source['source_url'] ?? ($scholarship['official_website'] ?? ''));
             ?>
 
             <?php if (!empty($errors['system'])): ?>
@@ -199,7 +199,7 @@
                 </div>
             <?php endif; ?>
 
-            <form action="<?= url('/admin/scholarships/' . $scholarship['id'] . '/update') ?>" method="POST" enctype="multipart/form-data">
+            <form id="scholarshipEditForm" action="<?= url('/admin/scholarships/' . $scholarship['id'] . '/update') ?>" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= e($csrf_token ?? '') ?>">
 
                 <!-- Section 1: Basic Information -->
@@ -661,28 +661,69 @@
             langIndex++;
         }
 
-        // Initialize Quill editor
-        var quill = new Quill('#description-editor', {
-            theme: 'snow',
-            modules: {
-                toolbar: [
-                    [{ 'header': [2, 3, false] }],
-                    ['bold', 'italic', 'underline'],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    ['link', 'clean']
-                ]
-            }
-        });
+        // Initialize Quill editor safely
+        var quill = null;
+        var descriptionTextarea = document.getElementById('description');
+        var editorDiv = document.getElementById('description-editor');
+        var scholarshipForm = document.getElementById('scholarshipEditForm') || (descriptionTextarea ? descriptionTextarea.closest('form') : null);
 
-        // Sync Quill HTML to hidden textarea on form submit
-        var form = document.querySelector('form');
-        if (form) {
-            form.addEventListener('submit', function() {
-                var descriptionTextarea = document.getElementById('description');
+        function syncQuillToTextarea() {
+            if (quill && descriptionTextarea) {
+                var text = quill.getText().trim();
+                var html = quill.root.innerHTML;
+                descriptionTextarea.value = (text === '' || html === '<p><br></p>') ? '' : html;
+            }
+        }
+
+        if (typeof Quill !== 'undefined' && editorDiv) {
+            try {
+                quill = new Quill('#description-editor', {
+                    theme: 'snow',
+                    modules: {
+                        toolbar: [
+                            [{ 'header': [2, 3, false] }],
+                            ['bold', 'italic', 'underline'],
+                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            ['link', 'clean']
+                        ]
+                    }
+                });
+
+                // Sync Quill HTML on text change
+                quill.on('text-change', function() {
+                    syncQuillToTextarea();
+                });
+            } catch (err) {
+                console.error("Quill initialization failed:", err);
                 if (descriptionTextarea) {
-                    descriptionTextarea.value = quill.root.innerHTML;
+                    descriptionTextarea.style.display = 'block';
                 }
+                if (editorDiv) {
+                    editorDiv.style.display = 'none';
+                }
+            }
+        } else {
+            // Fallback if Quill script did not load (offline or CDN blocked)
+            if (descriptionTextarea) {
+                descriptionTextarea.style.display = 'block';
+            }
+            if (editorDiv) {
+                editorDiv.style.display = 'none';
+            }
+        }
+
+        // Sync Quill HTML to hidden textarea on form submit & button click
+        if (scholarshipForm) {
+            scholarshipForm.addEventListener('submit', function() {
+                syncQuillToTextarea();
             });
+
+            var saveBtn = scholarshipForm.querySelector('button[type="submit"]');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', function() {
+                    syncQuillToTextarea();
+                });
+            }
         }
     </script>
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>
