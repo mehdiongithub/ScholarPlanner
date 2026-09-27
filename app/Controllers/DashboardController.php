@@ -322,7 +322,8 @@ class DashboardController {
 
         // Build query to select matches joined with scholarships
         $sql = "
-            SELECT m.*, s.title, s.provider_name, s.application_deadline, s.funding_type, s.slug, c.name as host_country_name,
+            SELECT m.*, s.title, s.provider_name, s.short_description, s.description, s.cover_image,
+                   s.application_deadline, s.funding_type, s.slug, c.name as host_country_name,
                    (SELECT GROUP_CONCAT(sdl.degree_level SEPARATOR ', ') FROM scholarship_degree_levels sdl WHERE sdl.scholarship_id = s.id) as degree_level,
                    (SELECT GROUP_CONCAT(fs.name SEPARATOR ', ') FROM scholarship_fields sf JOIN fields_of_study fs ON sf.field_of_study_id = fs.id WHERE sf.scholarship_id = s.id) as field_of_study
             FROM scholarship_matches m
