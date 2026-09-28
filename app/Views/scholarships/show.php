@@ -40,7 +40,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
 }
 </script>
 
-<style>
+    <style>
         .page-layout {
             min-height: 100vh;
             background: #f8fafc;
@@ -48,48 +48,54 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             flex-direction: column;
         }
         .page-content {
-            max-width: 1200px;
+            max-width: 1280px;
             width: 100%;
-            margin: 40px auto;
-            padding: 0 20px;
+            margin: 36px auto 60px auto;
+            padding: 0 24px;
             flex-grow: 1;
         }
         .banner-card {
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 24px;
+            gap: 20px;
             position: relative;
         }
         .banner-info {
             flex-grow: 1;
-            max-width: 700px;
+            max-width: 860px;
         }
         .banner-provider {
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--text-500);
+            font-size: 0.8125rem;
+            font-weight: 700;
+            color: var(--primary);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.06em;
             margin-bottom: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
         .banner-title {
-            font-size: clamp(1.5rem, 4vw, 2.25rem);
+            font-size: clamp(1.5rem, 3.5vw, 2.25rem);
             font-weight: 800;
             color: var(--text-900);
             line-height: 1.25;
-            letter-spacing: -0.02em;
-            margin-bottom: 16px;
+            letter-spacing: -0.025em;
+            margin-bottom: 14px;
         }
         .meta-tags-container {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
         }
         .meta-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
             padding: 4px 12px;
             font-size: 0.75rem;
             font-weight: 600;
@@ -100,7 +106,7 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         }
         .meta-tag-featured {
             background: #fef3c7;
-            color: #d97706;
+            color: #b45309;
             border-color: #fde68a;
         }
         .meta-tag-verified {
@@ -109,13 +115,14 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             border-color: #a7f3d0;
         }
         .deadline-badge {
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-radius: var(--radius-xl);
             font-size: 0.875rem;
             font-weight: 700;
             text-align: center;
-            min-width: 150px;
+            min-width: 140px;
             box-shadow: var(--shadow-sm);
+            flex-shrink: 0;
         }
         .deadline-badge-open {
             background: #ecfdf5;
@@ -132,24 +139,37 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             color: #b91c1c;
             border: 1px solid #fca5a5;
         }
+
+        /* 75% Main Content & 25% Quick Info Sidebar on Big Screen */
         .grid-layout {
             display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 32px;
+            grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr);
+            gap: 28px;
+            align-items: start;
         }
+        .detail-main {
+            min-width: 0;
+        }
+        .detail-sidebar {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
         .card {
             background: var(--bg-white);
             border: 1px solid var(--border);
             border-radius: var(--radius-2xl);
-            padding: clamp(20px, 4vw, 32px);
-            box-shadow: var(--shadow-sm);
-            margin-bottom: 32px;
+            padding: clamp(20px, 3.5vw, 32px);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            margin-bottom: 24px;
         }
         .card-title {
             font-size: 1.25rem;
             font-weight: 700;
             color: var(--text-900);
-            margin-bottom: 24px;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -158,11 +178,14 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         }
         .card-title i {
             color: var(--primary);
+            width: 20px;
+            height: 20px;
         }
         .description-content {
             font-size: 0.975rem;
-            line-height: 1.7;
+            line-height: 1.75;
             color: var(--text-700);
+            word-break: break-word;
         }
         .description-content p {
             margin-bottom: 16px;
@@ -174,6 +197,11 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         .description-content li {
             margin-bottom: 8px;
         }
+        .description-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: var(--radius-lg);
+        }
         .list-unstyled {
             list-style: none;
             padding: 0;
@@ -183,25 +211,127 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            padding: 8px 0;
+            padding: 10px 0;
             font-size: 0.875rem;
             color: var(--text-700);
+            border-bottom: 1px dashed var(--border);
+        }
+        .list-item-checklist:last-child {
+            border-bottom: none;
         }
         .list-item-checklist i {
             color: var(--primary);
             flex-shrink: 0;
             margin-top: 2px;
+            width: 18px;
+            height: 18px;
         }
+
+        /* Quick Info Sidebar Box */
         .apply-box {
             background: var(--bg-white);
             border: 1px solid var(--border);
             border-radius: var(--radius-2xl);
             padding: 24px;
-            box-shadow: var(--shadow-sm);
-            text-align: center;
+            box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -2px rgba(15, 23, 42, 0.03);
+            text-align: left;
             height: fit-content;
             position: sticky;
-            top: 24px;
+            top: 92px;
+            z-index: 10;
+        }
+        .quick-info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .quick-info-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-900);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+        }
+        .quick-info-title i {
+            color: var(--primary);
+            width: 20px;
+            height: 20px;
+        }
+        .quick-info-status {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: var(--radius-full);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* Spec List in Quick Info */
+        .spec-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .spec-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border: 1px solid #f1f5f9;
+            border-radius: var(--radius-xl);
+            transition: all 0.15s ease;
+        }
+        .spec-row:hover {
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+        }
+        .spec-icon-wrap {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .spec-icon-wrap i {
+            width: 17px;
+            height: 17px;
+        }
+        .spec-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex-grow: 1;
+        }
+        .spec-label {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            color: var(--text-500);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            line-height: 1.2;
+        }
+        .spec-value {
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: var(--text-900);
+            line-height: 1.35;
+            word-break: break-word;
+        }
+
+        .apply-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         .btn {
             display: inline-flex;
@@ -231,41 +361,63 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         .btn-secondary:hover {
             background: #f1f5f9;
         }
-        .apply-box .btn {
+        .apply-box .btn-primary {
             width: 100%;
             justify-content: center;
+            padding: 12px 18px;
+            font-size: 0.9375rem;
+            font-weight: 700;
+            border-radius: var(--radius-xl);
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
         }
-        .spec-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            font-size: 0.875rem;
+        .apply-box .btn-primary:hover {
+            box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+            transform: translateY(-1px);
+        }
+        .btn-tracker {
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 16px;
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--border);
+            background: #fff;
             color: var(--text-700);
-            margin-bottom: 20px;
-        }
-        .spec-item {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .spec-label {
-            font-size: 0.75rem;
+            font-size: 0.875rem;
             font-weight: 600;
-            color: var(--text-500);
-            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
         }
-        .spec-value {
-            font-weight: 600;
+        .btn-tracker:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
             color: var(--text-900);
         }
-        @media (max-width: 992px) {
-            .grid-layout {
-                grid-template-columns: 1fr;
-            }
-            .apply-box {
-                position: static;
-                margin-top: 24px;
-            }
+        .locked-link-box {
+            padding: 14px;
+            background: #fffbeb;
+            border: 1px dashed #fde68a;
+            border-radius: var(--radius-xl);
+            text-align: center;
+            margin-bottom: 4px;
+        }
+        .locked-link-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-weight: 700;
+            font-size: 0.8125rem;
+            color: #92400e;
+            margin-bottom: 4px;
+        }
+        .locked-link-desc {
+            font-size: 0.75rem;
+            color: #78350f;
+            margin-bottom: 10px;
+            line-height: 1.45;
         }
 
         .rec-status-badge {
@@ -302,6 +454,161 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
         .crit-success { color: #10b981; }
         .crit-warning { color: #f59e0b; }
         .crit-danger { color: #ef4444; }
+
+        .mobile-sticky-bar {
+            display: none;
+        }
+
+        /* Responsive Media Queries */
+        @media (max-width: 992px) {
+            .page-content {
+                margin: 24px auto 60px auto;
+                padding: 0 18px;
+            }
+            .grid-layout {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+            .apply-box {
+                position: static;
+                margin-top: 0;
+            }
+            .spec-list {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-content {
+                margin: 16px auto 76px auto;
+                padding: 0 14px;
+            }
+            .banner-card {
+                margin-bottom: 20px;
+                gap: 14px;
+            }
+            .banner-title {
+                font-size: clamp(1.35rem, 5vw, 1.8rem);
+                line-height: 1.3;
+                margin-bottom: 12px;
+            }
+            .meta-tags-container {
+                gap: 6px;
+                margin-bottom: 12px;
+            }
+            .meta-tag {
+                font-size: 0.7rem;
+                padding: 3px 10px;
+            }
+            .deadline-badge {
+                width: 100%;
+                min-width: unset;
+                padding: 10px 16px;
+                border-radius: var(--radius-lg);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .deadline-badge div:first-child {
+                margin-bottom: 0;
+            }
+            .deadline-badge div:last-child {
+                margin-top: 0;
+                font-size: 1rem;
+            }
+            .card {
+                padding: 18px 16px;
+                border-radius: var(--radius-xl);
+                margin-bottom: 20px;
+            }
+            .card-title {
+                font-size: 1.125rem;
+                margin-bottom: 16px;
+                padding-bottom: 10px;
+            }
+            .apply-box {
+                padding: 18px 16px;
+                border-radius: var(--radius-xl);
+            }
+            .spec-list {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .spec-row {
+                padding: 8px 10px;
+                gap: 8px;
+            }
+            .spec-icon-wrap {
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+            }
+            .spec-icon-wrap i {
+                width: 15px;
+                height: 15px;
+            }
+            .spec-label {
+                font-size: 0.625rem;
+            }
+            .spec-value {
+                font-size: 0.8125rem;
+            }
+
+            .mobile-sticky-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: rgba(255, 255, 255, 0.96);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+                border-top: 1px solid var(--border);
+                box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+                padding: 10px 16px;
+                z-index: 999;
+            }
+            .mobile-sticky-info {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                min-width: 0;
+            }
+            .mobile-sticky-deadline {
+                font-size: 0.75rem;
+                font-weight: 700;
+                color: #0f172a;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .mobile-sticky-funding {
+                font-size: 0.6875rem;
+                font-weight: 600;
+                color: #059669;
+            }
+            .mobile-sticky-btn {
+                padding: 9px 18px;
+                font-size: 0.8125rem;
+                font-weight: 700;
+                border-radius: var(--radius-lg);
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .spec-list {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 
     <div class="page-layout">
@@ -605,109 +912,232 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                         </div>
                     <?php endif; ?>
 
-                    <div class="apply-box">
-                        <h3 style="font-size:1.1rem; font-weight:700; color:var(--text-900); margin-bottom:16px;">Quick Info</h3>
+                    <div class="apply-box" id="quick-info-box">
+                        <div class="quick-info-header">
+                            <h3 class="quick-info-title">
+                                <i data-lucide="zap"></i>
+                                <span>Quick Info</span>
+                            </h3>
+                            <span class="quick-info-status <?= $badgeClass ?>"><?= e($deadlineStatus) ?></span>
+                        </div>
                         
-                        <div class="spec-grid">
-                            <div class="spec-item">
-                                <span class="spec-label">Host country</span>
-                                <span class="spec-value"><?= e($scholarship['country_name'] ?? 'Multiple Countries') ?></span>
+                        <?php
+                            // Degree formatting
+                            $degreeText = 'All Degree Levels';
+                            if (!empty($degrees)) {
+                                if (count($degrees) <= 2) {
+                                    $degreeText = implode(', ', $degrees);
+                                } else {
+                                    $degreeText = $degrees[0] . ', ' . $degrees[1] . ' +' . (count($degrees) - 2) . ' more';
+                                }
+                            } elseif (!empty($scholarship['study_level'])) {
+                                $degreeText = $scholarship['study_level'];
+                            }
+
+                            // Nationality formatting
+                            $nationalityText = 'Open to All';
+                            if (!empty($nationalities)) {
+                                if (count($nationalities) <= 2) {
+                                    $nationalityText = implode(', ', $nationalities);
+                                } else {
+                                    $nationalityText = $nationalities[0] . ', ' . $nationalities[1] . ' +' . (count($nationalities) - 2) . ' more';
+                                }
+                            }
+
+                            // Deadline calculation
+                            $deadlineText = 'Open / Rolling';
+                            $deadlineSub = null;
+                            if (!empty($scholarship['application_deadline'])) {
+                                $dTime = strtotime($scholarship['application_deadline']);
+                                $deadlineText = date('M d, Y', $dTime);
+                                $daysDiff = (int)ceil(($dTime - strtotime(date('Y-m-d'))) / 86400);
+                                if ($daysDiff > 0) {
+                                    $deadlineSub = $daysDiff . ' day' . ($daysDiff === 1 ? '' : 's') . ' remaining';
+                                } elseif ($daysDiff === 0) {
+                                    $deadlineSub = 'Ends today!';
+                                } else {
+                                    $deadlineSub = 'Deadline passed';
+                                }
+                            }
+                        ?>
+
+                        <div class="spec-list">
+                            <div class="spec-row">
+                                <div class="spec-icon-wrap" style="background: #eff6ff; color: #2563eb;">
+                                    <i data-lucide="globe"></i>
+                                </div>
+                                <div class="spec-text">
+                                    <span class="spec-label">Host Country</span>
+                                    <span class="spec-value"><?= e($scholarship['country_name'] ?? 'Multiple Countries') ?></span>
+                                </div>
                             </div>
-                            <div class="spec-item">
-                                <span class="spec-label">Funding mode</span>
-                                <span class="spec-value"><?= e($scholarship['funding_type']) ?></span>
+
+                            <div class="spec-row">
+                                <div class="spec-icon-wrap" style="background: #ecfdf5; color: #059669;">
+                                    <i data-lucide="badge-dollar-sign"></i>
+                                </div>
+                                <div class="spec-text">
+                                    <span class="spec-label">Funding Mode</span>
+                                    <span class="spec-value"><?= e($scholarship['funding_type']) ?></span>
+                                </div>
                             </div>
-                            <div class="spec-item" style="grid-column: span 2;">
-                                <span class="spec-label">Provider</span>
-                                <span class="spec-value"><?= e($scholarship['provider_name']) ?></span>
+
+                            <div class="spec-row">
+                                <div class="spec-icon-wrap" style="background: #f5f3ff; color: #7c3aed;">
+                                    <i data-lucide="building-2"></i>
+                                </div>
+                                <div class="spec-text">
+                                    <span class="spec-label">Provider</span>
+                                    <span class="spec-value"><?= e($scholarship['provider_name']) ?></span>
+                                </div>
                             </div>
-                            <div class="spec-item" style="grid-column: span 2;">
-                                <span class="spec-label">Closing Date</span>
-                                <span class="spec-value">
-                                    <?= $scholarship['application_deadline'] ? e(date('M d, Y', strtotime($scholarship['application_deadline']))) : 'Open/Rolling' ?>
-                                </span>
+
+                            <div class="spec-row">
+                                <div class="spec-icon-wrap" style="background: #fdf4ff; color: #a21caf;">
+                                    <i data-lucide="graduation-cap"></i>
+                                </div>
+                                <div class="spec-text">
+                                    <span class="spec-label">Degree Level</span>
+                                    <span class="spec-value"><?= e($degreeText) ?></span>
+                                </div>
+                            </div>
+
+                            <div class="spec-row">
+                                <div class="spec-icon-wrap" style="background: #f0fdfa; color: #0d9488;">
+                                    <i data-lucide="users"></i>
+                                </div>
+                                <div class="spec-text">
+                                    <span class="spec-label">Eligible Applicants</span>
+                                    <span class="spec-value"><?= e($nationalityText) ?></span>
+                                </div>
+                            </div>
+
+                            <div class="spec-row">
+                                <div class="spec-icon-wrap" style="background: #fff7ed; color: #ea580c;">
+                                    <i data-lucide="calendar"></i>
+                                </div>
+                                <div class="spec-text">
+                                    <span class="spec-label">Closing Date</span>
+                                    <span class="spec-value"><?= e($deadlineText) ?></span>
+                                    <?php if ($deadlineSub): ?>
+                                        <span style="font-size: 0.6875rem; color: #ea580c; font-weight: 600;"><?= e($deadlineSub) ?></span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                         </div>
 
-                        <?php if ($canApply): ?>
-                            <?php if (!empty($scholarship['official_application_url'])): ?>
-                                <a href="<?= e($scholarship['official_application_url']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:12px;">
-                                    <span>Apply on Official Website</span>
-                                    <i data-lucide="external-link" style="width:16px; height:16px;"></i>
-                                </a>
-                            <?php elseif (!empty($scholarship['official_website'])): ?>
-                                <a href="<?= e($scholarship['official_website']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:12px;">
-                                    <span>Visit Official Portal</span>
-                                    <i data-lucide="external-link" style="width:16px; height:16px;"></i>
-                                </a>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <div style="margin-bottom: 16px; padding: 14px; background: #f8fafc; border: 1px dashed var(--border); border-radius: var(--radius-lg); text-align: center;">
-                                <div style="display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 0.875rem; color: var(--text-800); margin-bottom: 6px;">
-                                    <i data-lucide="lock" style="width: 15px; height: 15px; color: #f59e0b;"></i>
-                                    <span>Official Application Link</span>
-                                </div>
-                                <p style="font-size: 0.8125rem; color: var(--text-500); margin-bottom: 12px; line-height: 1.4;">
-                                    Direct application links are available exclusively to active paid subscribers.
-                                </p>
-                                <?php if (!\App\Services\Auth::isAuthenticated()): ?>
-                                    <a href="<?= url('/login') ?>" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 0.8125rem; padding: 8px 16px; min-height: 38px; gap: 6px;">
-                                        <i data-lucide="log-in" style="width: 14px; height: 14px;"></i>
-                                        <span>Log In to Access</span>
+                        <div class="apply-actions">
+                            <?php if ($canApply): ?>
+                                <?php if (!empty($scholarship['official_application_url'])): ?>
+                                    <a href="<?= e($scholarship['official_application_url']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:4px;">
+                                        <span>Apply on Official Website</span>
+                                        <i data-lucide="external-link" style="width:16px; height:16px;"></i>
                                     </a>
-                                <?php else: ?>
-                                    <a href="<?= url('/pricing') ?>" class="btn btn-primary" style="width: 100%; justify-content: center; font-size: 0.8125rem; padding: 8px 16px; min-height: 38px; gap: 6px;">
-                                        <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
-                                        <span>Upgrade Plan to Apply</span>
+                                <?php elseif (!empty($scholarship['official_website'])): ?>
+                                    <a href="<?= e($scholarship['official_website']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-bottom:4px;">
+                                        <span>Visit Official Portal</span>
+                                        <i data-lucide="external-link" style="width:16px; height:16px;"></i>
                                     </a>
                                 <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php if (\App\Services\Auth::isAuthenticated() && \App\Services\Auth::currentUser()['role_name'] === 'visitor'): ?>
-                            <?php
-                                $db = \App\Services\Database::connection();
-                                $stmtTrack = $db->prepare("SELECT id FROM scholarship_applications WHERE user_id = :uid AND scholarship_id = :sid LIMIT 1");
-                                $stmtTrack->execute(['uid' => \App\Services\Auth::userId(), 'sid' => $scholarship['id']]);
-                                $trackingAppId = $stmtTrack->fetchColumn();
-                            ?>
-                            <?php if ($trackingAppId): ?>
-                                <a href="/applications/<?= e($trackingAppId) ?>" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;">
-                                    <i data-lucide="folder-check" style="width:16px; height:16px;"></i>
-                                    <span>View in Tracker</span>
-                                </a>
                             <?php else: ?>
-                                <form method="POST" action="/applications" style="width: 100%;">
-                                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                    <input type="hidden" name="scholarship_id" value="<?= e($scholarship['id']) ?>">
-                                    <input type="hidden" name="status" value="interested">
-                                    <button type="submit" class="btn btn-outline" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border); background: white; color: var(--text-700); padding: 12px; border-radius: var(--radius-md); font-weight: 600; cursor: pointer;">
-                                        <i data-lucide="folder-plus" style="width:16px; height:16px;"></i>
-                                        <span>Add to Tracker</span>
-                                    </button>
-                                </form>
-                            <?php endif; ?>
-                        <?php endif; ?>
-
-                        <?php if (!empty($source['source_name'])): ?>
-                            <div style="font-size:0.75rem; color:var(--text-500); margin-top:16px; text-align:left; border-top: 1px solid var(--border); padding-top:16px;">
-                                <div style="display:flex; align-items:center; gap:4px; font-weight:600; color:var(--text-700); margin-bottom:4px;">
-                                    <i data-lucide="shield-check" style="width:14px; height:14px; color:#059669;"></i>
-                                    <span>Verified Source Link</span>
+                                <div class="locked-link-box">
+                                    <div class="locked-link-badge">
+                                        <i data-lucide="lock" style="width: 14px; height: 14px; color: #d97706;"></i>
+                                        <span>Official Application Link</span>
+                                    </div>
+                                    <p class="locked-link-desc">
+                                        Direct application links are available exclusively to active paid subscribers.
+                                    </p>
+                                    <?php if (!\App\Services\Auth::isAuthenticated()): ?>
+                                        <a href="<?= url('/login') ?>" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 0.8125rem; padding: 9px 16px; min-height: 38px; gap: 6px;">
+                                            <i data-lucide="log-in" style="width: 14px; height: 14px;"></i>
+                                            <span>Log In to Access</span>
+                                        </a>
+                                    <?php else: ?>
+                                        <a href="<?= url('/pricing') ?>" class="btn btn-primary" style="width: 100%; justify-content: center; font-size: 0.8125rem; padding: 9px 16px; min-height: 38px; gap: 6px;">
+                                            <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+                                            <span>Upgrade Plan to Apply</span>
+                                        </a>
+                                    <?php endif; ?>
                                 </div>
-                                <?php if ($canApply): ?>
-                                    <a href="<?= e($source['source_url']) ?>" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; word-break:break-all;"><?= e($source['source_name']) ?></a>
+                            <?php endif; ?>
+
+                            <?php if (\App\Services\Auth::isAuthenticated() && \App\Services\Auth::currentUser()['role_name'] === 'visitor'): ?>
+                                <?php
+                                    $db = \App\Services\Database::connection();
+                                    $stmtTrack = $db->prepare("SELECT id FROM scholarship_applications WHERE user_id = :uid AND scholarship_id = :sid LIMIT 1");
+                                    $stmtTrack->execute(['uid' => \App\Services\Auth::userId(), 'sid' => $scholarship['id']]);
+                                    $trackingAppId = $stmtTrack->fetchColumn();
+                                ?>
+                                <?php if ($trackingAppId): ?>
+                                    <a href="/applications/<?= e($trackingAppId) ?>" class="btn btn-secondary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;">
+                                        <i data-lucide="folder-check" style="width:16px; height:16px;"></i>
+                                        <span>View in Tracker</span>
+                                    </a>
                                 <?php else: ?>
-                                    <span style="color:var(--text-600);"><?= e($source['source_name']) ?></span>
+                                    <form method="POST" action="/applications" style="width: 100%;">
+                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                        <input type="hidden" name="scholarship_id" value="<?= e($scholarship['id']) ?>">
+                                        <input type="hidden" name="status" value="interested">
+                                        <button type="submit" class="btn btn-tracker">
+                                            <i data-lucide="folder-plus" style="width:16px; height:16px;"></i>
+                                            <span>Add to Tracker</span>
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
-                                <?php if (!empty($source['last_checked_at'])): ?>
-                                    <div style="margin-top:4px;">Last verified: <?= e(date('M d, Y', strtotime($source['last_checked_at']))) ?></div>
-                                <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
+                            <?php endif; ?>
+
+                            <?php if (!empty($source['source_name'])): ?>
+                                <div style="font-size:0.75rem; color:var(--text-500); margin-top:14px; text-align:left; border-top: 1px solid var(--border); padding-top:14px;">
+                                    <div style="display:flex; align-items:center; gap:5px; font-weight:600; color:var(--text-700); margin-bottom:4px;">
+                                        <i data-lucide="shield-check" style="width:14px; height:14px; color:#059669;"></i>
+                                        <span>Verified Source Link</span>
+                                    </div>
+                                    <?php if ($canApply): ?>
+                                        <a href="<?= e($source['source_url']) ?>" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; word-break:break-all; font-weight: 500;"><?= e($source['source_name']) ?></a>
+                                    <?php else: ?>
+                                        <span style="color:var(--text-600);"><?= e($source['source_name']) ?></span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($source['last_checked_at'])): ?>
+                                        <div style="margin-top:3px; color: #94a3b8; font-size: 0.6875rem;">Last verified: <?= e(date('M d, Y', strtotime($source['last_checked_at']))) ?></div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Mobile Sticky Bottom CTA Bar -->
+    <div class="mobile-sticky-bar">
+        <div class="mobile-sticky-info">
+            <span class="mobile-sticky-deadline">
+                <i data-lucide="calendar" style="width: 13px; height: 13px;"></i>
+                <?= $scholarship['application_deadline'] ? e(date('M d, Y', strtotime($scholarship['application_deadline']))) : 'Open / Rolling' ?>
+            </span>
+            <span class="mobile-sticky-funding"><?= e($scholarship['funding_type']) ?></span>
+        </div>
+        <div class="mobile-sticky-btn-wrap">
+            <?php if ($canApply): ?>
+                <?php if (!empty($scholarship['official_application_url'])): ?>
+                    <a href="<?= e($scholarship['official_application_url']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary mobile-sticky-btn">
+                        <span>Apply</span>
+                        <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
+                    </a>
+                <?php elseif (!empty($scholarship['official_website'])): ?>
+                    <a href="<?= e($scholarship['official_website']) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary mobile-sticky-btn">
+                        <span>Apply</span>
+                        <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
+                    </a>
+                <?php endif; ?>
+            <?php else: ?>
+                <a href="#quick-info-box" class="btn btn-primary mobile-sticky-btn">
+                    <i data-lucide="lock" style="width: 13px; height: 13px;"></i>
+                    <span>Apply Link</span>
+                </a>
+            <?php endif; ?>
         </div>
     </div>
 
