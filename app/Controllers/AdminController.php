@@ -279,8 +279,8 @@ class AdminController {
         $stmt = $this->db->prepare("
             SELECT u.*, r.name as role_name 
             FROM users u
-            JOIN roles r ON u.role_id = r.id
-            WHERE u.id = :id AND r.name = 'visitor'
+            LEFT JOIN roles r ON u.role_id = r.id
+            WHERE u.id = :id
             LIMIT 1
         ");
         $stmt->execute(['id' => $id]);
@@ -291,18 +291,32 @@ class AdminController {
             exit();
         }
 
-        // Fetch profile
-        $stmtProfile = $this->db->prepare("SELECT * FROM student_profiles WHERE user_id = :id LIMIT 1");
+        // Fetch profile with nationality & residence names
+        $stmtProfile = $this->db->prepare("
+            SELECT sp.*, c_nat.name as nationality_name, c_res.name as residence_name 
+            FROM student_profiles sp 
+            LEFT JOIN countries c_nat ON sp.nationality_country_id = c_nat.id 
+            LEFT JOIN countries c_res ON sp.residence_country_id = c_res.id 
+            WHERE sp.user_id = :id 
+            LIMIT 1
+        ");
         $stmtProfile->execute(['id' => $id]);
         $profile = $stmtProfile->fetch() ?: [];
 
-        // Fetch education records
+        // Fetch education records safely joining institutions, countries, states, and cities
         $stmtEdu = $this->db->prepare("
-            SELECT er.*, c.name as country_name, s.name as state_name, ci.name as city_name
+            SELECT er.*, 
+                   COALESCE(c.name, c_inst.name) as country_name, 
+                   s.name as state_name, 
+                   ci.name as city_name,
+                   inst.name as institution_lookup_name,
+                   inst.institution_type
             FROM education_records er
             LEFT JOIN countries c ON er.country_id = c.id
-            LEFT JOIN states s ON er.state_id = s.id
-            LEFT JOIN cities ci ON er.city_id = ci.id
+            LEFT JOIN institutions inst ON er.institution_id = inst.id
+            LEFT JOIN countries c_inst ON inst.country_id = c_inst.id
+            LEFT JOIN states s ON inst.state_id = s.id
+            LEFT JOIN cities ci ON inst.city_id = ci.id
             WHERE er.user_id = :id
             ORDER BY er.start_date DESC
         ");
@@ -313,6 +327,37 @@ class AdminController {
         $stmtPref = $this->db->prepare("SELECT * FROM user_preferences WHERE user_id = :id LIMIT 1");
         $stmtPref->execute(['id' => $id]);
         $preferences = $stmtPref->fetch() ?: [];
+
+        // Fetch preferred countries
+        $stmtPrefCountries = $this->db->prepare("
+            SELECT c.name 
+            FROM user_preferred_countries upc
+            JOIN countries c ON upc.country_id = c.id
+            WHERE upc.user_id = :id
+            ORDER BY c.name ASC
+        ");
+        $stmtPrefCountries->execute(['id' => $id]);
+        $preferredCountries = $stmtPrefCountries->fetchAll(PDO::FETCH_COLUMN);
+
+        // Fetch preferred fields
+        $stmtPrefFields = $this->db->prepare("
+            SELECT f.name 
+            FROM user_preferred_fields upf
+            JOIN fields_of_study f ON upf.field_of_study_id = f.id
+            WHERE upf.user_id = :id
+            ORDER BY f.name ASC
+        ");
+        $stmtPrefFields->execute(['id' => $id]);
+        $preferredFields = $stmtPrefFields->fetchAll(PDO::FETCH_COLUMN);
+
+        // Fetch preferred degree levels
+        $stmtPrefDegrees = $this->db->prepare("
+            SELECT degree_level 
+            FROM user_preferred_degree_levels
+            WHERE user_id = :id
+        ");
+        $stmtPrefDegrees->execute(['id' => $id]);
+        $preferredDegrees = $stmtPrefDegrees->fetchAll(PDO::FETCH_COLUMN);
 
         // Fetch active matches
         $stmtMatches = $this->db->prepare("
@@ -353,6 +398,9 @@ class AdminController {
             'profile' => $profile,
             'education' => $education,
             'preferences' => $preferences,
+            'preferredCountries' => $preferredCountries,
+            'preferredFields' => $preferredFields,
+            'preferredDegrees' => $preferredDegrees,
             'matches' => $matches,
             'applications' => $applications,
             'subscription' => $subscription,
@@ -443,11 +491,19 @@ class AdminController {
     public function usersSuspend(string $id): void {
         Auth::requirePermission('users.edit');
         $id = $this->resolveId($id, true);
+        $encId = encode_id($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') 
+               || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'CSRF verification failed']);
+            if ($isAjax) {
+                http_response_code(400);
+                echo json_encode(['error' => 'CSRF verification failed']);
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/users/$encId"));
             exit();
         }
 
@@ -455,7 +511,14 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('user_suspend', 'users', 'users', $id);
-        echo json_encode(['success' => true, 'message' => 'User suspended successfully.']);
+
+        if ($isAjax) {
+            echo json_encode(['success' => true, 'message' => 'User suspended successfully.']);
+            exit();
+        }
+
+        $_SESSION['admin_success'] = 'User suspended successfully.';
+        header("Location: " . url("/admin/users/$encId"));
         exit();
     }
 
@@ -465,11 +528,19 @@ class AdminController {
     public function usersActivate(string $id): void {
         Auth::requirePermission('users.edit');
         $id = $this->resolveId($id, true);
+        $encId = encode_id($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') 
+               || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'CSRF verification failed']);
+            if ($isAjax) {
+                http_response_code(400);
+                echo json_encode(['error' => 'CSRF verification failed']);
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/users/$encId"));
             exit();
         }
 
@@ -477,7 +548,14 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('user_activate', 'users', 'users', $id);
-        echo json_encode(['success' => true, 'message' => 'User activated successfully.']);
+
+        if ($isAjax) {
+            echo json_encode(['success' => true, 'message' => 'User activated successfully.']);
+            exit();
+        }
+
+        $_SESSION['admin_success'] = 'User activated successfully.';
+        header("Location: " . url("/admin/users/$encId"));
         exit();
     }
 
@@ -519,11 +597,19 @@ class AdminController {
     public function usersDelete(string $id): void {
         Auth::requirePermission('users.delete');
         $id = $this->resolveId($id, true);
+        $encId = encode_id($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') 
+               || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'CSRF verification failed']);
+            if ($isAjax) {
+                http_response_code(400);
+                echo json_encode(['error' => 'CSRF verification failed']);
+                exit();
+            }
+            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            header("Location: " . url("/admin/users/$encId"));
             exit();
         }
 
@@ -532,7 +618,15 @@ class AdminController {
         $stmt->execute([$id]);
 
         $this->logAction('user_delete', 'users', 'users', $id);
-        echo json_encode(['success' => true, 'message' => 'User deleted successfully.']);
+
+        if ($isAjax) {
+            echo json_encode(['success' => true, 'message' => 'User deleted successfully.']);
+            exit();
+        }
+
+        $_SESSION['admin_success'] = 'User deactivated / deleted successfully.';
+        header("Location: " . url("/admin/users"));
+        exit();
     }
 
     // ==========================================

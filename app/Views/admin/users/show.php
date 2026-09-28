@@ -127,6 +127,11 @@
     }
 </style>
 
+<?php 
+$encId = encode_id($targetUser['id']);
+$userDisplayName = trim(($targetUser['first_name'] ?? '') . ' ' . ($targetUser['last_name'] ?? '')) ?: ($targetUser['email'] ?? 'User');
+?>
+
 <a href="/admin/users" class="back-btn">
     <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
     <span>Back to Students List</span>
@@ -144,15 +149,15 @@
                     echo $initials ?: 'ST';
                 ?>
             </div>
-            <h2 class="profile-name"><?= e($targetUser['first_name'] . ' ' . $targetUser['last_name']) ?></h2>
-            <p class="profile-email"><?= e($targetUser['email']) ?></p>
+            <h2 class="profile-name"><?= e($userDisplayName) ?></h2>
+            <p class="profile-email"><?= e($targetUser['email'] ?? '') ?></p>
 
-            <span class="status-badge <?= e($targetUser['status']) ?>"><?= e($targetUser['status']) ?></span>
+            <span class="status-badge <?= e($targetUser['status'] ?? 'active') ?>"><?= e(ucfirst($targetUser['status'] ?? 'active')) ?></span>
 
             <div class="info-list">
                 <div class="info-item">
                     <span class="info-label">Email Verification:</span>
-                    <span class="info-val"><?= $targetUser['email_verified_at'] ? 'Verified' : 'Unverified' ?></span>
+                    <span class="info-val"><?= !empty($targetUser['email_verified_at']) ? '<span style="color: #16a34a; font-weight: 600;">Verified</span>' : '<span style="color: #94a3b8;">Unverified</span>' ?></span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Active Plan:</span>
@@ -162,38 +167,68 @@
                     <span class="info-label">Wizard Completion:</span>
                     <span class="info-val"><?= (int)($profile['profile_completion_percentage'] ?? 0) ?>%</span>
                 </div>
+                <?php if (!empty($targetUser['phone'])): ?>
+                    <div class="info-item">
+                        <span class="info-label">Phone:</span>
+                        <span class="info-val"><?= e($targetUser['phone']) ?></span>
+                    </div>
+                <?php endif; ?>
+                <?php if (!empty($targetUser['whatsapp_phone'])): ?>
+                    <div class="info-item">
+                        <span class="info-label">WhatsApp:</span>
+                        <span class="info-val"><?= e($targetUser['whatsapp_phone']) ?></span>
+                    </div>
+                <?php endif; ?>
+                <?php if (!empty($profile['nationality_name'])): ?>
+                    <div class="info-item">
+                        <span class="info-label">Nationality:</span>
+                        <span class="info-val"><?= e($profile['nationality_name']) ?></span>
+                    </div>
+                <?php endif; ?>
+                <?php if (!empty($profile['residence_name'])): ?>
+                    <div class="info-item">
+                        <span class="info-label">Country of Residence:</span>
+                        <span class="info-val"><?= e($profile['residence_name']) ?></span>
+                    </div>
+                <?php endif; ?>
                 <div class="info-item">
                     <span class="info-label">Registered At:</span>
-                    <span class="info-val"><?= date('M d, Y', strtotime($targetUser['created_at'])) ?></span>
+                    <span class="info-val"><?= !empty($targetUser['created_at']) ? date('M d, Y', strtotime($targetUser['created_at'])) : 'N/A' ?></span>
                 </div>
+                <?php if (!empty($targetUser['last_login_at'])): ?>
+                    <div class="info-item">
+                        <span class="info-label">Last Login:</span>
+                        <span class="info-val"><?= date('M d, Y H:i', strtotime($targetUser['last_login_at'])) ?></span>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 8px;">
-                <a href="/admin/users/<?= $targetUser['id'] ?>/edit" class="btn btn-secondary" style="justify-content: center; width: 100%;">Edit Profile Info</a>
+                <a href="/admin/users/<?= e($encId) ?>/edit" class="btn btn-secondary" style="justify-content: center; width: 100%;">Edit Profile Info</a>
                 
-                <?php if ($targetUser['status'] !== 'suspended'): ?>
-                    <form action="/admin/users/<?= $targetUser['id'] ?>/suspend" method="POST" style="width: 100%;">
+                <?php if (($targetUser['status'] ?? '') !== 'suspended'): ?>
+                    <form action="/admin/users/<?= e($encId) ?>/suspend" method="POST" style="width: 100%;">
                         <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                        <button type="button" class="btn btn-danger" style="justify-content: center; width: 100%;" onclick="confirmUserAction(this, 'suspend', <?= json_encode($targetUser['name'] ?? $targetUser['email'] ?? 'User') ?>)">Suspend User</button>
+                        <button type="button" class="btn btn-danger" style="justify-content: center; width: 100%;" onclick="confirmUserAction(this, 'suspend', <?= json_encode($userDisplayName) ?>)">Suspend User</button>
                     </form>
                 <?php else: ?>
-                    <form action="/admin/users/<?= $targetUser['id'] ?>/activate" method="POST" style="width: 100%;">
+                    <form action="/admin/users/<?= e($encId) ?>/activate" method="POST" style="width: 100%;">
                         <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                        <button type="button" class="btn btn-primary" style="justify-content: center; width: 100%;" onclick="confirmUserAction(this, 'activate', <?= json_encode($targetUser['name'] ?? $targetUser['email'] ?? 'User') ?>)">Activate User</button>
+                        <button type="button" class="btn btn-primary" style="justify-content: center; width: 100%;" onclick="confirmUserAction(this, 'activate', <?= json_encode($userDisplayName) ?>)">Activate User</button>
                     </form>
                 <?php endif; ?>
 
-                <form action="/admin/users/<?= $targetUser['id'] ?>/delete" method="POST" style="width: 100%;">
+                <form action="/admin/users/<?= e($encId) ?>/delete" method="POST" style="width: 100%;">
                     <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
-                    <button type="button" class="btn btn-secondary" style="justify-content: center; width: 100%; border-color: #fca5a5; color: #ef4444; background: #fff;" onclick="confirmUserAction(this, 'delete', <?= json_encode($targetUser['name'] ?? $targetUser['email'] ?? 'User') ?>)">Deactivate / Delete</button>
+                    <button type="button" class="btn btn-secondary" style="justify-content: center; width: 100%; border-color: #fca5a5; color: #ef4444; background: #fff;" onclick="confirmUserAction(this, 'delete', <?= json_encode($userDisplayName) ?>)">Deactivate / Delete</button>
                 </form>
             </div>
         </div>
 
         <!-- Change Password Card -->
         <div class="card" style="margin-top: 24px;">
-            <h3 class="card-title">Reset Password</h3>
-            <form action="/admin/users/<?= $targetUser['id'] ?>/password" method="POST">
+            <h3 class="card-title"><i data-lucide="key" style="width: 18px; height: 18px;"></i> Reset Password</h3>
+            <form action="/admin/users/<?= e($encId) ?>/password" method="POST">
                 <input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">
                 <div class="form-group">
                     <label class="form-label" for="password">New Password (min 8 chars)</label>
@@ -206,6 +241,54 @@
 
     <!-- Right Column -->
     <div>
+        <!-- Preferences & Study Goals (if available) -->
+        <?php if (!empty($preferredCountries) || !empty($preferredFields) || !empty($preferredDegrees) || !empty($profile['preferred_funding_type']) || !empty($profile['ielts_score']) || !empty($profile['toefl_score'])): ?>
+            <div class="card">
+                <h3 class="card-title"><i data-lucide="compass"></i> Study Goals & Preferences</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.875rem;">
+                    <?php if (!empty($preferredDegrees)): ?>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Target Degree:</span>
+                            <strong><?= e(implode(', ', $preferredDegrees)) ?></strong>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($preferredCountries)): ?>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Target Countries:</span>
+                            <strong><?= e(implode(', ', $preferredCountries)) ?></strong>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($preferredFields)): ?>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Fields of Interest:</span>
+                            <strong><?= e(implode(', ', $preferredFields)) ?></strong>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($profile['preferred_funding_type'])): ?>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">Funding Needed:</span>
+                            <strong><?= e(ucwords(str_replace('_', ' ', $profile['preferred_funding_type']))) ?></strong>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($profile['ielts_score']) || !empty($profile['toefl_score']) || !empty($profile['pte_score']) || !empty($profile['duolingo_score'])): ?>
+                        <div>
+                            <span style="color: #64748b; display: block; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; font-weight: 600;">English Test Scores:</span>
+                            <strong>
+                                <?php 
+                                    $scores = [];
+                                    if (!empty($profile['ielts_score'])) $scores[] = 'IELTS ' . e($profile['ielts_score']);
+                                    if (!empty($profile['toefl_score'])) $scores[] = 'TOEFL ' . e($profile['toefl_score']);
+                                    if (!empty($profile['pte_score'])) $scores[] = 'PTE ' . e($profile['pte_score']);
+                                    if (!empty($profile['duolingo_score'])) $scores[] = 'Duolingo ' . e($profile['duolingo_score']);
+                                    echo implode(' | ', $scores);
+                                ?>
+                            </strong>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <!-- Education History -->
         <div class="card">
             <h3 class="card-title"><i data-lucide="book"></i> Education History</h3>
@@ -214,16 +297,48 @@
                     <div style="color: #64748b; font-style: italic;">No education records added.</div>
                 <?php else: ?>
                     <?php foreach ($education as $edu): ?>
+                        <?php
+                            $degreeText = trim((!empty($edu['degree_level']) ? $edu['degree_level'] . ' - ' : '') . ($edu['degree_title'] ?? ''));
+                            if (empty($degreeText)) {
+                                $degreeText = 'Education Record';
+                            }
+                            $institution = !empty($edu['institution_name']) ? $edu['institution_name'] : (!empty($edu['institution_lookup_name']) ? $edu['institution_lookup_name'] : 'Institution Not Specified');
+                            
+                            $locationParts = array_filter([$edu['city_name'] ?? null, $edu['state_name'] ?? null, $edu['country_name'] ?? null]);
+                            $locationStr = !empty($locationParts) ? implode(', ', $locationParts) : 'Location not specified';
+
+                            // Score / Result text
+                            $scoreLabel = 'Score';
+                            $scoreValue = 'N/A';
+                            if (!empty($edu['cgpa'])) {
+                                $scoreLabel = 'CGPA';
+                                $scoreValue = $edu['cgpa'] . (!empty($edu['cgpa_scale']) ? ' / ' . $edu['cgpa_scale'] : '');
+                            } elseif (!empty($edu['percentage'])) {
+                                $scoreLabel = 'Percentage';
+                                $scoreValue = $edu['percentage'] . '%';
+                            } elseif (!empty($edu['result_status'])) {
+                                $scoreLabel = 'Result';
+                                $scoreValue = ucfirst($edu['result_status']);
+                            } elseif (!empty($edu['graduation_status'])) {
+                                $scoreLabel = 'Status';
+                                $scoreValue = ucfirst($edu['graduation_status']);
+                            }
+                        ?>
                         <div class="record-item">
                             <div>
-                                <div class="record-title"><?= e($edu['degree_title']) ?> - <?= e($edu['institution_name'] ?: ($edu['college_name'] ?? $edu['school_name'])) ?></div>
+                                <div class="record-title"><?= e($degreeText) ?> - <?= e($institution) ?></div>
                                 <div class="record-sub">
                                     Field of Study: <?= e($edu['field_of_study'] ?? 'Not Specified') ?> | 
-                                    <?= e($edu['city_name']) ?>, <?= e($edu['state_name']) ?>, <?= e($edu['country_name']) ?>
+                                    <?= e($locationStr) ?>
+                                    <?php if (!empty($edu['is_current'])): ?>
+                                        <span style="display: inline-block; margin-left: 6px; padding: 2px 6px; font-size: 0.7rem; background: #e0f2fe; color: #0369a1; border-radius: 4px;">In Progress<?= !empty($edu['current_semester']) ? ' (Sem ' . e($edu['current_semester']) . ')' : '' ?></span>
+                                    <?php elseif (!empty($edu['passing_year'])): ?>
+                                        <span style="display: inline-block; margin-left: 6px; padding: 2px 6px; font-size: 0.7rem; background: #f1f5f9; color: #475569; border-radius: 4px;">Graduated <?= e($edu['passing_year']) ?></span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                             <div class="score-badge">
-                                <?= e($edu['result_type']) ?>: <?= e($edu['obtained_cgpa']) ?> / <?= e($edu['cgpa_scale']) ?>
+                                <?= e($scoreLabel) ?>: <?= e($scoreValue) ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -264,10 +379,10 @@
                         <div class="record-item">
                             <div>
                                 <div class="record-title"><a href="/scholarships/<?= e($app['slug']) ?>" target="_blank" style="color: var(--primary); text-decoration: none;"><?= e($app['title']) ?></a></div>
-                                <div class="record-sub">Applied On: <?= date('M d, Y', strtotime($app['created_at'])) ?></div>
+                                <div class="record-sub">Applied On: <?= !empty($app['created_at']) ? date('M d, Y', strtotime($app['created_at'])) : 'N/A' ?></div>
                             </div>
                             <span class="status-badge active" style="text-transform: uppercase; background-color: #dbeafe; color: #1e40af;">
-                                <?= e($app['status']) ?>
+                                <?= e($app['status'] ?? 'submitted') ?>
                             </span>
                         </div>
                     <?php endforeach; ?>
@@ -275,6 +390,8 @@
             </div>
         </div>
     </div>
+</div>
+
 <script>
 function confirmUserAction(btn, action, userName) {
     var form = btn.closest('form');
