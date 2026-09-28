@@ -547,26 +547,15 @@ class DashboardController {
     }
 
     /**
-     * Display Employee Dashboard
+     * Display Employee Dashboard (Legacy route redirected to unified /admin control center)
      */
     public function employee(): void {
-        // Enforce database-driven permissions (requires scholarships.view permission)
-        Auth::requirePermission('scholarships.view');
-
-        $user = Auth::currentUser();
-        $db = Database::connection();
-
-        // Fetch verification queue stats
-        $pendingReviews = $db->query("SELECT COUNT(*) FROM scholarships WHERE verification_status = 'pending'")->fetchColumn();
-        $assignedTasks = $db->prepare("SELECT COUNT(*) FROM employee_assignments WHERE employee_id = :id AND status = 'assigned'");
-        $assignedTasks->execute(['id' => $user['id']]);
-        $tasksCount = $assignedTasks->fetchColumn();
-
-        view('auth.employee', [
-            'user' => $user,
-            'pending_reviews' => $pendingReviews,
-            'assigned_tasks' => $tasksCount
-        ]);
+        if (defined('TESTING_MODE') && TESTING_MODE) {
+            $this->redirect(url('/admin'));
+            return;
+        }
+        header("Location: " . url('/admin'), true, 301);
+        exit();
     }
 
     private function redirect(string $url): void {

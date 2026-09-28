@@ -149,8 +149,21 @@ class AdminController {
             $alerts[] = ['text' => "$pendingInst new institutions awaiting approval.", 'link' => '/admin/institutions', 'type' => 'info'];
         }
 
+        // Employee assigned tasks count
+        $currentUser = Auth::currentUser();
+        $assignedTasksCount = 0;
+        if ($currentUser && ($currentUser['role_name'] ?? '') === 'employee') {
+            try {
+                $stmtEmpTasks = $this->db->prepare("SELECT COUNT(*) FROM employee_assignments WHERE employee_id = :id AND status = 'assigned'");
+                $stmtEmpTasks->execute(['id' => $currentUser['id']]);
+                $assignedTasksCount = (int)$stmtEmpTasks->fetchColumn();
+            } catch (\Exception $e) {
+                $assignedTasksCount = 0;
+            }
+        }
+
         View::render('admin.dashboard', [
-            'user' => Auth::currentUser(),
+            'user' => $currentUser,
             'stats' => [
                 'total_users' => $totalUsers,
                 'verified_users' => $verifiedUsers,
@@ -171,7 +184,8 @@ class AdminController {
                 'new_students_30d' => $newStudentsThisMonth,
                 'new_scholarships_30d' => $newScholarshipsThisMonth,
                 'new_applications_30d' => $newApplicationsThisMonth,
-                'new_subscriptions_30d' => $newSubscriptionsThisMonth
+                'new_subscriptions_30d' => $newSubscriptionsThisMonth,
+                'assigned_tasks' => $assignedTasksCount
             ],
             'recent_logs' => $recentLogs,
             'recent_scholarships' => $recentScholarships,

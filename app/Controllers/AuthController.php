@@ -688,10 +688,8 @@ class AuthController {
         $user = Auth::currentUser();
         if ($user && $user['status'] === 'pending') {
             $redirectUrl = url('/verify-email');
-        } elseif (Auth::hasRole('admin')) {
+        } elseif (Auth::hasRole('admin') || Auth::hasRole('employee')) {
             $redirectUrl = url('/admin');
-        } elseif (Auth::hasRole('employee')) {
-            $redirectUrl = url('/employee');
         } elseif (Auth::hasRole('referral_partner')) {
             $redirectUrl = url('/referral-partner');
         } else {

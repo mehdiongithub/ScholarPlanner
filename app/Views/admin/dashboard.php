@@ -1,4 +1,24 @@
-<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
+<?php 
+include ROOT_PATH . '/app/Views/layouts/admin_header.php'; 
+
+use App\Services\Auth;
+
+$currentUser = $user ?? Auth::currentUser();
+$isEmployee = ($currentUser['role_name'] ?? '') === 'employee';
+$isAdmin = ($currentUser['role_name'] ?? '') === 'admin';
+
+// Permissions
+$canViewScholarships = Auth::hasPermission('scholarships.view');
+$canCreateScholarships = Auth::hasPermission('scholarships.create');
+$canVerifyScholarships = Auth::hasPermission('scholarships.verify');
+$canViewUsers = Auth::hasPermission('users.view');
+$canManageEmployees = Auth::hasPermission('employees.manage');
+$canViewApplications = Auth::hasPermission('applications.view');
+$canViewDocuments = Auth::hasPermission('documents.view');
+$canViewSubscriptions = Auth::hasPermission('subscriptions.view');
+$canViewPayments = Auth::hasPermission('payments.view');
+$canViewAuditLogs = Auth::hasPermission('audit_logs.view');
+?>
 
 <style>
     .welcome-banner {
@@ -160,7 +180,7 @@
     }
     @media (max-width: 1200px) {
         .dashboard-cols {
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr !important;
         }
     }
 
@@ -199,53 +219,93 @@
 </style>
 
 <div class="welcome-banner">
-    <h1>Admin Dashboard</h1>
-    <p>Manage scholarships, students, applications and the ScholarPlanner platform.</p>
+    <h1><?= $isEmployee ? 'Employee Staff Portal' : 'Admin Dashboard' ?></h1>
+    <p><?= $isEmployee ? 'Welcome back, ' . htmlspecialchars($currentUser['first_name'] ?? 'Staff') . '! Access your assigned tasks and authorized platform tools.' : 'Manage scholarships, students, applications and the ScholarPlanner platform.' ?></p>
 </div>
 
-<!-- Admin Quick Actions -->
+<?php if ($isEmployee): ?>
+<!-- Employee Assigned Work KPI -->
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid #3b82f6;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: #eff6ff; color: #2563eb; display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="check-square" style="width: 24px; height: 24px;"></i>
+            </div>
+            <div>
+                <h3 style="margin: 0 0 4px 0; font-size: 1.125rem; font-weight: 700; color: #1e293b;">My Assigned Work</h3>
+                <p style="margin: 0; font-size: 0.875rem; color: #64748b;">You have <strong><?= (int)($stats['assigned_tasks'] ?? 0) ?></strong> open tasks currently assigned to your account.</p>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <?php if ($canVerifyScholarships): ?>
+                <a href="<?= url('/admin/scholarships?status=pending_review') ?>" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <i data-lucide="award" style="width: 14px; height: 14px;"></i> Verification Queue
+                </a>
+            <?php endif; ?>
+            <a href="<?= url('/admin/profile') ?>" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-slate-200); background: #fff;">
+                <i data-lucide="user" style="width: 14px; height: 14px;"></i> Staff Profile
+            </a>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Quick Actions -->
 <div class="card" style="margin-bottom: 24px;">
     <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin: 0 0 16px 0;">Quick Actions</h2>
     <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-        <?php if (\App\Services\Auth::hasPermission('scholarships.create')): ?>
+        <?php if ($canCreateScholarships): ?>
             <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary" style="width: auto; display: inline-flex; align-items: center; gap: 8px;">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> Add Scholarship
             </a>
         <?php endif; ?>
 
-        <?php if (\App\Services\Auth::hasPermission('scholarships.view')): ?>
+        <?php if ($canViewScholarships): ?>
             <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
                 <i data-lucide="award" style="width: 16px; height: 16px;"></i> Manage Scholarships
             </a>
         <?php endif; ?>
 
-        <?php if (\App\Services\Auth::hasPermission('users.view')): ?>
+        <?php if ($canVerifyScholarships): ?>
+            <a href="<?= url('/admin/scholarships?status=pending_review') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Verification Queue
+            </a>
+        <?php endif; ?>
+
+        <?php if ($canViewUsers): ?>
             <a href="<?= url('/admin/users') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
                 <i data-lucide="users" style="width: 16px; height: 16px;"></i> Manage Students
             </a>
         <?php endif; ?>
 
-        <?php if (\App\Services\Auth::hasPermission('employees.manage')): ?>
+        <?php if ($canManageEmployees): ?>
             <a href="<?= url('/admin/employees/create') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
                 <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i> Add Employee
             </a>
         <?php endif; ?>
 
-        <?php if (\App\Services\Auth::currentUser()['role_name'] === 'admin'): ?>
+        <?php if ($isAdmin): ?>
             <a href="<?= url('/admin/institutions') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
                 <i data-lucide="building-2" style="width: 16px; height: 16px;"></i> Review Institutions
             </a>
         <?php endif; ?>
 
-        <?php if (\App\Services\Auth::hasPermission('applications.view')): ?>
+        <?php if ($canViewApplications): ?>
             <a href="<?= url('/admin/applications') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
                 <i data-lucide="file-text" style="width: 16px; height: 16px;"></i> View Applications
+            </a>
+        <?php endif; ?>
+
+        <?php if ($canViewDocuments): ?>
+            <a href="<?= url('/admin/documents') ?>" class="btn btn-secondary" style="width: auto; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-slate-200); background: #fff; color: #334155;">
+                <i data-lucide="files" style="width: 16px; height: 16px;"></i> Uploaded Documents
             </a>
         <?php endif; ?>
     </div>
 </div>
 
 <!-- Primary KPIs Grid -->
+<?php if ($canViewScholarships): ?>
 <div class="dashboard-stats">
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #eff6ff; color: #3b82f6;"><i data-lucide="award"></i></div>
@@ -277,7 +337,9 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
 
+<?php if ($canViewUsers): ?>
 <div class="dashboard-stats">
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #f0fdf4; color: #22c55e;"><i data-lucide="users"></i></div>
@@ -309,8 +371,11 @@
         </div>
     </div>
 </div>
+<?php endif; ?>
 
+<?php if ($canViewApplications || $canViewSubscriptions || $canViewPayments): ?>
 <div class="dashboard-stats" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));">
+    <?php if ($canViewApplications): ?>
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #faf5ff; color: #a855f7;"><i data-lucide="file-check"></i></div>
         <div class="stat-info">
@@ -319,6 +384,8 @@
             <div class="stat-trend up">+<?= $stats['new_applications_30d'] ?> this month</div>
         </div>
     </div>
+    <?php endif; ?>
+    <?php if ($canViewSubscriptions): ?>
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #ecfdf5; color: #047857;"><i data-lucide="credit-card"></i></div>
         <div class="stat-info">
@@ -327,6 +394,8 @@
             <div class="stat-trend up">+<?= $stats['new_subscriptions_30d'] ?> this month</div>
         </div>
     </div>
+    <?php endif; ?>
+    <?php if ($canViewPayments): ?>
     <div class="stat-box">
         <div class="stat-icon" style="background-color: #eff6ff; color: #1e40af;"><i data-lucide="dollar-sign"></i></div>
         <div class="stat-info">
@@ -334,13 +403,18 @@
             <div class="stat-label">Total Revenue Generated</div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <!-- Action required Center -->
+<?php
+$hasActionItem = false;
+?>
 <div class="action-center-card">
     <h2 style="font-size: 1.125rem; font-weight: 700; color: #1e293b; margin: 0;"><i data-lucide="alert-triangle" style="vertical-align: middle; color: #ef4444; margin-right: 6px; display: inline;"></i> ACTION REQUIRED</h2>
     <div class="action-required-list">
-        <?php if ($stats['pending_scholarships'] > 0): ?>
+        <?php if (($canVerifyScholarships || $isAdmin) && $stats['pending_scholarships'] > 0): $hasActionItem = true; ?>
             <div class="action-required-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="action-badge-count"><?= $stats['pending_scholarships'] ?></span>
@@ -350,7 +424,7 @@
             </div>
         <?php endif; ?>
 
-        <?php if ($stats['pending_institutions'] > 0): ?>
+        <?php if ($isAdmin && $stats['pending_institutions'] > 0): $hasActionItem = true; ?>
             <div class="action-required-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="action-badge-count"><?= $stats['pending_institutions'] ?></span>
@@ -360,7 +434,7 @@
             </div>
         <?php endif; ?>
 
-        <?php if ($stats['pending_users'] > 0): ?>
+        <?php if ($canViewUsers && $stats['pending_users'] > 0): $hasActionItem = true; ?>
             <div class="action-required-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="action-badge-count"><?= $stats['pending_users'] ?></span>
@@ -370,7 +444,7 @@
             </div>
         <?php endif; ?>
 
-        <?php if ($stats['pending_applications'] > 0): ?>
+        <?php if ($canViewApplications && $stats['pending_applications'] > 0): $hasActionItem = true; ?>
             <div class="action-required-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="action-badge-count"><?= $stats['pending_applications'] ?></span>
@@ -380,7 +454,7 @@
             </div>
         <?php endif; ?>
 
-        <?php if ($stats['payment_issues'] > 0): ?>
+        <?php if ($canViewPayments && $stats['payment_issues'] > 0): $hasActionItem = true; ?>
             <div class="action-required-item">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="action-badge-count"><?= $stats['payment_issues'] ?></span>
@@ -390,14 +464,15 @@
             </div>
         <?php endif; ?>
 
-        <?php if ($stats['pending_scholarships'] == 0 && $stats['pending_institutions'] == 0 && $stats['pending_users'] == 0 && $stats['pending_applications'] == 0 && $stats['payment_issues'] == 0): ?>
+        <?php if (!$hasActionItem): ?>
             <div style="text-align: center; color: #166534; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 16px; font-weight: 600; font-size: 0.875rem;">
-                ✔ You're all caught up. No action is required.
+                <i data-lucide="check-circle" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 6px; display: inline;"></i> You're all caught up. No action is required.
             </div>
         <?php endif; ?>
     </div>
 </div>
 
+<?php if ($canViewScholarships): ?>
 <!-- Scholarship Quick Filters -->
 <h3 style="font-size: 1rem; font-weight: 700; color: #1e293b; margin-bottom: 12px; margin-top: 0;">Scholarship Overview Statuses</h3>
 <div class="status-overview-grid">
@@ -422,11 +497,19 @@
         <div class="status-overview-label" style="color: #475569;">Archived</div>
     </a>
 </div>
+<?php endif; ?>
 
 <!-- Two Column Data Tables -->
-<div class="dashboard-cols">
-    <!-- Left Column: Recent Scholarships -->
+<?php
+$showLeftCol = $canViewScholarships || $canViewUsers;
+$showRightCol = $canViewAuditLogs;
+?>
+<?php if ($showLeftCol || $showRightCol): ?>
+<div class="dashboard-cols" style="grid-template-columns: <?= $showRightCol && $showLeftCol ? '2fr 1fr' : '1fr' ?>;">
+    <?php if ($showLeftCol): ?>
+    <!-- Left Column: Recent Scholarships & Recent Students -->
     <div>
+        <?php if ($canViewScholarships): ?>
         <div class="card">
             <h2 class="card-title">
                 <span>Recent Scholarships</span>
@@ -452,7 +535,9 @@
                             <tr>
                                 <td colspan="9" style="text-align: center; color: #94a3b8; padding: 24px;">
                                     <div style="margin-bottom: 12px;">No scholarships have been added yet.</div>
+                                    <?php if ($canCreateScholarships): ?>
                                     <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary btn-sm" style="display: inline-block; width: auto;">Add Scholarship</a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php else: ?>
@@ -533,7 +618,9 @@
                 </table>
             </div>
         </div>
+        <?php endif; ?>
 
+        <?php if ($canViewUsers): ?>
         <!-- Recent Students Registry -->
         <div class="card">
             <h2 class="card-title">
@@ -584,8 +671,11 @@
                 </table>
             </div>
         </div>
+        <?php endif; ?>
     </div>
+    <?php endif; ?>
 
+    <?php if ($showRightCol): ?>
     <!-- Right Column: Audit Logs -->
     <div>
         <div class="card">
@@ -615,6 +705,8 @@
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>

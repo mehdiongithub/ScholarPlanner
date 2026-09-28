@@ -4,7 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $title ?? 'Admin Dashboard' ?> | ScholarPlanner Admin</title>
+    <?php
+    $navRole = $_SESSION['role_name'] ?? 'admin';
+    $defaultTitle = ($navRole === 'employee') ? 'Employee Portal' : 'Admin Dashboard';
+    $portalSuffix = ($navRole === 'employee') ? 'ScholarPlanner Portal' : 'ScholarPlanner Admin';
+    ?>
+    <title><?= $title ?? $defaultTitle ?> | <?= $portalSuffix ?></title>
     <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/webp" href="<?= asset('assets/images/logo.webp') ?>">
     <link rel="apple-touch-icon" href="<?= asset('assets/images/logo.webp') ?>">
@@ -35,248 +40,14 @@
 
         <div class="sidebar-menu">
             <?php
-            // Centralized Admin Sidebar Navigation Configuration
-            $sidebarNav = [
-                [
-                    'type' => 'link',
-                    'label' => 'Dashboard',
-                    'icon' => 'layout-dashboard',
-                    'url' => '/admin',
-                    'active_prefix' => '/admin',
-                    'exact' => true
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'USER MANAGEMENT'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Students / Visitors',
-                    'icon' => 'users',
-                    'url' => '/admin/users',
-                    'active_prefix' => '/admin/users'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Active User Plans',
-                    'icon' => 'sparkles',
-                    'url' => '/admin/manual-subscriptions',
-                    'active_prefix' => '/admin/manual-subscriptions'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Alert Timers',
-                    'icon' => 'timer',
-                    'url' => '/admin/alert-timers',
-                    'active_prefix' => '/admin/alert-timers'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Staff & Employees',
-                    'icon' => 'shield-check',
-                    'url' => '/admin/employees',
-                    'active_prefix' => '/admin/employees',
-                    'exclude_prefix' => '/admin/employees/roles'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Roles & Permissions',
-                    'icon' => 'lock',
-                    'url' => '/admin/employees/roles',
-                    'active_prefix' => '/admin/employees/roles'
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'SCHOLARSHIPS & PLATFORM'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Scholarships',
-                    'icon' => 'award',
-                    'url' => '/admin/scholarships',
-                    'active_prefix' => '/admin/scholarships'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Institutions',
-                    'icon' => 'landmark',
-                    'url' => '/admin/institutions',
-                    'active_prefix' => '/admin/institutions'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Applications',
-                    'icon' => 'file-text',
-                    'url' => '/admin/applications',
-                    'active_prefix' => '/admin/applications'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Uploaded Documents',
-                    'icon' => 'files',
-                    'url' => '/admin/documents',
-                    'active_prefix' => '/admin/documents'
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'ACADEMIC & LOCATIONS'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Countries',
-                    'icon' => 'globe',
-                    'url' => '/admin/locations/countries',
-                    'active_prefix' => '/admin/locations/countries'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'States / Provinces',
-                    'icon' => 'map-pin',
-                    'url' => '/admin/locations/states',
-                    'active_prefix' => '/admin/locations/states'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Cities',
-                    'icon' => 'navigation',
-                    'url' => '/admin/locations/cities',
-                    'active_prefix' => '/admin/locations/cities'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Fields of Study',
-                    'icon' => 'book-open',
-                    'url' => '/admin/academic/fields',
-                    'active_prefix' => '/admin/academic/fields'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Degree Levels',
-                    'icon' => 'award',
-                    'url' => '/admin/academic/degrees',
-                    'active_prefix' => '/admin/academic/degrees'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Funding Types',
-                    'icon' => 'banknote',
-                    'url' => '/admin/academic/funding',
-                    'active_prefix' => '/admin/academic/funding'
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'MATCHING'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Matching Rules',
-                    'icon' => 'git-branch',
-                    'url' => '/admin/matching/rules',
-                    'active_prefix' => '/admin/matching/rules'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Matching Statistics',
-                    'icon' => 'chart-bar',
-                    'url' => '/admin/matching/stats',
-                    'active_prefix' => '/admin/matching/stats'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Intelligence',
-                    'icon' => 'brain',
-                    'url' => '/admin/intelligence',
-                    'active_prefix' => '/admin/intelligence'
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'COMMUNICATION'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Notifications',
-                    'icon' => 'bell',
-                    'url' => '/admin/notifications',
-                    'active_prefix' => '/admin/notifications'
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'BILLING'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Subscriptions',
-                    'icon' => 'refresh-cw',
-                    'url' => '/admin/subscriptions',
-                    'active_prefix' => '/admin/subscriptions'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Subscription Plans',
-                    'icon' => 'package',
-                    'url' => '/admin/plans',
-                    'active_prefix' => '/admin/plans'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Payments',
-                    'icon' => 'dollar-sign',
-                    'url' => '/admin/payments',
-                    'active_prefix' => '/admin/payments'
-                ],
-                [
-                    'type' => 'section',
-                    'label' => 'SYSTEM'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Settings',
-                    'icon' => 'settings',
-                    'url' => '/admin/settings',
-                    'active_prefix' => '/admin/settings'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Audit Logs',
-                    'icon' => 'history',
-                    'url' => '/admin/audit-logs',
-                    'active_prefix' => '/admin/audit-logs'
-                ],
-                [
-                    'type' => 'link',
-                    'label' => 'Admin Profile',
-                    'icon' => 'user',
-                    'url' => '/admin/profile',
-                    'active_prefix' => '/admin/profile'
-                ]
-            ];
-
-            if (!function_exists('is_nav_active')) {
-                function is_nav_active(array $navItem): bool {
-                    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
-                    $basePath = dirname($_SERVER['SCRIPT_NAME'] ?? '');
-                    $basePath = ($basePath === '/' || $basePath === '\\') ? '' : rtrim($basePath, '/');
-                    
-                    $prefix = $basePath . $navItem['active_prefix'];
-                    $exclude = isset($navItem['exclude_prefix']) ? $basePath . $navItem['exclude_prefix'] : null;
-                    
-                    if ($exclude !== null && strpos($uri, $exclude) === 0) {
-                        return false;
-                    }
-                    
-                    if (!empty($navItem['exact'])) {
-                        return $uri === $prefix || $uri === $prefix . '/';
-                    }
-                    
-                    return strpos($uri, $prefix) === 0;
-                }
-            }
+            $currentRole = $_SESSION['role_name'] ?? 'admin';
+            $sidebarNav = \App\Helpers\Navigation::getSidebarMenu($currentRole);
 
             foreach ($sidebarNav as $navItem) {
                 if ($navItem['type'] === 'section') {
                     echo '<div class="menu-label">' . e($navItem['label']) . '</div>';
                 } elseif ($navItem['type'] === 'link') {
-                    $activeClass = is_nav_active($navItem) ? 'active' : '';
+                    $activeClass = \App\Helpers\Navigation::isActive($navItem) ? 'active' : '';
                     echo '<a href="' . url($navItem['url']) . '" class="menu-item ' . $activeClass . '">';
                     echo '<i data-lucide="' . $navItem['icon'] . '"></i>';
                     echo '<span>' . e($navItem['label']) . '</span>';
@@ -300,16 +71,21 @@
             </div>
 
             <div class="header-right">
+                <?php 
+                    $headerUser = $user ?? \App\Services\Auth::currentUser() ?? [];
+                    $initials = '';
+                    if (!empty($headerUser['first_name'])) $initials .= strtoupper($headerUser['first_name'][0]);
+                    if (!empty($headerUser['last_name'])) $initials .= strtoupper($headerUser['last_name'][0]);
+                    if (empty($initials)) {
+                        $initials = ($navRole === 'employee') ? 'EM' : 'AD';
+                    }
+                    $displayName = !empty($headerUser['first_name']) ? $headerUser['first_name'] : (($navRole === 'employee') ? 'Staff' : 'Admin');
+                ?>
                 <a href="<?= url('/admin/profile') ?>" class="user-profile-btn">
                     <div class="avatar-circle">
-                        <?php 
-                            $initials = '';
-                            if (!empty($user['first_name'])) $initials .= strtoupper($user['first_name'][0]);
-                            if (!empty($user['last_name'])) $initials .= strtoupper($user['last_name'][0]);
-                            echo $initials ?: 'AD';
-                        ?>
+                        <?= e($initials) ?>
                     </div>
-                    <span class="user-name-label"><?= e($user['first_name'] ?? 'Admin') ?></span>
+                    <span class="user-name-label"><?= e($displayName) ?></span>
                 </a>
 
                 <form action="<?= url('/logout') ?>" method="POST" class="logout-form">

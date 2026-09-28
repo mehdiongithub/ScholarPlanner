@@ -45,10 +45,10 @@ class Navigation {
     }
 
     /**
-     * Get admin / employee sidebar config.
+     * Get admin / employee sidebar config filtered by user permissions.
      */
     private static function getAdminSidebar(): array {
-        return [
+        $rawItems = [
             [
                 'type' => 'link',
                 'label' => 'Dashboard',
@@ -66,21 +66,24 @@ class Navigation {
                 'label' => 'Students / Visitors',
                 'icon' => 'users',
                 'url' => '/admin/users',
-                'active_prefix' => '/admin/users'
+                'active_prefix' => '/admin/users',
+                'permission' => 'users.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Active User Plans',
                 'icon' => 'sparkles',
                 'url' => '/admin/manual-subscriptions',
-                'active_prefix' => '/admin/manual-subscriptions'
+                'active_prefix' => '/admin/manual-subscriptions',
+                'permission' => 'users.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Alert Timers',
                 'icon' => 'timer',
                 'url' => '/admin/alert-timers',
-                'active_prefix' => '/admin/alert-timers'
+                'active_prefix' => '/admin/alert-timers',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
@@ -88,14 +91,16 @@ class Navigation {
                 'icon' => 'shield-check',
                 'url' => '/admin/employees',
                 'active_prefix' => '/admin/employees',
-                'exclude_prefix' => '/admin/employees/roles'
+                'exclude_prefix' => '/admin/employees/roles',
+                'permission' => 'employees.manage'
             ],
             [
                 'type' => 'link',
                 'label' => 'Roles & Permissions',
                 'icon' => 'lock',
                 'url' => '/admin/employees/roles',
-                'active_prefix' => '/admin/employees/roles'
+                'active_prefix' => '/admin/employees/roles',
+                'permission' => 'roles.manage'
             ],
             [
                 'type' => 'section',
@@ -106,28 +111,32 @@ class Navigation {
                 'label' => 'Scholarships',
                 'icon' => 'award',
                 'url' => '/admin/scholarships',
-                'active_prefix' => '/admin/scholarships'
+                'active_prefix' => '/admin/scholarships',
+                'permission' => 'scholarships.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Institutions',
                 'icon' => 'landmark',
                 'url' => '/admin/institutions',
-                'active_prefix' => '/admin/institutions'
+                'active_prefix' => '/admin/institutions',
+                'role' => 'admin'
             ],
             [
                 'type' => 'link',
                 'label' => 'Applications',
                 'icon' => 'file-text',
                 'url' => '/admin/applications',
-                'active_prefix' => '/admin/applications'
+                'active_prefix' => '/admin/applications',
+                'permission' => 'applications.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Uploaded Documents',
                 'icon' => 'files',
                 'url' => '/admin/documents',
-                'active_prefix' => '/admin/documents'
+                'active_prefix' => '/admin/documents',
+                'permission' => 'documents.view'
             ],
             [
                 'type' => 'section',
@@ -138,42 +147,48 @@ class Navigation {
                 'label' => 'Countries',
                 'icon' => 'globe',
                 'url' => '/admin/locations/countries',
-                'active_prefix' => '/admin/locations/countries'
+                'active_prefix' => '/admin/locations/countries',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'States / Provinces',
                 'icon' => 'map-pin',
                 'url' => '/admin/locations/states',
-                'active_prefix' => '/admin/locations/states'
+                'active_prefix' => '/admin/locations/states',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Cities',
                 'icon' => 'navigation',
                 'url' => '/admin/locations/cities',
-                'active_prefix' => '/admin/locations/cities'
+                'active_prefix' => '/admin/locations/cities',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Fields of Study',
                 'icon' => 'book-open',
                 'url' => '/admin/academic/fields',
-                'active_prefix' => '/admin/academic/fields'
+                'active_prefix' => '/admin/academic/fields',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Degree Levels',
                 'icon' => 'award',
                 'url' => '/admin/academic/degrees',
-                'active_prefix' => '/admin/academic/degrees'
+                'active_prefix' => '/admin/academic/degrees',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Funding Types',
                 'icon' => 'banknote',
                 'url' => '/admin/academic/funding',
-                'active_prefix' => '/admin/academic/funding'
+                'active_prefix' => '/admin/academic/funding',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'section',
@@ -184,21 +199,24 @@ class Navigation {
                 'label' => 'Matching Rules',
                 'icon' => 'git-branch',
                 'url' => '/admin/matching/rules',
-                'active_prefix' => '/admin/matching/rules'
+                'active_prefix' => '/admin/matching/rules',
+                'permission' => 'reports.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Matching Stats',
                 'icon' => 'chart-bar',
                 'url' => '/admin/matching/stats',
-                'active_prefix' => '/admin/matching/stats'
+                'active_prefix' => '/admin/matching/stats',
+                'permission' => 'reports.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Intelligence',
                 'icon' => 'brain',
                 'url' => '/admin/intelligence',
-                'active_prefix' => '/admin/intelligence'
+                'active_prefix' => '/admin/intelligence',
+                'permission' => ['reports.view', 'scholarships.verify']
             ],
             [
                 'type' => 'section',
@@ -209,7 +227,8 @@ class Navigation {
                 'label' => 'Notifications',
                 'icon' => 'bell',
                 'url' => '/admin/notifications',
-                'active_prefix' => '/admin/notifications'
+                'active_prefix' => '/admin/notifications',
+                'permission' => 'notifications.view'
             ],
             [
                 'type' => 'section',
@@ -220,21 +239,36 @@ class Navigation {
                 'label' => 'Subscriptions',
                 'icon' => 'refresh-cw',
                 'url' => '/admin/subscriptions',
-                'active_prefix' => '/admin/subscriptions'
+                'active_prefix' => '/admin/subscriptions',
+                'permission' => 'subscriptions.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Subscription Plans',
                 'icon' => 'package',
                 'url' => '/admin/plans',
-                'active_prefix' => '/admin/plans'
+                'active_prefix' => '/admin/plans',
+                'permission' => 'subscriptions.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Payments',
                 'icon' => 'dollar-sign',
                 'url' => '/admin/payments',
-                'active_prefix' => '/admin/payments'
+                'active_prefix' => '/admin/payments',
+                'permission' => 'payments.view'
+            ],
+            [
+                'type' => 'section',
+                'label' => 'REFERRALS'
+            ],
+            [
+                'type' => 'link',
+                'label' => 'Referrals',
+                'icon' => 'share-2',
+                'url' => '/admin/referrals',
+                'active_prefix' => '/admin/referrals',
+                'permission' => 'referrals.view'
             ],
             [
                 'type' => 'section',
@@ -245,23 +279,104 @@ class Navigation {
                 'label' => 'Settings',
                 'icon' => 'settings',
                 'url' => '/admin/settings',
-                'active_prefix' => '/admin/settings'
+                'active_prefix' => '/admin/settings',
+                'permission' => 'settings.view'
             ],
             [
                 'type' => 'link',
                 'label' => 'Audit Logs',
                 'icon' => 'history',
                 'url' => '/admin/audit-logs',
-                'active_prefix' => '/admin/audit-logs'
+                'active_prefix' => '/admin/audit-logs',
+                'permission' => 'audit_logs.view'
             ],
             [
                 'type' => 'link',
-                'label' => 'Admin Profile',
+                'label' => 'Staff Profile',
                 'icon' => 'user',
                 'url' => '/admin/profile',
                 'active_prefix' => '/admin/profile'
             ]
         ];
+
+        return self::filterMenuForUser($rawItems);
+    }
+
+    /**
+     * Filter menu items according to role and permissions.
+     * Automatically prunes empty sections where user lacks permissions for all contained links.
+     */
+    public static function filterMenuForUser(array $items): array {
+        $filtered = [];
+        $currentSection = null;
+        $sectionItems = [];
+
+        foreach ($items as $item) {
+            if ($item['type'] === 'section') {
+                if ($currentSection !== null && !empty($sectionItems)) {
+                    $filtered[] = $currentSection;
+                    foreach ($sectionItems as $si) {
+                        $filtered[] = $si;
+                    }
+                }
+                $currentSection = $item;
+                $sectionItems = [];
+                continue;
+            }
+
+            if (self::canAccessItem($item)) {
+                if ($currentSection !== null) {
+                    $sectionItems[] = $item;
+                } else {
+                    $filtered[] = $item;
+                }
+            }
+        }
+
+        if ($currentSection !== null && !empty($sectionItems)) {
+            $filtered[] = $currentSection;
+            foreach ($sectionItems as $si) {
+                $filtered[] = $si;
+            }
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * Determine if current authenticated user has access to a navigation item.
+     */
+    public static function canAccessItem(array $item): bool {
+        // Enforce role constraints if defined
+        if (!empty($item['role'])) {
+            $roles = is_array($item['role']) ? $item['role'] : [$item['role']];
+            if (!Auth::hasRole($roles)) {
+                return false;
+            }
+        }
+
+        // Enforce permission constraints if defined
+        if (!empty($item['permission'])) {
+            $user = Auth::currentUser();
+            // System admin role always has access
+            if ($user && ($user['role_name'] ?? '') === 'admin') {
+                return true;
+            }
+
+            $permissions = is_array($item['permission']) ? $item['permission'] : [$item['permission']];
+            $hasAny = false;
+            foreach ($permissions as $perm) {
+                if (Auth::hasPermission($perm)) {
+                    $hasAny = true;
+                    break;
+                }
+            }
+            if (!$hasAny) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
