@@ -132,13 +132,72 @@
             grid-column: span 1;
         }
     }
+    .status-badge.draft {
+        background-color: #fef3c7;
+        color: #b45309;
+        border: 1px solid #fde68a;
+    }
+    .status-badge.published {
+        background-color: #dcfce7;
+        color: #15803d;
+        border: 1px solid #bbf7d0;
+    }
+    .status-badge.archived {
+        background-color: #f1f5f9;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+    }
 </style>
 
-<div style="margin-bottom:24px;">
+<?php
+$recordId = encode_id((int)$scholarship['id']);
+$schStatus = strtolower($scholarship['status'] ?? 'draft');
+?>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
     <a href="<?= url('/admin/scholarships') ?>" class="btn btn-secondary">
         <i data-lucide="arrow-left"></i>
         <span>Back to List</span>
     </a>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <span class="status-badge <?= e($schStatus) ?>" style="padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.8125rem; text-transform: uppercase;">
+            Status: <?= e(ucfirst($schStatus)) ?>
+        </span>
+
+        <?php if ($schStatus !== 'published'): ?>
+            <form action="<?= url('/admin/scholarships/' . $recordId . '/publish') ?>" method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
+                <button type="submit" class="btn" style="background: #16a34a; color: #fff; font-weight: 600;">
+                    <i data-lucide="globe" style="width: 15px; height: 15px;"></i> Publish
+                </button>
+            </form>
+        <?php else: ?>
+            <form action="<?= url('/admin/scholarships/' . $recordId . '/unpublish') ?>" method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
+                <button type="submit" class="btn" style="background: #ca8a04; color: #fff; font-weight: 600;">
+                    <i data-lucide="pause-circle" style="width: 15px; height: 15px;"></i> Unpublish (Draft)
+                </button>
+            </form>
+        <?php endif; ?>
+
+        <?php if ($schStatus !== 'archived'): ?>
+            <form action="<?= url('/admin/scholarships/' . $recordId . '/archive') ?>" method="POST" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
+                <button type="submit" class="btn btn-secondary" style="font-weight: 600; color: #475569;">
+                    <i data-lucide="archive" style="width: 15px; height: 15px;"></i> Archive
+                </button>
+            </form>
+        <?php endif; ?>
+
+        <?php if ($schStatus === 'draft'): ?>
+            <form action="<?= url('/admin/scholarships/' . $recordId . '/delete') ?>" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to permanently delete this draft scholarship?');">
+                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
+                <button type="submit" class="btn btn-danger" style="font-weight: 600;">
+                    <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i> Delete
+                </button>
+            </form>
+        <?php endif; ?>
+    </div>
 </div>
 
             <?php

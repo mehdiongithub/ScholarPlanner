@@ -26,10 +26,15 @@
     }
 </style>
 
+<?php 
+$currentUser = \App\Services\Auth::currentUser();
+$isEmployee = ($currentUser['role_name'] ?? '') === 'employee';
+?>
+
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
     <div>
-        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;">Scholarship Registry</h1>
-        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;">Create, edit, duplicate, publish or unpublish scholarship opportunity listings.</p>
+        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: #1e293b;"><?= $isEmployee ? 'My Scholarship Registry' : 'Scholarship Registry' ?></h1>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 0.875rem;"><?= $isEmployee ? 'Manage, edit, publish, unpublish, archive and delete your created scholarship listings.' : 'Create, edit, duplicate, publish or unpublish scholarship opportunity listings.' ?></p>
     </div>
     <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
         <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i>
@@ -240,10 +245,13 @@ $(document).ready(function() {
                     }
 
                     var safeTitle = $('<div>').text(row.title || '').html();
-                    var deleteForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/delete" method="POST" style="display:inline;">' +
-                        '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
-                        '<button type="button" class="action-link danger btn-delete-scholarship" style="background:none; border:none; cursor:pointer; font-family:inherit; padding: 2px 4px;" data-title="' + safeTitle + '">Delete</button>' +
-                        '</form>';
+                    var deleteForm = '';
+                    if (row.status === 'draft') {
+                        deleteForm = '<form action="<?= url("/admin/scholarships") ?>/' + row.record_id + '/delete" method="POST" style="display:inline;">' +
+                            '<input type="hidden" name="csrf_token" value="<?= \App\Helpers\Security::csrfToken() ?>">' +
+                            '<button type="button" class="action-link danger btn-delete-scholarship" style="background:none; border:none; cursor:pointer; font-family:inherit; padding: 2px 4px;" data-title="' + safeTitle + '">Delete</button>' +
+                            '</form>';
+                    }
 
                     return '<div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: wrap;">' +
                            '<a href="' + publicUrl + '" target="_blank" class="action-link" style="padding: 2px 4px;">View</a>' +

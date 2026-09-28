@@ -200,6 +200,7 @@ class Navigation {
                 'icon' => 'git-branch',
                 'url' => '/admin/matching/rules',
                 'active_prefix' => '/admin/matching/rules',
+                'role' => 'admin',
                 'permission' => 'reports.view'
             ],
             [
@@ -208,6 +209,7 @@ class Navigation {
                 'icon' => 'chart-bar',
                 'url' => '/admin/matching/stats',
                 'active_prefix' => '/admin/matching/stats',
+                'role' => 'admin',
                 'permission' => 'reports.view'
             ],
             [
@@ -216,6 +218,7 @@ class Navigation {
                 'icon' => 'brain',
                 'url' => '/admin/intelligence',
                 'active_prefix' => '/admin/intelligence',
+                'role' => 'admin',
                 'permission' => ['reports.view', 'scholarships.verify']
             ],
             [
@@ -228,6 +231,7 @@ class Navigation {
                 'icon' => 'bell',
                 'url' => '/admin/notifications',
                 'active_prefix' => '/admin/notifications',
+                'role' => 'admin',
                 'permission' => 'notifications.view'
             ],
             [

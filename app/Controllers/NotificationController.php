@@ -20,7 +20,7 @@ class NotificationController {
      * List outbox alerts with filters
      */
     public function index(): void {
-        Auth::requireRole(['admin', 'employee']);
+        Auth::requireRole('admin');
         Auth::requirePermission('notifications.view');
 
         $status = $_GET['status'] ?? null;
@@ -131,7 +131,7 @@ class NotificationController {
      * Inspect individual outbox logs
      */
     public function show(string $id): void {
-        Auth::requireRole(['admin', 'employee']);
+        Auth::requireRole('admin');
         Auth::requirePermission('notifications.view');
 
         $rawId = decode_id($id);

@@ -474,7 +474,7 @@ $hasActionItem = false;
 
 <?php if ($canViewScholarships): ?>
 <!-- Scholarship Quick Filters -->
-<h3 style="font-size: 1rem; font-weight: 700; color: #1e293b; margin-bottom: 12px; margin-top: 0;">Scholarship Overview Statuses</h3>
+<h3 style="font-size: 1rem; font-weight: 700; color: #1e293b; margin-bottom: 12px; margin-top: 0;"><?= $isEmployee ? 'My Scholarship Overview Statuses' : 'Scholarship Overview Statuses' ?></h3>
 <div class="status-overview-grid">
     <a href="<?= url('/admin/scholarships?status=published') ?>" class="status-overview-item">
         <div class="status-overview-count"><?= $stats['active_scholarships'] ?></div>
@@ -512,7 +512,7 @@ $showRightCol = $canViewAuditLogs;
         <?php if ($canViewScholarships): ?>
         <div class="card">
             <h2 class="card-title">
-                <span>Recent Scholarships</span>
+                <span><?= $isEmployee ? 'My Recent Scholarships' : 'Recent Scholarships' ?></span>
                 <a href="<?= url('/admin/scholarships') ?>" style="font-size: 0.8125rem; color: var(--primary); text-decoration: none; font-weight: 600;">View All Opportunities &rarr;</a>
             </h2>
             <div style="overflow-x: auto;">
@@ -534,7 +534,7 @@ $showRightCol = $canViewAuditLogs;
                         <?php if (empty($recent_scholarships)): ?>
                             <tr>
                                 <td colspan="9" style="text-align: center; color: #94a3b8; padding: 24px;">
-                                    <div style="margin-bottom: 12px;">No scholarships have been added yet.</div>
+                                    <div style="margin-bottom: 12px;"><?= $isEmployee ? 'You haven\'t added any scholarships yet.' : 'No scholarships have been added yet.' ?></div>
                                     <?php if ($canCreateScholarships): ?>
                                     <a href="<?= url('/admin/scholarships/create') ?>" class="btn btn-primary btn-sm" style="display: inline-block; width: auto;">Add Scholarship</a>
                                     <?php endif; ?>

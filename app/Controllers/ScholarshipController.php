@@ -240,6 +240,12 @@ class ScholarshipController {
             $whereClauses[] = "s.application_deadline IS NOT NULL AND s.application_deadline < CURDATE()";
         }
 
+        $currentUser = Auth::currentUser();
+        if (($currentUser['role_name'] ?? '') === 'employee') {
+            $whereClauses[] = "s.created_by = :auth_emp_id";
+            $params['auth_emp_id'] = $currentUser['id'];
+        }
+
         $whereSql = '';
         if (!empty($whereClauses)) {
             $whereSql = "WHERE " . implode(" AND ", $whereClauses);
@@ -760,6 +766,12 @@ class ScholarshipController {
             exit();
         }
 
+        $currentUser = Auth::currentUser();
+        if (($currentUser['role_name'] ?? '') === 'employee' && (int)($scholarship['created_by'] ?? 0) !== (int)$currentUser['id']) {
+            header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to edit scholarships created by yourself.')));
+            exit();
+        }
+
         // 2. Fetch dependencies
         $countries = $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
         $fields = $db->query("SELECT id, name FROM fields_of_study ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
@@ -838,11 +850,17 @@ class ScholarshipController {
         $db = Database::connection();
 
         // Verify exists
-        $stmtExist = $db->prepare("SELECT id, title, slug, cover_image FROM scholarships WHERE id = :id");
+        $stmtExist = $db->prepare("SELECT id, title, slug, cover_image, status, created_by FROM scholarships WHERE id = :id");
         $stmtExist->execute(['id' => $id]);
         $oldRecord = $stmtExist->fetch();
         if (!$oldRecord) {
             header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+            exit();
+        }
+
+        $currentUser = Auth::currentUser();
+        if (($currentUser['role_name'] ?? '') === 'employee' && (int)($oldRecord['created_by'] ?? 0) !== (int)$currentUser['id']) {
+            header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to edit scholarships created by yourself.')));
             exit();
         }
 
@@ -1243,11 +1261,22 @@ class ScholarshipController {
         }
 
         try {
-            $stmtStatus = $db->prepare("SELECT status FROM scholarships WHERE id = :id");
+            $stmtStatus = $db->prepare("SELECT status, created_by FROM scholarships WHERE id = :id");
             $stmtStatus->execute(['id' => $id]);
-            $status = $stmtStatus->fetchColumn();
+            $sch = $stmtStatus->fetch(PDO::FETCH_ASSOC);
 
-            if ($status && $status !== 'draft') {
+            if (!$sch) {
+                header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+                exit();
+            }
+
+            $currentUser = Auth::currentUser();
+            if (($currentUser['role_name'] ?? '') === 'employee' && (int)($sch['created_by'] ?? 0) !== (int)$currentUser['id']) {
+                header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to delete scholarships created by yourself.')));
+                exit();
+            }
+
+            if ($sch['status'] && $sch['status'] !== 'draft') {
                 header("Location: " . url('/admin/scholarships?error=Only draft scholarships can be permanently deleted. Please archive published, expired, or archived scholarships instead to preserve historical records.'));
                 exit();
             }
@@ -1297,6 +1326,12 @@ class ScholarshipController {
 
             if (!$scholarship) {
                 header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+                exit();
+            }
+
+            $currentUser = Auth::currentUser();
+            if (($currentUser['role_name'] ?? '') === 'employee' && (int)($scholarship['created_by'] ?? 0) !== (int)$currentUser['id']) {
+                header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to publish scholarships created by yourself.')));
                 exit();
             }
 
@@ -1358,7 +1393,7 @@ class ScholarshipController {
      */
     public function archive(string $id): void {
         Auth::requireRole(['admin', 'employee']);
-        Auth::requirePermission('scholarships.archive');
+        Auth::requirePermission('scholarships.edit');
 
         $id = $this->resolveScholarshipId($id);
         $db = Database::connection();
@@ -1370,6 +1405,21 @@ class ScholarshipController {
         }
 
         try {
+            $stmtSch = $db->prepare("SELECT created_by FROM scholarships WHERE id = :id");
+            $stmtSch->execute(['id' => $id]);
+            $sch = $stmtSch->fetch(PDO::FETCH_ASSOC);
+
+            if (!$sch) {
+                header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+                exit();
+            }
+
+            $currentUser = Auth::currentUser();
+            if (($currentUser['role_name'] ?? '') === 'employee' && (int)($sch['created_by'] ?? 0) !== (int)$currentUser['id']) {
+                header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to archive scholarships created by yourself.')));
+                exit();
+            }
+
             $stmt = $db->prepare("UPDATE scholarships SET status = 'archived', updated_at = NOW() WHERE id = :id");
             $stmt->execute(['id' => $id]);
 
@@ -1402,6 +1452,21 @@ class ScholarshipController {
         }
 
         try {
+            $stmtSch = $db->prepare("SELECT created_by FROM scholarships WHERE id = :id");
+            $stmtSch->execute(['id' => $id]);
+            $sch = $stmtSch->fetch(PDO::FETCH_ASSOC);
+
+            if (!$sch) {
+                header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+                exit();
+            }
+
+            $currentUser = Auth::currentUser();
+            if (($currentUser['role_name'] ?? '') === 'employee' && (int)($sch['created_by'] ?? 0) !== (int)$currentUser['id']) {
+                header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to unpublish scholarships created by yourself.')));
+                exit();
+            }
+
             $stmt = $db->prepare("UPDATE scholarships SET status = 'draft', updated_at = NOW() WHERE id = :id");
             $stmt->execute(['id' => $id]);
 
@@ -1447,6 +1512,13 @@ class ScholarshipController {
             if (!$sch) {
                 $db->rollBack();
                 header("Location: " . url('/admin/scholarships?error=Scholarship not found.'));
+                exit();
+            }
+
+            $currentUser = Auth::currentUser();
+            if (($currentUser['role_name'] ?? '') === 'employee' && (int)($sch['created_by'] ?? 0) !== (int)$currentUser['id']) {
+                $db->rollBack();
+                header("Location: " . url('/admin/scholarships?error=' . urlencode('Unauthorized: You only have access to duplicate scholarships created by yourself.')));
                 exit();
             }
 
@@ -2700,6 +2772,13 @@ class ScholarshipController {
         if (!empty($_GET['expired'])) {
             if ($customWhere !== "") $customWhere .= " AND ";
             $customWhere .= "scholarships.application_deadline < CURDATE()";
+        }
+
+        $currentUser = Auth::currentUser();
+        if (($currentUser['role_name'] ?? '') === 'employee') {
+            if ($customWhere !== "") $customWhere .= " AND ";
+            $customWhere .= "scholarships.created_by = :auth_emp_id";
+            $customParams['auth_emp_id'] = $currentUser['id'];
         }
         
         $columns = [

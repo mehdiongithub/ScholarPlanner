@@ -53,18 +53,79 @@ class AdminController {
     public function dashboard(): void {
         Auth::requireRole(['admin', 'employee']);
 
+        $currentUser = Auth::currentUser();
+        $isEmployee = ($currentUser['role_name'] ?? '') === 'employee';
+
         // Fetch dashboard statistics counts
         $totalUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor'")->fetchColumn();
         $verifiedUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND u.email_verified_at IS NOT NULL")->fetchColumn();
         $pendingUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND u.email_verified_at IS NULL")->fetchColumn();
         $suspendedUsers = (int)$this->db->query("SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id WHERE r.name = 'visitor' AND u.status = 'suspended'")->fetchColumn();
 
-        $totalScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships")->fetchColumn();
-        $activeScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'published' AND (application_deadline IS NULL OR application_deadline >= CURDATE())")->fetchColumn();
-        $pendingScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'pending_review'")->fetchColumn();
-        $expiredScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'published' AND application_deadline < CURDATE()")->fetchColumn();
-        $draftScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'draft'")->fetchColumn();
-        $archivedScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'archived'")->fetchColumn();
+        if ($isEmployee) {
+            $empId = (int)$currentUser['id'];
+
+            $stmtCount = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ?");
+            $stmtCount->execute([$empId]);
+            $totalScholarships = (int)$stmtCount->fetchColumn();
+
+            $stmtActive = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ? AND status = 'published' AND (application_deadline IS NULL OR application_deadline >= CURDATE())");
+            $stmtActive->execute([$empId]);
+            $activeScholarships = (int)$stmtActive->fetchColumn();
+
+            $stmtPending = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ? AND status = 'pending_review'");
+            $stmtPending->execute([$empId]);
+            $pendingScholarships = (int)$stmtPending->fetchColumn();
+
+            $stmtExpired = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ? AND status = 'published' AND application_deadline < CURDATE()");
+            $stmtExpired->execute([$empId]);
+            $expiredScholarships = (int)$stmtExpired->fetchColumn();
+
+            $stmtDraft = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ? AND status = 'draft'");
+            $stmtDraft->execute([$empId]);
+            $draftScholarships = (int)$stmtDraft->fetchColumn();
+
+            $stmtArchived = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ? AND status = 'archived'");
+            $stmtArchived->execute([$empId]);
+            $archivedScholarships = (int)$stmtArchived->fetchColumn();
+
+            $stmtNewSch = $this->db->prepare("SELECT COUNT(*) FROM scholarships WHERE created_by = ? AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
+            $stmtNewSch->execute([$empId]);
+            $newScholarshipsThisMonth = (int)$stmtNewSch->fetchColumn();
+
+            $stmtRecentSch = $this->db->prepare("
+                SELECT s.*, c.name as country_name 
+                FROM scholarships s
+                LEFT JOIN countries c ON s.country_id = c.id
+                WHERE s.created_by = :emp_id
+                ORDER BY s.id DESC
+                LIMIT 10
+            ");
+            $stmtRecentSch->execute(['emp_id' => $empId]);
+            $recentScholarships = $stmtRecentSch->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $totalScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships")->fetchColumn();
+            $activeScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'published' AND (application_deadline IS NULL OR application_deadline >= CURDATE())")->fetchColumn();
+            $pendingScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'pending_review'")->fetchColumn();
+            $expiredScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'published' AND application_deadline < CURDATE()")->fetchColumn();
+            $draftScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'draft'")->fetchColumn();
+            $archivedScholarships = (int)$this->db->query("SELECT COUNT(*) FROM scholarships WHERE status = 'archived'")->fetchColumn();
+
+            $newScholarshipsThisMonth = (int)$this->db->query("
+                SELECT COUNT(*) 
+                FROM scholarships 
+                WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            ")->fetchColumn();
+
+            // Recent Scholarships (10)
+            $recentScholarships = $this->db->query("
+                SELECT s.*, c.name as country_name 
+                FROM scholarships s
+                LEFT JOIN countries c ON s.country_id = c.id
+                ORDER BY s.id DESC
+                LIMIT 10
+            ")->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $totalApps = (int)$this->db->query("SELECT COUNT(*) FROM scholarship_applications")->fetchColumn();
         $pendingApps = (int)$this->db->query("SELECT COUNT(*) FROM scholarship_applications WHERE status = 'submitted' OR status = 'pending'")->fetchColumn();
@@ -93,12 +154,6 @@ class AdminController {
             WHERE r.name = 'visitor' AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         ")->fetchColumn();
 
-        $newScholarshipsThisMonth = (int)$this->db->query("
-            SELECT COUNT(*) 
-            FROM scholarships 
-            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-        ")->fetchColumn();
-
         $newApplicationsThisMonth = (int)$this->db->query("
             SELECT COUNT(*) 
             FROM scholarship_applications 
@@ -118,15 +173,6 @@ class AdminController {
             LEFT JOIN users u ON l.user_id = u.id
             ORDER BY l.id DESC
             LIMIT 5
-        ")->fetchAll(PDO::FETCH_ASSOC);
-
-        // Recent Scholarships (10)
-        $recentScholarships = $this->db->query("
-            SELECT s.*, c.name as country_name 
-            FROM scholarships s
-            LEFT JOIN countries c ON s.country_id = c.id
-            ORDER BY s.id DESC
-            LIMIT 10
         ")->fetchAll(PDO::FETCH_ASSOC);
 
         // Recent Students (10)

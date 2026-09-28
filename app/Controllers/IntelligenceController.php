@@ -22,7 +22,7 @@ class IntelligenceController {
      * Displays admin operations dashboard, analytics and warning alerts
      */
     public function index(): void {
-        Auth::requireRole(['admin', 'employee']);
+        Auth::requireRole('admin');
 
         // Default tab selection
         $tab = trim($_GET['tab'] ?? 'alerts');
