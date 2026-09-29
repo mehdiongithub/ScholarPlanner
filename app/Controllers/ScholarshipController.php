@@ -374,6 +374,9 @@ class ScholarshipController {
         $prefCountries = (array)($_POST['preferred_countries'] ?? []);
         $prefNationalities = (array)($_POST['eligible_nationalities'] ?? []);
         $prefDegrees = (array)($_POST['preferred_degrees'] ?? []);
+        if (empty($studyLevel) && !empty($prefDegrees)) {
+            $studyLevel = (string)reset($prefDegrees);
+        }
         $reqDocs = (array)($_POST['required_documents'] ?? []);
         $targetStates = (array)($_POST['target_states'] ?? []);
         $targetInstitutions = (array)($_POST['target_institutions'] ?? []);
@@ -467,7 +470,10 @@ class ScholarshipController {
         }
 
         // Validate whitelisted Degree selection
-        $allowedDegrees = ['Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Diploma', 'Certificate', 'Exchange'];
+        $dbDegrees = $db->query("SELECT name FROM degree_levels WHERE status = 'active'")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $allowedDegrees = array_unique(array_merge([
+            'Matric', 'Intermediate', 'Associate Degree', 'Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Post-Doctoral', 'Diploma', 'Certificate', 'Exchange'
+        ], $dbDegrees));
         foreach ($prefDegrees as $lvl) {
             if (!in_array($lvl, $allowedDegrees)) {
                 $errors['preferred_degrees'] = 'Invalid degree level selection.';
@@ -893,6 +899,9 @@ class ScholarshipController {
         $prefCountries = (array)($_POST['preferred_countries'] ?? []);
         $prefNationalities = (array)($_POST['eligible_nationalities'] ?? []);
         $prefDegrees = (array)($_POST['preferred_degrees'] ?? []);
+        if (empty($studyLevel) && !empty($prefDegrees)) {
+            $studyLevel = (string)reset($prefDegrees);
+        }
         $reqDocs = (array)($_POST['required_documents'] ?? []);
         $targetStates = (array)($_POST['target_states'] ?? []);
         $targetInstitutions = (array)($_POST['target_institutions'] ?? []);
@@ -967,7 +976,10 @@ class ScholarshipController {
         }
 
         // Validate whitelisted Degree selection
-        $allowedDegrees = ['Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Diploma', 'Certificate', 'Exchange'];
+        $dbDegrees = $db->query("SELECT name FROM degree_levels WHERE status = 'active'")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $allowedDegrees = array_unique(array_merge([
+            'Matric', 'Intermediate', 'Associate Degree', 'Bachelor\'s', 'Master\'s', 'MPhil', 'PhD', 'Postdoctoral', 'Post-Doctoral', 'Diploma', 'Certificate', 'Exchange'
+        ], $dbDegrees));
         foreach ($prefDegrees as $lvl) {
             if (!in_array($lvl, $allowedDegrees)) {
                 $errors['preferred_degrees'] = 'Invalid degree level selection.';

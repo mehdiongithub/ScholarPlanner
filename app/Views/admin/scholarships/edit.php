@@ -377,11 +377,22 @@ $schStatus = strtolower($scholarship['status'] ?? 'draft');
                     </div>
 
                     <div class="form-group" style="margin-bottom: 20px;">
-                        <label class="form-label">Disciplines / Fields of Study</label>
-                        <div class="checkbox-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <label class="form-label" style="margin-bottom: 0;">Disciplines / Fields of Study</label>
+                                <span id="matricInterFieldsNote" style="display: none; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 4px;">
+                                    Optional for Matric / Intermediate
+                                </span>
+                            </div>
+                            <label class="checkbox-label" style="font-size: 0.8125rem; font-weight: 600; color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 0; user-select: none;">
+                                <input type="checkbox" id="toggleAllFields">
+                                <span id="toggleAllFieldsLabel">Select All</span>
+                            </label>
+                        </div>
+                        <div class="checkbox-group" id="fieldsCheckboxGroup">
                             <?php foreach ($fields as $f): ?>
                                 <label class="checkbox-label">
-                                    <input type="checkbox" name="preferred_fields[]" value="<?= e($f['id']) ?>" <?= in_array($f['id'], $fieldsVal) ? 'checked' : '' ?>>
+                                    <input type="checkbox" name="preferred_fields[]" class="field-checkbox" value="<?= e($f['id']) ?>" <?= in_array($f['id'], $fieldsVal) ? 'checked' : '' ?>>
                                     <span><?= e($f['name']) ?></span>
                                 </label>
                             <?php endforeach; ?>
@@ -784,5 +795,71 @@ $schStatus = strtolower($scholarship['status'] ?? 'draft');
                 });
             }
         }
+
+        // Toggle All Disciplines / Fields of Study
+        (function() {
+            var toggleAllFields = document.getElementById('toggleAllFields');
+            var toggleAllFieldsLabel = document.getElementById('toggleAllFieldsLabel');
+            var fieldCheckboxes = document.querySelectorAll('.field-checkbox');
+
+            function updateToggleAllState() {
+                if (!toggleAllFields || fieldCheckboxes.length === 0) return;
+                var total = fieldCheckboxes.length;
+                var checkedCount = document.querySelectorAll('.field-checkbox:checked').length;
+
+                if (checkedCount === total) {
+                    toggleAllFields.checked = true;
+                    toggleAllFields.indeterminate = false;
+                    if (toggleAllFieldsLabel) toggleAllFieldsLabel.textContent = 'Remove All';
+                } else if (checkedCount === 0) {
+                    toggleAllFields.checked = false;
+                    toggleAllFields.indeterminate = false;
+                    if (toggleAllFieldsLabel) toggleAllFieldsLabel.textContent = 'Select All';
+                } else {
+                    toggleAllFields.checked = false;
+                    toggleAllFields.indeterminate = true;
+                    if (toggleAllFieldsLabel) toggleAllFieldsLabel.textContent = 'Select All';
+                }
+            }
+
+            if (toggleAllFields) {
+                toggleAllFields.addEventListener('change', function() {
+                    var shouldCheck = this.checked;
+                    fieldCheckboxes.forEach(function(cb) {
+                        cb.checked = shouldCheck;
+                    });
+                    if (toggleAllFieldsLabel) {
+                        toggleAllFieldsLabel.textContent = shouldCheck ? 'Remove All' : 'Select All';
+                    }
+                });
+
+                fieldCheckboxes.forEach(function(cb) {
+                    cb.addEventListener('change', updateToggleAllState);
+                });
+
+                updateToggleAllState();
+            }
+
+            // Target Degree Levels: Matric / Intermediate handler
+            function checkMatricIntermediateSelected() {
+                var matricInterNote = document.getElementById('matricInterFieldsNote');
+                if (!matricInterNote) return;
+
+                var hasMatricOrInter = false;
+                document.querySelectorAll('input[name="preferred_degrees[]"]:checked').forEach(function(cb) {
+                    var val = (cb.value || '').toLowerCase();
+                    if (val.indexOf('matric') !== -1 || val.indexOf('intermediate') !== -1) {
+                        hasMatricOrInter = true;
+                    }
+                });
+
+                matricInterNote.style.display = hasMatricOrInter ? 'inline-block' : 'none';
+            }
+
+            document.querySelectorAll('input[name="preferred_degrees[]"]').forEach(function(cb) {
+                cb.addEventListener('change', checkMatricIntermediateSelected);
+            });
+            checkMatricIntermediateSelected();
+        })();
     </script>
 <?php include ROOT_PATH . '/app/Views/layouts/admin_footer.php'; ?>
