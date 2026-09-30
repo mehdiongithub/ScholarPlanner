@@ -930,52 +930,142 @@ class AdminController {
      */
     public function countriesStore(): void {
         Auth::requirePermission('settings.edit');
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
+                  (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
             header("Location: " . url("/admin/locations/countries"));
             exit();
         }
 
         $name = trim($_POST['name'] ?? '');
-        $code = strtoupper(trim($_POST['iso_code'] ?? ''));
+        $iso2 = strtoupper(trim($_POST['iso2'] ?? ($_POST['iso_code'] ?? '')));
+        $iso3 = strtoupper(trim($_POST['iso3'] ?? ''));
         $currency = strtoupper(trim($_POST['currency_code'] ?? ''));
-        $dial = trim($_POST['dial_code'] ?? '');
+        $dial = trim($_POST['phone_code'] ?? ($_POST['dial_code'] ?? ''));
+        $status = strtolower(trim($_POST['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
-        if ($name === '' || $code === '') {
-            $_SESSION['admin_errors'] = 'Country Name and ISO Code are required.';
+        // Clean phone code (remove leading +, keep characters)
+        $dial = ltrim($dial, '+');
+
+        // If iso3 is empty, auto-generate from iso2 or name
+        if ($iso3 === '' && strlen($iso2) >= 2) {
+            $iso3 = str_pad(substr($iso2, 0, 3), 3, 'X');
+        }
+
+        if ($name === '' || $iso2 === '') {
+            $msg = 'Country Name and ISO 2-Letter Code are required.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/countries"));
             exit();
         }
 
-        $stmt = $this->db->prepare("
-            INSERT INTO countries (name, iso_code, currency_code, dial_code)
-            VALUES (:name, :code, :curr, :dial)
-        ");
-        $stmt->execute([
-            'name' => $name,
-            'code' => $code,
-            'curr' => $currency,
-            'dial' => $dial
-        ]);
-        $cId = $this->db->lastInsertId();
+        // Duplicate name or ISO2 check
+        $stmtCheck = $this->db->prepare("SELECT id FROM countries WHERE LOWER(name) = LOWER(:name) OR UPPER(iso2) = UPPER(:iso2) LIMIT 1");
+        $stmtCheck->execute(['name' => $name, 'iso2' => $iso2]);
+        if ($stmtCheck->fetch()) {
+            $msg = 'A country with this name or ISO 2-letter code already exists.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/countries"));
+            exit();
+        }
 
-        $this->logAction('country_create', 'locations', 'countries', $cId, ['name' => $name]);
-        $_SESSION['admin_success'] = 'Country added successfully.';
-        header("Location: " . url("/admin/locations/countries"));
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO countries (name, iso2, iso3, phone_code, currency_code, status, created_at, updated_at)
+                VALUES (:name, :iso2, :iso3, :phone_code, :currency_code, :status, NOW(), NOW())
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'iso2' => $iso2,
+                'iso3' => $iso3 ?: $iso2,
+                'phone_code' => $dial,
+                'currency_code' => $currency,
+                'status' => $status
+            ]);
+            $cId = (int)$this->db->lastInsertId();
+
+            $this->logAction('country_create', 'locations', 'countries', $cId, ['name' => $name]);
+
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Country added successfully.', 'id' => $cId]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            $_SESSION['admin_success'] = 'Country added successfully.';
+            header("Location: " . url("/admin/locations/countries"));
+            exit();
+        } catch (\Exception $e) {
+            $msg = 'Failed to save country: ' . $e->getMessage();
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(500);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/countries"));
+            exit();
+        }
     }
 
     public function countriesEdit(string $id): void {
         Auth::requirePermission('settings.view');
-        $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_GET['format']) && $_GET['format'] === 'json');
+
+        $id = $this->resolveId($id, $isAjax);
 
         $stmt = $this->db->prepare("SELECT * FROM countries WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
-        $country = $stmt->fetch();
+        $country = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$country) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(404);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Country not found']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             http_response_code(404);
             echo "Country not found";
+            exit();
+        }
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            $country['record_id'] = encode_id((int)$country['id']);
+            echo json_encode(['success' => true, 'country' => $country]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -991,44 +1081,115 @@ class AdminController {
      */
     public function countriesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
-        $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+
+        $id = $this->resolveId($id, $isAjax);
         $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
             header("Location: " . url("/admin/locations/countries/$encId/edit"));
             exit();
         }
 
         $name = trim($_POST['name'] ?? '');
-        $code = strtoupper(trim($_POST['iso_code'] ?? ''));
+        $iso2 = strtoupper(trim($_POST['iso2'] ?? ($_POST['iso_code'] ?? '')));
+        $iso3 = strtoupper(trim($_POST['iso3'] ?? ''));
         $currency = strtoupper(trim($_POST['currency_code'] ?? ''));
-        $dial = trim($_POST['dial_code'] ?? '');
+        $dial = trim($_POST['phone_code'] ?? ($_POST['dial_code'] ?? ''));
+        $status = strtolower(trim($_POST['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
-        if ($name === '' || $code === '') {
-            $_SESSION['admin_errors'] = 'Country Name and ISO Code are required.';
+        $dial = ltrim($dial, '+');
+
+        if ($iso3 === '' && strlen($iso2) >= 2) {
+            $iso3 = str_pad(substr($iso2, 0, 3), 3, 'X');
+        }
+
+        if ($name === '' || $iso2 === '') {
+            $msg = 'Country Name and ISO 2-Letter Code are required.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/countries/$encId/edit"));
             exit();
         }
 
-        $stmt = $this->db->prepare("
-            UPDATE countries 
-            SET name = :name, iso_code = :code, currency_code = :curr, dial_code = :dial 
-            WHERE id = :id
-        ");
-        $stmt->execute([
-            'name' => $name,
-            'code' => $code,
-            'curr' => $currency,
-            'dial' => $dial,
-            'id' => $id
-        ]);
+        // Duplicate name or ISO2 check excluding current country
+        $stmtCheck = $this->db->prepare("SELECT id FROM countries WHERE (LOWER(name) = LOWER(:name) OR UPPER(iso2) = UPPER(:iso2)) AND id != :id LIMIT 1");
+        $stmtCheck->execute(['name' => $name, 'iso2' => $iso2, 'id' => $id]);
+        if ($stmtCheck->fetch()) {
+            $msg = 'Another country already has this name or ISO 2-letter code.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/countries/$encId/edit"));
+            exit();
+        }
 
-        $this->logAction('country_update', 'locations', 'countries', $id, ['name' => $name]);
-        $_SESSION['admin_success'] = 'Country updated successfully.';
-        header("Location: " . url("/admin/locations/countries"));
-        exit();
+        try {
+            $stmt = $this->db->prepare("
+                UPDATE countries 
+                SET name = :name, iso2 = :iso2, iso3 = :iso3, phone_code = :phone_code, 
+                    currency_code = :currency_code, status = :status, updated_at = NOW() 
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'iso2' => $iso2,
+                'iso3' => $iso3 ?: $iso2,
+                'phone_code' => $dial,
+                'currency_code' => $currency,
+                'status' => $status,
+                'id' => $id
+            ]);
+
+            $this->logAction('country_update', 'locations', 'countries', $id, ['name' => $name]);
+
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'Country updated successfully.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            $_SESSION['admin_success'] = 'Country updated successfully.';
+            header("Location: " . url("/admin/locations/countries"));
+            exit();
+        } catch (\Exception $e) {
+            $msg = 'Failed to update country: ' . $e->getMessage();
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(500);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/countries/$encId/edit"));
+            exit();
+        }
     }
 
     /**
@@ -4551,16 +4712,20 @@ class AdminController {
         $columns = [
             'id' => 'id',
             'name' => 'name',
-            'iso_code' => 'iso2',
+            'iso2' => 'iso2',
+            'iso3' => 'iso3',
             'currency_code' => 'currency_code',
-            'dial_code' => 'phone_code'
+            'phone_code' => 'phone_code',
+            'status' => 'status'
         ];
-        $searchableColumns = ['name', 'iso2', 'phone_code', 'currency_code'];
+        $searchableColumns = ['name', 'iso2', 'iso3', 'phone_code', 'currency_code', 'status'];
         $columnMapping = [
             'name' => 'name',
-            'iso_code' => 'iso2',
+            'iso2' => 'iso2',
+            'iso3' => 'iso3',
             'currency_code' => 'currency_code',
-            'dial_code' => 'phone_code'
+            'phone_code' => 'phone_code',
+            'status' => 'status'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -4573,6 +4738,9 @@ class AdminController {
             [],
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
+                $row['raw_id'] = (int)$row['id'];
+                $row['iso_code'] = $row['iso2'] ?? '';
+                $row['dial_code'] = $row['phone_code'] ?? '';
                 unset($row['id']);
                 return $row;
             }
