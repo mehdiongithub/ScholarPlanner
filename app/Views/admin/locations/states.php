@@ -1,4 +1,15 @@
-<?php include ROOT_PATH . '/app/Views/layouts/admin_header.php'; ?>
+<?php 
+// Fallback: Ensure countries list is always available even if controller cache or isolated view
+if (empty($countries)) {
+    try {
+        $db = \App\Services\Database::connection();
+        $countries = $db->query("SELECT id, name FROM countries ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Exception $e) {
+        $countries = [];
+    }
+}
+include ROOT_PATH . '/app/Views/layouts/admin_header.php'; 
+?>
 
 <style>
 /* Modal overlay & flex centering */
@@ -25,7 +36,7 @@
     width: 100%;
     max-width: 540px;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    overflow: hidden;
+    overflow: visible;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -50,6 +61,8 @@
     padding: 20px 24px;
     border-bottom: 1px solid #f1f5f9;
     background: #ffffff;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
 }
 .modal-body-scroll {
     padding: 24px;
@@ -64,6 +77,8 @@
     padding: 16px 24px;
     border-top: 1px solid #f1f5f9;
     background: #f8fafc;
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
 }
 .btn-action-edit {
     display: inline-flex;
@@ -134,6 +149,42 @@
     height: 6px;
     border-radius: 50%;
     background: currentColor;
+}
+
+/* Ensure Select2 inside modal appears ABOVE modal overlay */
+.select2-container--open {
+    z-index: 100005 !important;
+}
+.select2-dropdown {
+    z-index: 100005 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+}
+#stateModal .select2-container .select2-selection--single {
+    height: 42px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    padding: 6px 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    background: #ffffff !important;
+}
+#stateModal .select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: #0f172a !important;
+    font-size: 0.875rem !important;
+    line-height: normal !important;
+    padding-left: 0 !important;
+    padding-right: 20px !important;
+}
+#stateModal .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 40px !important;
+    right: 8px !important;
+}
+#stateModal .select2-container--default .select2-selection--single:focus,
+#stateModal .select2-container--default.select2-container--open .select2-selection--single {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
 }
 </style>
 
@@ -209,7 +260,7 @@
                     <label class="form-label" for="modal_country_id" style="font-weight: 600; font-size: 0.875rem; color: #334155; margin-bottom: 6px; display: block;">
                         Parent Country <span style="color: #ef4444;">*</span>
                     </label>
-                    <select name="country_id" id="modal_country_id" class="form-control" required style="padding: 10px 14px; font-size: 0.875rem; border: 1px solid #cbd5e1; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                    <select name="country_id" id="modal_country_id" class="form-control" required style="width: 100%;">
                         <option value="">-- Select Country --</option>
                         <?php foreach ($countries as $c): ?>
                             <option value="<?= e($c['id']) ?>"><?= e($c['name']) ?></option>
@@ -241,7 +292,7 @@
                         <label class="form-label" for="modal_status" style="font-weight: 600; font-size: 0.875rem; color: #334155; margin-bottom: 6px; display: block;">
                             Status
                         </label>
-                        <select name="status" id="modal_status" class="form-control" style="padding: 10px 14px; font-size: 0.875rem; border: 1px solid #cbd5e1; border-radius: 8px; width: 100%; box-sizing: border-box;">
+                        <select name="status" id="modal_status" class="form-control no-select2" style="padding: 10px 14px; font-size: 0.875rem; border: 1px solid #cbd5e1; border-radius: 8px; width: 100%; box-sizing: border-box;">
                             <option value="active">Active (Visible)</option>
                             <option value="inactive">Inactive (Hidden)</option>
                         </select>
@@ -262,7 +313,28 @@
 </div>
 
 <script>
+function initCountrySelect2() {
+    if (typeof $ !== 'undefined' && typeof $.fn.select2 !== 'undefined') {
+        try {
+            if ($('#modal_country_id').hasClass('select2-hidden-accessible')) {
+                $('#modal_country_id').select2('destroy');
+            }
+            $('#modal_country_id').select2({
+                dropdownParent: $('#stateModal'),
+                width: '100%',
+                placeholder: '-- Select Country --',
+                allowClear: false
+            });
+        } catch (e) {
+            console.error("Select2 initialization error:", e);
+        }
+    }
+}
+
 $(document).ready(function() {
+    // Initialize Select2 with modal parent
+    initCountrySelect2();
+
     var table = ScholarPlannerDataTable('#states-datatable', {
         ajax: {
             url: '<?= url("/admin/locations/states/data") ?>',
@@ -362,7 +434,13 @@ function openAddStateModal() {
     $('#stateModalSubtitle').text('Configure regional state/province and parent country bindings.');
     $('#stateSubmitBtnText').text('Add State');
     $('#stateRecordId').val('');
+    
+    // Reset country
     $('#modal_country_id').val('');
+    if (typeof $.fn.select2 !== 'undefined' && $('#modal_country_id').hasClass('select2-hidden-accessible')) {
+        $('#modal_country_id').val('').trigger('change');
+    }
+    
     $('#modal_name').val('');
     $('#modal_code').val('');
     $('#modal_status').val('active');
@@ -372,8 +450,12 @@ function openAddStateModal() {
     $('#stateForm').attr('action', formAction).attr('data-mode', 'add');
 
     $('#stateModal').css('display', 'flex').addClass('active');
+    
+    // Ensure Select2 is correctly bound to stateModal
+    initCountrySelect2();
+
     setTimeout(function() {
-        $('#modal_country_id').focus();
+        $('#modal_name').focus();
     }, 100);
 
     if (typeof lucide !== 'undefined') {
@@ -387,7 +469,23 @@ function openEditStateModalFromRow(row) {
     $('#stateModalSubtitle').text('Update regional state/province and parent country bindings.');
     $('#stateSubmitBtnText').text('Save Changes');
     $('#stateRecordId').val(row.record_id);
-    $('#modal_country_id').val(row.country_id || '');
+
+    // Resolve target country ID: either by raw ID / property or by country name text
+    var targetCountryId = row.country_id || '';
+    if (!targetCountryId && row.country_name) {
+        $('#modal_country_id option').each(function() {
+            if ($(this).text().trim().toLowerCase() === String(row.country_name).trim().toLowerCase()) {
+                targetCountryId = $(this).val();
+                return false;
+            }
+        });
+    }
+
+    $('#modal_country_id').val(targetCountryId);
+    if (typeof $.fn.select2 !== 'undefined' && $('#modal_country_id').hasClass('select2-hidden-accessible')) {
+        $('#modal_country_id').val(targetCountryId).trigger('change');
+    }
+
     $('#modal_name').val(row.name || '');
     $('#modal_code').val(row.code || '');
     $('#modal_status').val(row.status || 'active');
@@ -397,6 +495,10 @@ function openEditStateModalFromRow(row) {
     $('#stateForm').attr('action', formAction).attr('data-mode', 'edit');
 
     $('#stateModal').css('display', 'flex').addClass('active');
+
+    // Ensure Select2 dropdown opens above stateModal
+    initCountrySelect2();
+
     setTimeout(function() {
         $('#modal_name').focus();
     }, 100);
@@ -410,6 +512,10 @@ function closeStateModal() {
     $('#stateModal').hide().removeClass('active');
     $('#stateForm')[0].reset();
     $('#stateRecordId').val('');
+    $('#modal_country_id').val('');
+    if (typeof $.fn.select2 !== 'undefined' && $('#modal_country_id').hasClass('select2-hidden-accessible')) {
+        $('#modal_country_id').val('').trigger('change');
+    }
     $('#stateModalAlert').hide().empty();
     $('#stateSubmitBtn').prop('disabled', false);
 }
