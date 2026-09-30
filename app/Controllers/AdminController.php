@@ -4862,8 +4862,24 @@ class AdminController {
     public function profile(): void {
         Auth::requireAuth();
 
+        $currentUser = Auth::currentUser();
+        if ($currentUser) {
+            $stmt = $this->db->prepare("
+                SELECT u.*, r.name as role_name 
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                WHERE u.id = :id
+                LIMIT 1
+            ");
+            $stmt->execute(['id' => $currentUser['id']]);
+            $freshUser = $stmt->fetch();
+            if ($freshUser) {
+                $currentUser = $freshUser;
+            }
+        }
+
         View::render('admin.profile', [
-            'user' => Auth::currentUser(),
+            'user' => $currentUser,
             'csrf_token' => Security::csrfToken()
         ]);
     }
@@ -4876,7 +4892,7 @@ class AdminController {
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
-            $_SESSION['admin_errors'] = 'CSRF verification failed.';
+            $_SESSION['admin_errors'] = 'Security validation failed. Please try again.';
             header("Location: " . url("/admin/profile"));
             exit();
         }
@@ -4884,28 +4900,69 @@ class AdminController {
         $firstName = trim($_POST['first_name'] ?? '');
         $lastName = trim($_POST['last_name'] ?? '');
         $email = strtolower(trim($_POST['email'] ?? ''));
+        $phone = trim($_POST['phone'] ?? '');
 
         $currPass = $_POST['current_password'] ?? '';
         $newPass = $_POST['new_password'] ?? '';
+        $confirmPass = $_POST['confirm_password'] ?? '';
 
         if ($firstName === '' || $email === '') {
-            $_SESSION['admin_errors'] = 'Required fields missing.';
+            $_SESSION['admin_errors'] = 'First name and email address are required.';
+            header("Location: " . url("/admin/profile"));
+            exit();
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['admin_errors'] = 'Please enter a valid email address.';
             header("Location: " . url("/admin/profile"));
             exit();
         }
 
         $user = Auth::currentUser();
-        $dbUser = $this->db->query("SELECT * FROM users WHERE id = {$user['id']}")->fetch();
+        if (!$user) {
+            $_SESSION['admin_errors'] = 'Session expired. Please log in again.';
+            header("Location: " . url("/login"));
+            exit();
+        }
+
+        // Email uniqueness check
+        $stmtCheck = $this->db->prepare("SELECT id FROM users WHERE email = :email AND id != :id LIMIT 1");
+        $stmtCheck->execute(['email' => $email, 'id' => $user['id']]);
+        if ($stmtCheck->fetch()) {
+            $_SESSION['admin_errors'] = 'The email address is already in use by another account.';
+            header("Location: " . url("/admin/profile"));
+            exit();
+        }
+
+        // Phone uniqueness check if provided
+        if ($phone !== '') {
+            $stmtPhoneCheck = $this->db->prepare("SELECT id FROM users WHERE phone = :phone AND id != :id LIMIT 1");
+            $stmtPhoneCheck->execute(['phone' => $phone, 'id' => $user['id']]);
+            if ($stmtPhoneCheck->fetch()) {
+                $_SESSION['admin_errors'] = 'The phone number is already registered to another account.';
+                header("Location: " . url("/admin/profile"));
+                exit();
+            }
+        }
+
+        $stmtUser = $this->db->prepare("SELECT * FROM users WHERE id = :id LIMIT 1");
+        $stmtUser->execute(['id' => $user['id']]);
+        $dbUser = $stmtUser->fetch();
 
         // 1. Password change check
-        if ($newPass !== '') {
+        if ($newPass !== '' || $confirmPass !== '') {
             if ($currPass === '') {
                 $_SESSION['admin_errors'] = 'Current password is required to change password.';
                 header("Location: " . url("/admin/profile"));
                 exit();
             }
-            if (!password_verify($currPass, $dbUser['password_hash'])) {
+            if (!$dbUser || !password_verify($currPass, $dbUser['password_hash'])) {
                 $_SESSION['admin_errors'] = 'Incorrect current password.';
+                header("Location: " . url("/admin/profile"));
+                exit();
+            }
+            if ($newPass !== $confirmPass) {
+                $_SESSION['admin_errors'] = 'New password and confirmation do not match.';
                 header("Location: " . url("/admin/profile"));
                 exit();
             }
@@ -4921,17 +4978,28 @@ class AdminController {
         }
 
         // 2. Info update
-        $stmtInfo = $this->db->prepare("UPDATE users SET first_name = :fn, last_name = :ln, email = :email WHERE id = :id");
+        $phoneVal = ($phone === '') ? null : $phone;
+        $stmtInfo = $this->db->prepare("
+            UPDATE users 
+            SET first_name = :fn, last_name = :ln, email = :email, phone = :phone 
+            WHERE id = :id
+        ");
         $stmtInfo->execute([
             'fn' => $firstName,
             'ln' => $lastName,
             'email' => $email,
+            'phone' => $phoneVal,
             'id' => $user['id']
         ]);
 
+        // Update session credentials for instant header reflection
+        $_SESSION['user_name'] = trim($firstName . ' ' . $lastName);
+        $_SESSION['user_email'] = $email;
+
         $this->logAction('profile_update', 'profile', 'users', $user['id']);
-        $_SESSION['admin_success'] = 'Profile updated successfully.';
+        $_SESSION['admin_success'] = 'Profile settings updated successfully.';
         header("Location: " . url("/admin/profile"));
+        exit();
     }
 
     public function usersData(): void {
