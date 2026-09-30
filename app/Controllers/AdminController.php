@@ -1615,9 +1615,18 @@ class AdminController {
      */
     public function citiesStore(): void {
         Auth::requirePermission('settings.edit');
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
             header("Location: " . url("/admin/locations/cities"));
             exit();
@@ -1625,38 +1634,133 @@ class AdminController {
 
         $name = trim($_POST['name'] ?? '');
         $stateId = (int)($_POST['state_id'] ?? 0);
+        $status = strtolower(trim($_POST['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
-        if ($name === '' || $stateId === 0) {
-            $_SESSION['admin_errors'] = 'City Name and State are required.';
+        if ($name === '' || $stateId <= 0) {
+            $msg = 'City Name and State / Province are required.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/cities"));
             exit();
         }
 
-        $stmt = $this->db->prepare("INSERT INTO cities (name, state_id) VALUES (:name, :sid)");
-        $stmt->execute(['name' => $name, 'sid' => $stateId]);
-        $cId = $this->db->lastInsertId();
+        // Verify state exists
+        $stmtState = $this->db->prepare("SELECT id FROM states WHERE id = ? LIMIT 1");
+        $stmtState->execute([$stateId]);
+        if (!$stmtState->fetch()) {
+            $msg = 'Selected state / province does not exist.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/cities"));
+            exit();
+        }
 
-        $this->logAction('city_create', 'locations', 'cities', $cId, ['name' => $name, 'state_id' => $stateId]);
-        $_SESSION['admin_success'] = 'City added successfully.';
-        header("Location: " . url("/admin/locations/cities"));
+        // Duplicate check in same state
+        $stmtCheck = $this->db->prepare("SELECT id FROM cities WHERE state_id = :sid AND LOWER(name) = LOWER(:name) LIMIT 1");
+        $stmtCheck->execute(['sid' => $stateId, 'name' => $name]);
+        if ($stmtCheck->fetch()) {
+            $msg = 'A city with this name already exists in the selected state / province.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/cities"));
+            exit();
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO cities (name, state_id, status, created_at, updated_at) 
+                VALUES (:name, :sid, :status, NOW(), NOW())
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'sid' => $stateId,
+                'status' => $status
+            ]);
+            $cId = (int)$this->db->lastInsertId();
+
+            $this->logAction('city_create', 'locations', 'cities', $cId, ['name' => $name, 'state_id' => $stateId]);
+
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'City added successfully.', 'id' => $cId]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            $_SESSION['admin_success'] = 'City added successfully.';
+            header("Location: " . url("/admin/locations/cities"));
+            exit();
+        } catch (\Exception $e) {
+            $msg = 'Failed to save city: ' . $e->getMessage();
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(500);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/cities"));
+            exit();
+        }
     }
 
     public function citiesEdit(string $id): void {
         Auth::requirePermission('settings.view');
-        $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_GET['format']) && $_GET['format'] === 'json');
+
+        $id = $this->resolveId($id, $isAjax);
 
         $stmt = $this->db->prepare("
-            SELECT c.*, s.country_id 
+            SELECT c.*, s.country_id, s.name as state_name, co.name as country_name 
             FROM cities c
             JOIN states s ON c.state_id = s.id
+            JOIN countries co ON s.country_id = co.id
             WHERE c.id = ? 
             LIMIT 1
         ");
         $stmt->execute([$id]);
-        $city = $stmt->fetch();
+        $city = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$city) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(404);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'City not found']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             http_response_code(404);
             echo "City not found";
+            exit();
+        }
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            $city['record_id'] = encode_id((int)$city['id']);
+            echo json_encode(['success' => true, 'city' => $city]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1677,11 +1781,21 @@ class AdminController {
      */
     public function citiesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
-        $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+
+        $id = $this->resolveId($id, $isAjax);
         $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
             header("Location: " . url("/admin/locations/cities/$encId/edit"));
             exit();
@@ -1689,20 +1803,97 @@ class AdminController {
 
         $name = trim($_POST['name'] ?? '');
         $stateId = (int)($_POST['state_id'] ?? 0);
+        $status = strtolower(trim($_POST['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
-        if ($name === '' || $stateId === 0) {
-            $_SESSION['admin_errors'] = 'City Name and State are required.';
+        if ($name === '' || $stateId <= 0) {
+            $msg = 'City Name and State / Province are required.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/cities/$encId/edit"));
             exit();
         }
 
-        $stmt = $this->db->prepare("UPDATE cities SET name = :name, state_id = :sid WHERE id = :id");
-        $stmt->execute(['name' => $name, 'sid' => $stateId, 'id' => $id]);
+        // Verify state exists
+        $stmtState = $this->db->prepare("SELECT id FROM states WHERE id = ? LIMIT 1");
+        $stmtState->execute([$stateId]);
+        if (!$stmtState->fetch()) {
+            $msg = 'Selected state / province does not exist.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/cities/$encId/edit"));
+            exit();
+        }
 
-        $this->logAction('city_update', 'locations', 'cities', $id, ['name' => $name, 'state_id' => $stateId]);
-        $_SESSION['admin_success'] = 'City updated successfully.';
-        header("Location: " . url("/admin/locations/cities"));
-        exit();
+        // Duplicate check in same state excluding current city
+        $stmtCheck = $this->db->prepare("SELECT id FROM cities WHERE state_id = :sid AND LOWER(name) = LOWER(:name) AND id != :id LIMIT 1");
+        $stmtCheck->execute(['sid' => $stateId, 'name' => $name, 'id' => $id]);
+        if ($stmtCheck->fetch()) {
+            $msg = 'Another city with this name already exists in the selected state / province.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/cities/$encId/edit"));
+            exit();
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                UPDATE cities 
+                SET name = :name, state_id = :sid, status = :status, updated_at = NOW() 
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'sid' => $stateId,
+                'status' => $status,
+                'id' => $id
+            ]);
+
+            $this->logAction('city_update', 'locations', 'cities', $id, ['name' => $name, 'state_id' => $stateId]);
+
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'City updated successfully.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            $_SESSION['admin_success'] = 'City updated successfully.';
+            header("Location: " . url("/admin/locations/cities"));
+            exit();
+        } catch (\Exception $e) {
+            $msg = 'Failed to update city: ' . $e->getMessage();
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(500);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/cities/$encId/edit"));
+            exit();
+        }
     }
 
     /**
@@ -5001,7 +5192,10 @@ class AdminController {
         $db = \App\Services\Database::connection();
         $columns = [
             'id' => 'cities.id',
+            'state_id' => 'cities.state_id',
+            'country_id' => 'states.country_id',
             'name' => 'cities.name',
+            'status' => 'cities.status',
             'state_name' => 'states.name',
             'country_name' => 'countries.name'
         ];
@@ -5009,11 +5203,12 @@ class AdminController {
             'JOIN states ON cities.state_id = states.id',
             'JOIN countries ON states.country_id = countries.id'
         ];
-        $searchableColumns = ['cities.name', 'states.name', 'countries.name'];
+        $searchableColumns = ['cities.name', 'states.name', 'countries.name', 'cities.status'];
         $columnMapping = [
             'name' => 'cities.name',
             'state_name' => 'states.name',
-            'country_name' => 'countries.name'
+            'country_name' => 'countries.name',
+            'status' => 'cities.status'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -5026,6 +5221,7 @@ class AdminController {
             [],
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
+                $row['raw_id'] = (int)$row['id'];
                 unset($row['id']);
                 return $row;
             }
