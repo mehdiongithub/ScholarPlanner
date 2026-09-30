@@ -1265,9 +1265,18 @@ class AdminController {
      */
     public function statesStore(): void {
         Auth::requirePermission('settings.edit');
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
             header("Location: " . url("/admin/locations/states"));
             exit();
@@ -1275,32 +1284,128 @@ class AdminController {
 
         $name = trim($_POST['name'] ?? '');
         $countryId = (int)($_POST['country_id'] ?? 0);
+        $code = strtoupper(trim($_POST['code'] ?? ''));
+        $status = strtolower(trim($_POST['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
-        if ($name === '' || $countryId === 0) {
-            $_SESSION['admin_errors'] = 'State Name and Country are required.';
+        if ($name === '' || $countryId <= 0) {
+            $msg = 'State Name and Country are required.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/states"));
             exit();
         }
 
-        $stmt = $this->db->prepare("INSERT INTO states (name, country_id) VALUES (:name, :cid)");
-        $stmt->execute(['name' => $name, 'cid' => $countryId]);
-        $sId = $this->db->lastInsertId();
+        // Verify country exists
+        $stmtCountry = $this->db->prepare("SELECT id FROM countries WHERE id = ? LIMIT 1");
+        $stmtCountry->execute([$countryId]);
+        if (!$stmtCountry->fetch()) {
+            $msg = 'Selected country does not exist.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/states"));
+            exit();
+        }
 
-        $this->logAction('state_create', 'locations', 'states', $sId, ['name' => $name, 'country_id' => $countryId]);
-        $_SESSION['admin_success'] = 'State added successfully.';
-        header("Location: " . url("/admin/locations/states"));
+        // Duplicate check in same country
+        $stmtCheck = $this->db->prepare("SELECT id FROM states WHERE country_id = :cid AND LOWER(name) = LOWER(:name) LIMIT 1");
+        $stmtCheck->execute(['cid' => $countryId, 'name' => $name]);
+        if ($stmtCheck->fetch()) {
+            $msg = 'A state / province with this name already exists in the selected country.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/states"));
+            exit();
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO states (country_id, name, code, status, created_at, updated_at) 
+                VALUES (:cid, :name, :code, :status, NOW(), NOW())
+            ");
+            $stmt->execute([
+                'cid' => $countryId,
+                'name' => $name,
+                'code' => $code ?: null,
+                'status' => $status
+            ]);
+            $sId = (int)$this->db->lastInsertId();
+
+            $this->logAction('state_create', 'locations', 'states', $sId, ['name' => $name, 'country_id' => $countryId]);
+
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'State added successfully.', 'id' => $sId]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            $_SESSION['admin_success'] = 'State added successfully.';
+            header("Location: " . url("/admin/locations/states"));
+            exit();
+        } catch (\Exception $e) {
+            $msg = 'Failed to save state: ' . $e->getMessage();
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(500);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/states"));
+            exit();
+        }
     }
 
     public function statesEdit(string $id): void {
         Auth::requirePermission('settings.view');
-        $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_GET['format']) && $_GET['format'] === 'json');
+
+        $id = $this->resolveId($id, $isAjax);
 
         $stmt = $this->db->prepare("SELECT * FROM states WHERE id = ? LIMIT 1");
         $stmt->execute([$id]);
-        $state = $stmt->fetch();
+        $state = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$state) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(404);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'State not found']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             http_response_code(404);
             echo "State not found";
+            exit();
+        }
+
+        if ($isAjax) {
+            if (!headers_sent()) header('Content-Type: application/json');
+            $state['record_id'] = encode_id((int)$state['id']);
+            echo json_encode(['success' => true, 'state' => $state]);
+            if (defined('TESTING_MODE') && TESTING_MODE) return;
             exit();
         }
 
@@ -1319,11 +1424,21 @@ class AdminController {
      */
     public function statesUpdate(string $id): void {
         Auth::requirePermission('settings.edit');
-        $id = $this->resolveId($id);
+        $isAjax = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || 
+                  (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+
+        $id = $this->resolveId($id, $isAjax);
         $encId = encode_id($id);
 
         $csrf = $_POST['csrf_token'] ?? null;
         if (!Security::verifyCsrfToken($csrf)) {
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(400);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'CSRF verification failed. Please refresh the page.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
             $_SESSION['admin_errors'] = 'CSRF verification failed.';
             header("Location: " . url("/admin/locations/states/$encId/edit"));
             exit();
@@ -1331,20 +1446,99 @@ class AdminController {
 
         $name = trim($_POST['name'] ?? '');
         $countryId = (int)($_POST['country_id'] ?? 0);
+        $code = strtoupper(trim($_POST['code'] ?? ''));
+        $status = strtolower(trim($_POST['status'] ?? 'active'));
+        if (!in_array($status, ['active', 'inactive'], true)) {
+            $status = 'active';
+        }
 
-        if ($name === '' || $countryId === 0) {
-            $_SESSION['admin_errors'] = 'State Name and Country are required.';
+        if ($name === '' || $countryId <= 0) {
+            $msg = 'State Name and Country are required.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
             header("Location: " . url("/admin/locations/states/$encId/edit"));
             exit();
         }
 
-        $stmt = $this->db->prepare("UPDATE states SET name = :name, country_id = :cid WHERE id = :id");
-        $stmt->execute(['name' => $name, 'cid' => $countryId, 'id' => $id]);
+        // Verify country exists
+        $stmtCountry = $this->db->prepare("SELECT id FROM countries WHERE id = ? LIMIT 1");
+        $stmtCountry->execute([$countryId]);
+        if (!$stmtCountry->fetch()) {
+            $msg = 'Selected country does not exist.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/states/$encId/edit"));
+            exit();
+        }
 
-        $this->logAction('state_update', 'locations', 'states', $id, ['name' => $name, 'country_id' => $countryId]);
-        $_SESSION['admin_success'] = 'State updated successfully.';
-        header("Location: " . url("/admin/locations/states"));
-        exit();
+        // Duplicate check in same country excluding current state
+        $stmtCheck = $this->db->prepare("SELECT id FROM states WHERE country_id = :cid AND LOWER(name) = LOWER(:name) AND id != :id LIMIT 1");
+        $stmtCheck->execute(['cid' => $countryId, 'name' => $name, 'id' => $id]);
+        if ($stmtCheck->fetch()) {
+            $msg = 'Another state / province with this name already exists in the selected country.';
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(422);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/states/$encId/edit"));
+            exit();
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                UPDATE states 
+                SET name = :name, country_id = :cid, code = :code, status = :status, updated_at = NOW() 
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                'name' => $name,
+                'cid' => $countryId,
+                'code' => $code ?: null,
+                'status' => $status,
+                'id' => $id
+            ]);
+
+            $this->logAction('state_update', 'locations', 'states', $id, ['name' => $name, 'country_id' => $countryId]);
+
+            if ($isAjax) {
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'message' => 'State updated successfully.']);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+
+            $_SESSION['admin_success'] = 'State updated successfully.';
+            header("Location: " . url("/admin/locations/states"));
+            exit();
+        } catch (\Exception $e) {
+            $msg = 'Failed to update state: ' . $e->getMessage();
+            if ($isAjax) {
+                if (!headers_sent()) http_response_code(500);
+                if (!headers_sent()) header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => $msg]);
+                if (defined('TESTING_MODE') && TESTING_MODE) return;
+                exit();
+            }
+            $_SESSION['admin_errors'] = $msg;
+            header("Location: " . url("/admin/locations/states/$encId/edit"));
+            exit();
+        }
     }
 
     /**
@@ -4761,14 +4955,19 @@ class AdminController {
         $db = \App\Services\Database::connection();
         $columns = [
             'id' => 'states.id',
+            'country_id' => 'states.country_id',
             'name' => 'states.name',
+            'code' => 'states.code',
+            'status' => 'states.status',
             'country_name' => 'countries.name'
         ];
         $joins = ['JOIN countries ON states.country_id = countries.id'];
-        $searchableColumns = ['states.name', 'countries.name'];
+        $searchableColumns = ['states.name', 'states.code', 'countries.name', 'states.status'];
         $columnMapping = [
             'name' => 'states.name',
-            'country_name' => 'countries.name'
+            'code' => 'states.code',
+            'country_name' => 'countries.name',
+            'status' => 'states.status'
         ];
         $result = \App\Helpers\DataTableHelper::process(
             $db,
@@ -4781,6 +4980,7 @@ class AdminController {
             [],
             function($row) {
                 $row['record_id'] = encode_id((int)$row['id']);
+                $row['raw_id'] = (int)$row['id'];
                 unset($row['id']);
                 return $row;
             }
