@@ -165,42 +165,310 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
             margin-bottom: 24px;
         }
+        .card-header-flex {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 14px;
+        }
         .card-title {
             font-size: 1.25rem;
             font-weight: 700;
             color: var(--text-900);
-            margin-bottom: 20px;
+            margin: 0;
             display: flex;
             align-items: center;
             gap: 10px;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 12px;
         }
         .card-title i {
             color: var(--primary);
             width: 20px;
             height: 20px;
         }
+        .reading-time-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-500);
+            background: #f1f5f9;
+            padding: 4px 10px;
+            border-radius: var(--radius-full);
+            border: 1px solid var(--border);
+        }
+        .reading-time-badge i {
+            width: 13px;
+            height: 13px;
+            color: var(--text-400);
+        }
+
+        /* ============================================================
+           Professional Editorial / Blog-Post Typography for Description
+           ============================================================ */
         .description-content {
-            font-size: 0.975rem;
-            line-height: 1.75;
-            color: var(--text-700);
+            font-size: 1.0625rem;
+            line-height: 1.8;
+            color: #334155;
             word-break: break-word;
+            letter-spacing: -0.005em;
         }
+
         .description-content p {
-            margin-bottom: 16px;
+            margin-top: 0;
+            margin-bottom: 1.35rem;
+            line-height: 1.8;
+            color: #334155;
         }
-        .description-content ul, .description-content ol {
-            margin-left: 24px;
-            margin-bottom: 16px;
+
+        .description-content p:last-child {
+            margin-bottom: 0;
         }
+
+        /* Headings Typography */
+        .description-content h1,
+        .description-content h2,
+        .description-content h3,
+        .description-content h4,
+        .description-content h5,
+        .description-content h6 {
+            color: #0f172a;
+            line-height: 1.35;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .description-content h1 {
+            font-size: 1.75rem;
+            margin-top: 2.25rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+
+        .description-content h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-top: 2.25rem;
+            margin-bottom: 0.875rem;
+            padding-left: 14px;
+            border-left: 4px solid var(--primary);
+            color: #0f172a;
+        }
+
+        .description-content h3 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-top: 1.85rem;
+            margin-bottom: 0.75rem;
+            color: #1e293b;
+        }
+
+        .description-content h4 {
+            font-size: 1.075rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+        }
+
+        .description-content h5,
+        .description-content h6 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: #475569;
+        }
+
+        /* Strong / Bold Elements */
+        .description-content strong,
+        .description-content b {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        /* Lists - Force Beautiful Bullets & Numbers */
+        .description-content ul {
+            list-style: disc outside !important;
+            margin: 1.15rem 0 1.5rem 1.75rem !important;
+            padding-left: 6px !important;
+        }
+
+        .description-content ol {
+            list-style: decimal outside !important;
+            margin: 1.15rem 0 1.5rem 1.75rem !important;
+            padding-left: 6px !important;
+        }
+
         .description-content li {
-            margin-bottom: 8px;
+            margin-bottom: 0.65rem !important;
+            line-height: 1.75;
+            color: #334155;
+            padding-left: 4px;
         }
+
+        .description-content li:last-child {
+            margin-bottom: 0 !important;
+        }
+
+        .description-content li::marker {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .description-content ul ul {
+            list-style: circle outside !important;
+            margin: 0.5rem 0 0.5rem 1.25rem !important;
+        }
+
+        .description-content ol ol {
+            list-style: lower-alpha outside !important;
+            margin: 0.5rem 0 0.5rem 1.25rem !important;
+        }
+
+        .description-content ul ol,
+        .description-content ol ul {
+            margin: 0.5rem 0 0.5rem 1.25rem !important;
+        }
+
+        /* Blockquotes */
+        .description-content blockquote {
+            border-left: 4px solid var(--primary);
+            background: #f8fafc;
+            padding: 16px 22px;
+            margin: 1.75rem 0;
+            border-radius: 0 12px 12px 0;
+            font-style: italic;
+            color: #1e293b;
+            font-size: 1.05rem;
+            line-height: 1.7;
+        }
+
+        .description-content blockquote p {
+            margin-bottom: 0;
+            color: #1e293b;
+        }
+
+        /* Tables */
+        .description-content table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 1.75rem 0;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+            display: table;
+        }
+
+        .description-content th {
+            background: #f1f5f9;
+            padding: 12px 16px;
+            font-weight: 700;
+            font-size: 0.8125rem;
+            color: #0f172a;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+        }
+
+        .description-content th:last-child {
+            border-right: none;
+        }
+
+        .description-content td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+            color: #334155;
+            font-size: 0.9375rem;
+            line-height: 1.6;
+        }
+
+        .description-content td:last-child {
+            border-right: none;
+        }
+
+        .description-content tr:last-child td {
+            border-bottom: none;
+        }
+
+        .description-content tr:nth-child(even) td {
+            background: #f8fafc;
+        }
+
+        .description-content tr:hover td {
+            background: #f1f5f9;
+        }
+
+        /* Links */
+        .description-content a {
+            color: var(--primary);
+            font-weight: 600;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            transition: all 150ms ease;
+        }
+
+        .description-content a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
+        /* Code & Preformatted */
+        .description-content code {
+            background: #f1f5f9;
+            color: #0f172a;
+            padding: 2px 7px;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.875em;
+            border: 1px solid #e2e8f0;
+        }
+
+        .description-content pre {
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 18px 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 1.75rem 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+            line-height: 1.65;
+        }
+
+        .description-content pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+            border: none;
+        }
+
+        /* Divider & Images */
+        .description-content hr {
+            border: none;
+            border-top: 1px solid #e2e8f0;
+            margin: 2.25rem 0;
+        }
+
         .description-content img {
             max-width: 100%;
             height: auto;
-            border-radius: var(--radius-lg);
+            border-radius: 12px;
+            margin: 1.75rem auto;
+            display: block;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
         }
         .list-unstyled {
             list-style: none;
@@ -660,12 +928,22 @@ include ROOT_PATH . '/app/Views/layouts/public_header.php';
                 <!-- Main detail column -->
                 <div class="detail-main">
                     <!-- Description -->
-                    <div class="card">
-                        <h2 class="card-title">
-                            <i data-lucide="file-text"></i>
-                            <span>Description</span>
-                        </h2>
-                        <div class="description-content">
+                    <div class="card" id="scholarship-description">
+                        <div class="card-header-flex">
+                            <h2 class="card-title">
+                                <i data-lucide="book-open"></i>
+                                <span>Scholarship Overview & Full Details</span>
+                            </h2>
+                            <?php 
+                            $wordCount = str_word_count(strip_tags($scholarship['description'] ?? ''));
+                            $readTime = max(1, (int)ceil($wordCount / 200));
+                            ?>
+                            <span class="reading-time-badge">
+                                <i data-lucide="clock"></i>
+                                <span><?= $readTime ?> min read</span>
+                            </span>
+                        </div>
+                        <div class="description-content blog-typography">
                             <!-- Safe output of sanitized description -->
                             <?= $scholarship['description'] ?>
                         </div>

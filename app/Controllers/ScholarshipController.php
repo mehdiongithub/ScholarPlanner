@@ -12,33 +12,102 @@ use Exception;
 class ScholarshipController {
     
     /**
-     * Sanitizes HTML description content to prevent XSS.
+     * Sanitizes rich HTML description content to prevent XSS while preserving
+     * professional blog-post formatting (headings, lists, tables, blockquotes, code, media).
      */
     private function sanitizeHtml(string $html): string {
-        // Preprocess tags with slashes immediately after tag name (e.g. <p/onmouseover)
-        $clean = preg_replace('/<([a-z1-6]+)\//i', '<$1 /', $html);
-        // Recursively remove script and style tags along with their inner contents
-        $prev = '';
-        while ($clean !== $prev) {
-            $prev = $clean;
-            $clean = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $clean);
-            $clean = preg_replace('/<style\b[^>]*>(.*?)<\/style>/is', '', $clean);
+        if (trim($html) === '') {
+            return '';
         }
-        // Strip all other tags except whitelisted basic formatting elements
-        $clean = strip_tags($clean, '<p><br><strong><em><ul><ol><li><u><h2><h3><a>');
-        // Strip all attributes from whitelisted tags except <a> tags
-        $clean = preg_replace('/<(p|br|strong|em|ul|ol|li|u|h2|h3)\b[^>]*>/i', '<$1>', $clean);
-        
-        // Strip all attributes from <a> tags except a safe href URL
+
+        // 1. Preprocess tags with slashes immediately after tag name (e.g. <p/onmouseover)
+        $clean = preg_replace('/<([a-z1-6]+)\//i', '<$1 /', $html);
+
+        // 2. Recursively remove active code elements (script, style, iframe, object, embed, form, input, button, svg, math)
+        $dangerousTags = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'svg', 'math', 'base', 'meta', 'link'];
+        foreach ($dangerousTags as $tag) {
+            $prev = '';
+            while ($clean !== $prev) {
+                $prev = $clean;
+                $clean = preg_replace('/<' . $tag . '\b[^>]*>(.*?)<\/' . $tag . '>/is', '', $clean);
+                $clean = preg_replace('/<' . $tag . '\b[^>]*\/?>/is', '', $clean);
+            }
+        }
+
+        // 3. Whitelist safe editorial & blog-post tags
+        $allowedTags = '<p><br><hr><h1><h2><h3><h4><h5><h6><strong><b><em><i><u><s><del><strike><sup><sub><ul><ol><li><blockquote><pre><code><a><img><table><thead><tbody><tfoot><tr><th><td><div><span>';
+        $clean = strip_tags($clean, $allowedTags);
+
+        // 4. Strip all Javascript event handlers (e.g., onload, onerror, onclick, onmouseover, etc.)
+        $clean = preg_replace('/\s+on[a-z0-9_-]+\s*=\s*(["\'][^"\']*["\']|[^\s>]+)/i', '', $clean);
+
+        // 5. Sanitize <a> links: allow only safe protocols (http, https, /, mailto, tel)
         $clean = preg_replace_callback('/<a\b([^>]*)>/i', function($matches) {
             $attrs = $matches[1];
-            if (preg_match('/href=["\']([^"\']*)["\']/i', $attrs, $hrefMatches)) {
-                $url = $hrefMatches[1];
-                if (preg_match('/^(https?:\/\/|\/|mailto:|tel:)/i', $url)) {
-                    return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener noreferrer">';
-                }
+            $url = '';
+            $title = '';
+            if (preg_match('/href\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $url = trim($m[1]);
+            }
+            if (preg_match('/title\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $title = trim($m[1]);
+            }
+            // Strip javascript: or data: in href
+            if (preg_match('/^(https?:\/\/|\/|mailto:|tel:)/i', $url)) {
+                $titleAttr = !empty($title) ? ' title="' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '"' : '';
+                return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" target="_blank" rel="noopener noreferrer"' . $titleAttr . '>';
             }
             return '<a>';
+        }, $clean);
+
+        // 6. Sanitize <img> tags: allow only safe src (http, https, /, data:image/)
+        $clean = preg_replace_callback('/<img\b([^>]*)>/i', function($matches) {
+            $attrs = $matches[1];
+            $src = '';
+            $alt = '';
+            $title = '';
+            $style = '';
+            $class = '';
+            if (preg_match('/src\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $src = trim($m[1]);
+            }
+            if (preg_match('/alt\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $alt = trim($m[1]);
+            }
+            if (preg_match('/title\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $title = trim($m[1]);
+            }
+            if (preg_match('/style\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $style = trim($m[1]);
+            }
+            if (preg_match('/class\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m)) {
+                $class = trim($m[1]);
+            }
+
+            // Verify safe src
+            if (preg_match('/^(https?:\/\/|\/|data:image\/[a-z0-9+]+;base64,)/i', $src)) {
+                $imgTag = '<img src="' . htmlspecialchars($src, ENT_QUOTES, 'UTF-8') . '"';
+                if (!empty($alt)) $imgTag .= ' alt="' . htmlspecialchars($alt, ENT_QUOTES, 'UTF-8') . '"';
+                if (!empty($title)) $imgTag .= ' title="' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '"';
+                if (!empty($class)) $imgTag .= ' class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '"';
+                if (!empty($style)) {
+                    // Strip dangerous CSS expressions
+                    $safeStyle = preg_replace('/(javascript:|expression\(|behavior:|-moz-binding|url\(|@import)/i', '', $style);
+                    $imgTag .= ' style="' . htmlspecialchars($safeStyle, ENT_QUOTES, 'UTF-8') . '"';
+                }
+                $imgTag .= ' loading="lazy" />';
+                return $imgTag;
+            }
+            return '';
+        }, $clean);
+
+        // 7. Sanitize inline style attributes on allowed tags (block dangerous expressions)
+        $clean = preg_replace_callback('/\sstyle\s*=\s*(["\'])(.*?)\1/i', function($matches) {
+            $styleContent = $matches[2];
+            if (preg_match('/(javascript:|expression\(|behavior:|-moz-binding|url\(|@import)/i', $styleContent)) {
+                return '';
+            }
+            return ' style="' . htmlspecialchars($styleContent, ENT_QUOTES, 'UTF-8') . '"';
         }, $clean);
 
         return trim($clean);

@@ -306,29 +306,15 @@ $schStatus = strtolower($scholarship['status'] ?? 'draft');
                             <input type="text" id="short_description" name="short_description" class="form-control" value="<?= e($shortDescVal) ?>">
                             <?php if (!empty($errors['short_description'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['short_description']) ?></span><?php endif; ?>
                         </div>
-                        <!-- Include Quill stylesheet & library -->
-                        <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet" />
-                        <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
-
-                        <style>
-                            .ql-container {
-                                font-family: inherit;
-                                font-size: 0.875rem;
-                                border-bottom-left-radius: 8px;
-                                border-bottom-right-radius: 8px;
-                                background: #fff;
-                            }
-                            .ql-toolbar {
-                                border-top-left-radius: 8px;
-                                border-top-right-radius: 8px;
-                                background: #f8fafc;
-                            }
-                        </style>
+                        <!-- Include WordPress-style TinyMCE Editor -->
+                        <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.3/tinymce.min.js" referrerpolicy="origin"></script>
 
                         <div class="form-group full-width">
-                            <label class="form-label" for="description">Full Description * (Supports safe HTML formatting)</label>
-                            <textarea id="description" name="description" style="display:none;"><?= e($descVal) ?></textarea>
-                            <div id="description-editor" style="height: 300px;"><?= $descVal ?></div>
+                            <label class="form-label" for="description">
+                                <span>Full Description <span style="color: #ef4444;">*</span></span>
+                                <span style="font-weight: normal; color: #64748b; font-size: 0.8125rem; margin-left: 8px;">(WordPress-style Rich Text Editor &bull; Supports Headings, Lists, Tables, Media & HTML)</span>
+                            </label>
+                            <textarea id="description" name="description" class="form-control" style="min-height: 480px; width: 100%;"><?= e($descVal) ?></textarea>
                             <?php if (!empty($errors['description'])): ?><span style="color:#ef4444; font-size:0.75rem;"><?= e($errors['description']) ?></span><?php endif; ?>
                         </div>
                         <div class="form-group">
@@ -731,69 +717,117 @@ $schStatus = strtolower($scholarship['status'] ?? 'draft');
             langIndex++;
         }
 
-        // Initialize Quill editor safely
-        var quill = null;
-        var descriptionTextarea = document.getElementById('description');
-        var editorDiv = document.getElementById('description-editor');
-        var scholarshipForm = document.getElementById('scholarshipEditForm') || (descriptionTextarea ? descriptionTextarea.closest('form') : null);
-
-        function syncQuillToTextarea() {
-            if (quill && descriptionTextarea) {
-                var text = quill.getText().trim();
-                var html = quill.root.innerHTML;
-                descriptionTextarea.value = (text === '' || html === '<p><br></p>') ? '' : html;
-            }
-        }
-
-        if (typeof Quill !== 'undefined' && editorDiv) {
-            try {
-                quill = new Quill('#description-editor', {
-                    theme: 'snow',
-                    modules: {
-                        toolbar: [
-                            [{ 'header': [2, 3, false] }],
-                            ['bold', 'italic', 'underline'],
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                            ['link', 'clean']
-                        ]
+        // Initialize WordPress-style TinyMCE Editor safely
+        if (typeof tinymce !== 'undefined') {
+            tinymce.init({
+                selector: '#description',
+                height: 540,
+                menubar: 'file edit view insert format tools table help',
+                plugins: [
+                    'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                    'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                    'insertdatetime', 'media', 'table', 'help', 'wordcount', 'directionality'
+                ],
+                toolbar: 'undo redo | blocks fontfamily fontsize | ' +
+                         'bold italic underline strikethrough | forecolor backcolor | ' +
+                         'alignleft aligncenter alignright alignjustify | ' +
+                         'bullist numlist outdent indent | table link image media hr | ' +
+                         'blockquote code removeformat | fullscreen code preview',
+                toolbar_mode: 'sliding',
+                branding: false,
+                promotion: false,
+                content_style: `
+                    body {
+                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        font-size: 15px;
+                        line-height: 1.75;
+                        color: #334155;
+                        padding: 16px 20px;
                     }
-                });
-
-                // Sync Quill HTML on text change
-                quill.on('text-change', function() {
-                    syncQuillToTextarea();
-                });
-            } catch (err) {
-                console.error("Quill initialization failed:", err);
-                if (descriptionTextarea) {
-                    descriptionTextarea.style.display = 'block';
+                    h1, h2, h3, h4, h5, h6 {
+                        color: #0f172a;
+                        font-weight: 700;
+                        line-height: 1.35;
+                        margin-top: 1.5em;
+                        margin-bottom: 0.5em;
+                    }
+                    h1 { font-size: 1.75em; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+                    h2 { font-size: 1.4em; border-left: 4px solid #2563eb; padding-left: 12px; }
+                    h3 { font-size: 1.2em; }
+                    p { margin-bottom: 1.25em; line-height: 1.75; }
+                    ul, ol { padding-left: 24px; margin-bottom: 1.25em; }
+                    ul { list-style-type: disc !important; }
+                    ol { list-style-type: decimal !important; }
+                    li { margin-bottom: 0.5em; line-height: 1.7; }
+                    blockquote {
+                        border-left: 4px solid #2563eb;
+                        background: #f8fafc;
+                        padding: 14px 18px;
+                        margin: 1.5em 0;
+                        border-radius: 0 8px 8px 0;
+                        font-style: italic;
+                        color: #1e293b;
+                    }
+                    table {
+                        border-collapse: separate;
+                        border-spacing: 0;
+                        width: 100%;
+                        margin: 1.5em 0;
+                        border: 1px solid #cbd5e1;
+                        border-radius: 6px;
+                        overflow: hidden;
+                    }
+                    table th, table td {
+                        border: 1px solid #cbd5e1;
+                        padding: 10px 14px;
+                        text-align: left;
+                    }
+                    table th {
+                        background: #f1f5f9;
+                        font-weight: 700;
+                        color: #0f172a;
+                    }
+                    code {
+                        background: #f1f5f9;
+                        color: #0f172a;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        font-size: 0.875em;
+                    }
+                    pre {
+                        background: #0f172a;
+                        color: #f8fafc;
+                        padding: 14px 18px;
+                        border-radius: 8px;
+                        overflow-x: auto;
+                    }
+                    img {
+                        max-width: 100%;
+                        height: auto;
+                        border-radius: 8px;
+                    }
+                    hr {
+                        border: none;
+                        border-top: 1px solid #e2e8f0;
+                        margin: 2em 0;
+                    }
+                `,
+                setup: function (editor) {
+                    editor.on('change keyup input paste Undo Redo', function () {
+                        editor.save();
+                    });
                 }
-                if (editorDiv) {
-                    editorDiv.style.display = 'none';
-                }
-            }
-        } else {
-            // Fallback if Quill script did not load (offline or CDN blocked)
-            if (descriptionTextarea) {
-                descriptionTextarea.style.display = 'block';
-            }
-            if (editorDiv) {
-                editorDiv.style.display = 'none';
-            }
+            });
         }
 
-        // Sync Quill HTML to hidden textarea on form submit & button click
+        // Form submit sync for TinyMCE
+        var scholarshipForm = document.getElementById('scholarshipEditForm') || document.querySelector('form');
         if (scholarshipForm) {
             scholarshipForm.addEventListener('submit', function() {
-                syncQuillToTextarea();
+                if (typeof tinymce !== 'undefined' && tinymce.get('description')) {
+                    tinymce.get('description').save();
+                }
             });
-
-            var saveBtn = scholarshipForm.querySelector('button[type="submit"]');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', function() {
-                    syncQuillToTextarea();
-                });
-            }
         }
 
         // Toggle All Disciplines / Fields of Study
